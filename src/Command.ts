@@ -1,6 +1,7 @@
-import type { Effect, Effect } from "effect"
-import { Context, Layer } from "effect"
-import type { BotContext } from "./BotContext"
+import type { Update } from "@effect-ak/tg-bot-api"
+import { Context, Effect, Layer } from "effect"
+import type { BotContext } from "./BotContext.js"
+import type { CommandRegistry } from "./internal/CommandRegistry.js"
 
 /**
  * Represents a command trigger (e.g., /echo)
@@ -14,14 +15,10 @@ export interface CommandConfig {
 /**
  * A Command represents a Telegram bot command handler
  */
-export class Command extends Context.Tag<Command>()(
-  "Command",
-  {
-    name: "",
-    description: "",
-    aliases: []
-  }
-) {
+export class Command extends Context.Tag("tfx/Command")<
+  Command,
+  CommandConfig
+>() {
   /**
    * Create a new command
    * @param name The command name (without /)
@@ -88,27 +85,31 @@ export class CommandLayerBuilder {
 
   /**
    * Set the handler for this command
+   * Returns a layer that registers the command when provided with CommandRegistry
    */
-  handler(fn: CommandHandler): this {
+  handler(fn: CommandHandler): Layer.Layer<never, never, CommandRegistry> {
     this._handler = fn
-    return this
-  }
-
-  /**
-   * Create the layer
-   */
-  pipe<R, E, A>(
-    fn: (layer: Layer.Layer<any>) => Effect.Effect<A, E, R> | Layer.Layer<A>
-  ): any {
-    const layer = this.buildLayer()
-    return fn(layer)
+    return this.buildLayer()
   }
 
   /**
    * Build the layer (internal use)
    */
-  buildLayer(): Layer.Layer<any> {
-    // This will be properly implemented when we have context tags
-    return Layer.succeed({} as any, {} as any)
+  private buildLayer(): Layer.Layer<never, never, CommandRegistry> {
+    if (!this._handler) {
+      throw new Error(`No handler set for command: ${this.config.name}`)
+    }
+
+    const config = this.config
+    const handler = this._handler
+
+    // Import CommandRegistry dynamically to avoid circular dependency
+    return Layer.effectDiscard(
+      Effect.gen(function*() {
+        const { CommandRegistry } = yield* Effect.promise(() => import("./internal/CommandRegistry.js"))
+        const registry = yield* CommandRegistry
+        yield* registry.registerCommand(config, handler)
+      })
+    ) as Layer.Layer<never, never, CommandRegistry>
   }
 }

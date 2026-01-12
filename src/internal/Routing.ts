@@ -1,5 +1,5 @@
 import type { Update } from "@effect-ak/tg-bot-api"
-import type { CommandConfig } from "../Command"
+import type { CommandConfig } from "../Command.js"
 
 /**
  * Information about a matched command

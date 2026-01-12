@@ -1,6 +1,6 @@
 import type { Update } from "@effect-ak/tg-bot-api"
 import { Effect } from "effect"
-import type { TgBotClient } from "./TgClient"
+import { TgBotClient } from "./TgClient.js"
 
 /**
  * Poll for updates from Telegram using long polling
@@ -12,27 +12,34 @@ export const pollUpdates = (
 ): Effect.Effect<Array<Update>, never, TgBotClient> => {
   return Effect.gen(function*() {
     const client = yield* TgBotClient
-    const updates = yield* Effect.tryPromise({
-      try: () =>
-        (client.execute as any)("get_updates", {
-          offset,
-          timeout,
-          limit
-        }),
-      catch: () => new Error("Failed to poll updates")
-    })
-    return (updates as any) || []
+    const updates = yield* Effect.promise(() =>
+      client.client.execute("get_updates", {
+        offset,
+        timeout,
+        limit
+      })
+    ).pipe(
+      Effect.catchAll((error: unknown) =>
+        Effect.gen(function*() {
+          yield* Effect.logError(
+            `Failed to poll updates: ${error instanceof Error ? error.message : String(error)}`
+          )
+          return []
+        })
+      )
+    )
+    return updates ?? []
   })
 }
 
 /**
  * Long polling loop that continuously fetches updates
  */
-export const longPollingLoop = (
-  onUpdate: (update: Update) => Effect.Effect<void>,
+export const longPollingLoop = <R>(
+  onUpdate: (update: Update) => Effect.Effect<void, never, R>,
   timeout: number = 30,
   limit: number = 100
-): Effect.Effect<never> => {
+): Effect.Effect<never, never, TgBotClient | R> => {
   return Effect.gen(function*() {
     let offset = 0
 

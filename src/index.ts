@@ -1,27 +1,28 @@
 // Core exports
-export { Bot, BotDefinition, BotLive } from "./Bot"
-export type { BotDefinitionConfig, PollingBotConfig, PollingOptions } from "./Bot"
+export { Bot, BotBuilder, BotDefinition, BotLive } from "./Bot.js"
+export type { BotDefinitionConfig, PollingBotConfig, PollingOptions } from "./Bot.js"
 
-export { Command } from "./Command"
-export type { CommandConfig, CommandHandler } from "./Command"
-export { CommandBuilder, CommandLayerBuilder } from "./Command"
+export { Command } from "./Command.js"
+export type { CommandConfig, CommandHandler } from "./Command.js"
+export { CommandBuilder, CommandLayerBuilder } from "./Command.js"
 
-export { CommandGroup } from "./CommandGroup"
-export type { CommandGroupConfig } from "./CommandGroup"
-export { CommandGroupBuilder, CommandGroupLayerBuilder } from "./CommandGroup"
+export { CommandGroup } from "./CommandGroup.js"
+export type { CommandGroupConfig } from "./CommandGroup.js"
+export { CommandGroupBuilder, CommandGroupLayerBuilder } from "./CommandGroup.js"
 
-export { makeMiddlewareLayer, Middleware } from "./Middleware"
-export type { MiddlewareResult } from "./Middleware"
+export { makeMiddlewareLayer } from "./Middleware.js"
+export type { Middleware, MiddlewareResult } from "./Middleware.js"
 
-export { makeBotContext } from "./BotContext"
-export type { BotContext, ReplyOptions } from "./BotContext"
+export { makeBotContext } from "./BotContext.js"
+export type { BotContext, ReplyOptions } from "./BotContext.js"
 
 // Error exports
-export { BotError, CommandConflictError, MissingCommandError, MissingMiddlewareError } from "./errors/BotError"
+export { BotError, CommandConflictError, MissingCommandError, MissingMiddlewareError } from "./errors/BotError.js"
 
 // Internal exports for advanced usage
-export { executeHandler } from "./internal/Handler"
-export { longPollingLoop, pollUpdates } from "./internal/Polling"
-export { extractCommand, matchCommand } from "./internal/Routing"
-export type { MatchedCommand } from "./internal/Routing"
-export { makeTgBotClientLayer, TgBotClient } from "./internal/TgClient"
+export { CommandRegistry } from "./internal/CommandRegistry.js"
+export { executeHandler } from "./internal/Handler.js"
+export { longPollingLoop, pollUpdates } from "./internal/Polling.js"
+export { extractCommand, matchCommand } from "./internal/Routing.js"
+export type { MatchedCommand } from "./internal/Routing.js"
+export { makeTgBotClientLayer, TgBotClient } from "./internal/TgClient.js"

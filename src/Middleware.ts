@@ -1,6 +1,6 @@
 import type { Update } from "@effect-ak/tg-bot-api"
-import { Context, Effect, Layer } from "effect"
-import type { BotContext } from "./BotContext"
+import { Effect, Layer } from "effect"
+import type { BotContext } from "./BotContext.js"
 
 /**
  * Result of middleware processing
@@ -10,20 +10,15 @@ export type MiddlewareResult<T> =
   | { readonly _tag: "failure"; readonly error: Error }
 
 /**
- * Base class for middleware definitions
+ * Base interface for middleware definitions
  * Similar to HttpApiMiddleware in @effect/platform
  */
-export abstract class Middleware<Success, Failure> extends Context.Tag<any>()(
-  "Middleware"
-) {
+export interface Middleware<Success, Failure> {
   /**
    * Process an update through the middleware
    * Returns success value that gets added to context, or failure
    */
-  abstract process(input: {
-    ctx: BotContext
-    update: Update
-  }): Effect.Effect<Success, Failure>
+  process(input: { ctx: BotContext; update: Update }): Effect.Effect<Success, Failure>
 }
 
 /**

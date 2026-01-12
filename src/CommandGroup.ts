@@ -1,5 +1,5 @@
 import { Context, Layer } from "effect"
-import type { CommandBuilder, CommandLayerBuilder } from "./Command"
+import type { CommandBuilder, CommandLayerBuilder } from "./Command.js"
 
 /**
  * Represents a group of commands with a common prefix
@@ -15,15 +15,10 @@ export interface CommandGroupConfig {
  * A CommandGroup organizes related commands under a common prefix
  * e.g., CommandGroup("admin") contains /admin ban, /admin kick, etc
  */
-export class CommandGroup extends Context.Tag<CommandGroup>()(
-  "CommandGroup",
-  {
-    name: "",
-    description: "",
-    commands: [],
-    subgroups: []
-  }
-) {
+export class CommandGroup extends Context.Tag("tfx/CommandGroup")<
+  CommandGroup,
+  CommandGroupConfig
+>() {
   /**
    * Create a new command group
    * @param name The group prefix (without /)
