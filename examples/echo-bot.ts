@@ -1,23 +1,25 @@
-import { Command, Bot } from "tfx";
-import { Effect, Layer, Config } from "Effect";
-import { BunRuntime } from "@effect/platform-bun";
+import { Command, Bot } from "tfx"
+import { Effect, Layer, Config } from "effect"
+import { BunRuntime } from "@effect/platform-bun"
 
-const EchoCommand = Command.make(
-  "echo",
-  "Repeats every thing that you throw at it",
-);
+const EchoCommand = Command.make("echo", "Repeats everything that you send")
+  .withAlias("e")
 
 const EchoCommandLive = Command.makeLayer(EchoCommand).handler(
   ({ ctx, update }) =>
     Effect.gen(function* () {
-      yield* ctx.reply(update);
-    }),
-);
+      const text = update.message?.text ?? ""
+      // Extract args (everything after /echo)
+      const args = text.replace(/^\/\w+\s*/, "")
+      yield* ctx.reply(args)
+    })
+)
 
-const MyBotLive = Bot.makePolling({
+const BotLive = Bot.makePolling({
   token: Config.redacted("BOT_TOKEN"),
-});
+  polling: { timeout: 30 },
+}).pipe(
+  Layer.provide(EchoCommandLive)
+)
 
-Layer.launch(MyBotLive.pipe(Layer.provide(EchoCommandLive))).pipe(
-  BunRuntime.runMain,
-);
+Layer.launch(BotLive).pipe(BunRuntime.runMain)
