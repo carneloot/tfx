@@ -9,17 +9,17 @@ export const pollUpdates = (
   offset: number,
   timeout: number,
   limit: number
-): Effect.Effect<Update[], never, TgBotClient> => {
-  return Effect.gen(function* () {
+): Effect.Effect<Array<Update>, never, TgBotClient> => {
+  return Effect.gen(function*() {
     const client = yield* TgBotClient
     const updates = yield* Effect.tryPromise({
       try: () =>
         (client.execute as any)("get_updates", {
           offset,
           timeout,
-          limit,
+          limit
         }),
-      catch: () => new Error("Failed to poll updates"),
+      catch: () => new Error("Failed to poll updates")
     })
     return (updates as any) || []
   })
@@ -33,7 +33,7 @@ export const longPollingLoop = (
   timeout: number = 30,
   limit: number = 100
 ): Effect.Effect<never> => {
-  return Effect.gen(function* () {
+  return Effect.gen(function*() {
     let offset = 0
 
     while (true) {

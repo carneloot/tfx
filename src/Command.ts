@@ -1,5 +1,5 @@
-import { Context, Effect, Layer } from "effect"
-import type { Update } from "@effect-ak/tg-bot-api"
+import type { Effect, Effect } from "effect"
+import { Context, Layer } from "effect"
 import type { BotContext } from "./BotContext"
 
 /**
@@ -8,7 +8,7 @@ import type { BotContext } from "./BotContext"
 export interface CommandConfig {
   readonly name: string
   readonly description: string
-  readonly aliases: readonly string[]
+  readonly aliases: ReadonlyArray<string>
 }
 
 /**
@@ -19,7 +19,7 @@ export class Command extends Context.Tag<Command>()(
   {
     name: "",
     description: "",
-    aliases: [],
+    aliases: []
   }
 ) {
   /**
@@ -31,7 +31,7 @@ export class Command extends Context.Tag<Command>()(
     return new CommandBuilder({
       name,
       description,
-      aliases: [],
+      aliases: []
     })
   }
 
@@ -58,7 +58,7 @@ export class CommandBuilder {
   withAlias(alias: string): CommandBuilder {
     return new CommandBuilder({
       ...this.config,
-      aliases: [...this.config.aliases, alias],
+      aliases: [...this.config.aliases, alias]
     })
   }
 

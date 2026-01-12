@@ -17,7 +17,7 @@ export class BotError extends Error {
 export class CommandConflictError extends BotError {
   constructor(
     readonly trigger: string,
-    readonly commands: string[]
+    readonly commands: Array<string>
   ) {
     super(
       "CommandConflictError",

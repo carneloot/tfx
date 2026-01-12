@@ -7,8 +7,8 @@ import type { CommandBuilder, CommandLayerBuilder } from "./Command"
 export interface CommandGroupConfig {
   readonly name: string
   readonly description: string
-  readonly commands: readonly (CommandBuilder | CommandLayerBuilder)[]
-  readonly subgroups: readonly CommandGroup[]
+  readonly commands: ReadonlyArray<CommandBuilder | CommandLayerBuilder>
+  readonly subgroups: ReadonlyArray<CommandGroup>
 }
 
 /**
@@ -21,7 +21,7 @@ export class CommandGroup extends Context.Tag<CommandGroup>()(
     name: "",
     description: "",
     commands: [],
-    subgroups: [],
+    subgroups: []
   }
 ) {
   /**
@@ -34,7 +34,7 @@ export class CommandGroup extends Context.Tag<CommandGroup>()(
       name,
       description,
       commands: [],
-      subgroups: [],
+      subgroups: []
     })
   }
 
@@ -58,7 +58,7 @@ export class CommandGroupBuilder {
   add(command: CommandBuilder | CommandLayerBuilder): CommandGroupBuilder {
     return new CommandGroupBuilder({
       ...this.config,
-      commands: [...this.config.commands, command],
+      commands: [...this.config.commands, command]
     })
   }
 
@@ -68,7 +68,7 @@ export class CommandGroupBuilder {
   addSubGroup(group: CommandGroupBuilder): CommandGroupBuilder {
     return new CommandGroupBuilder({
       ...this.config,
-      subgroups: [...this.config.subgroups, group as any],
+      subgroups: [...this.config.subgroups, group as any]
     })
   }
 

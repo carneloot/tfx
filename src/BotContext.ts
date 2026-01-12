@@ -40,7 +40,7 @@ export const makeBotContext = (
 
   return {
     reply: (text: string, options?: ReplyOptions) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         yield* client.sendMessage({
           chat_id: chatId,
           text,
@@ -48,8 +48,8 @@ export const makeBotContext = (
           disable_web_page_preview: options?.disable_web_page_preview,
           disable_notification: options?.disable_notification,
           protect_content: options?.protect_content,
-          reply_to_message_id: options?.reply_to_message_id,
+          reply_to_message_id: options?.reply_to_message_id
         })
-      }),
+      })
   }
 }

@@ -1,5 +1,5 @@
-import { Context, Effect, Layer } from "effect"
 import type { Update } from "@effect-ak/tg-bot-api"
+import { Context, Effect, Layer } from "effect"
 import type { BotContext } from "./BotContext"
 
 /**
@@ -32,7 +32,7 @@ export abstract class Middleware<Success, Failure> extends Context.Tag<any>()(
  * @param impl Implementation of the middleware
  */
 export const makeMiddlewareLayer = <Success, Failure>(
-  middleware: { new (): any },
+  middleware: { new(): any },
   impl: (input: {
     ctx: BotContext
     update: Update

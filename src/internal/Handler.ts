@@ -11,7 +11,7 @@ export const executeHandler = (
   handler: CommandHandler,
   update: Update
 ): Effect.Effect<void, never, TgBotClient> => {
-  return Effect.gen(function* () {
+  return Effect.gen(function*() {
     const client = yield* TgBotClient
     const ctx = makeBotContext(update, client)
     yield* handler({ ctx, update })

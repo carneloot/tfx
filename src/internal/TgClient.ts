@@ -8,13 +8,13 @@ export class TgBotClient extends Context.Tag<TgBotClient>()(
   "TgBotClient",
   {
     execute: Effect.succeed(null) as any,
-    sendMessage: Effect.succeed(null) as any,
+    sendMessage: Effect.succeed(null) as any
   }
 ) {
   static readonly sendMessage = (
     params: Parameters<Api["send_message"]>[0]
   ): Effect.Effect<void, never, TgBotClient> =>
-    Effect.gen(function* () {
+    Effect.gen(function*() {
       const client = yield* TgBotClient
       yield* Effect.tryPromise({
         try: () =>
@@ -22,7 +22,7 @@ export class TgBotClient extends Context.Tag<TgBotClient>()(
             "send_message" as const,
             params
           ),
-        catch: () => new Error("Failed to send message"),
+        catch: () => new Error("Failed to send message")
       })
     })
 }
@@ -33,12 +33,12 @@ export class TgBotClient extends Context.Tag<TgBotClient>()(
 export const makeTgBotClientLayer = (botToken: string): Layer.Layer<TgBotClient> => {
   return Layer.effect(
     TgBotClient,
-    Effect.gen(function* () {
+    Effect.gen(function*() {
       // Import the tg-bot-client here to avoid top-level imports
       const { makeTgBotClient } = await import("@effect-ak/tg-bot-client")
 
       const client = makeTgBotClient({
-        bot_token: botToken,
+        bot_token: botToken
       })
 
       return {
@@ -46,8 +46,8 @@ export const makeTgBotClientLayer = (botToken: string): Layer.Layer<TgBotClient>
         sendMessage: (params: Parameters<Api["send_message"]>[0]) =>
           Effect.tryPromise({
             try: () => client.execute("send_message", params),
-            catch: () => new Error("Failed to send message"),
-          }),
+            catch: () => new Error("Failed to send message")
+          })
       }
     })
   )

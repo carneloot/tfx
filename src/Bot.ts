@@ -1,6 +1,6 @@
-import { Context, Effect, Layer } from "effect"
-import type { Update } from "@effect-ak/tg-bot-api"
-import type { BotContext } from "./BotContext"
+import type { Effect  } from "effect";
+import { Context, Layer } from "effect";
+
 
 /**
  * Configuration for the bot
@@ -13,43 +13,40 @@ export interface BotDefinitionConfig {
   onDefect?: (
     defect: unknown,
     context: { command?: string; update: Update }
-  ) => Effect.Effect<void>
+  ) => Effect.Effect<void>;
 }
 
 /**
  * Polling configuration
  */
 export interface PollingOptions {
-  timeout?: number
-  limit?: number
-  allowed_updates?: string[]
-  on_error?: "stop" | "continue"
-  log_level?: "debug" | "info"
+  timeout?: number;
+  limit?: number;
+  allowed_updates?: Array<string>;
+  on_error?: "stop" | "continue";
+  log_level?: "debug" | "info";
 }
 
 /**
  * Configuration for creating a polling bot
  */
 export interface PollingBotConfig {
-  token: string
-  polling?: PollingOptions
+  token: string;
+  polling?: PollingOptions;
 }
 
 /**
  * The Bot service tag
  */
-export class Bot extends Context.Tag<Bot>()(
-  "Bot",
-  {
-    token: "",
-    polling: {} as PollingOptions,
-  }
-) {
+export class Bot extends Context.Tag("tfx/Bot")<Bot, {
+  token: "",
+  polling: {} as PollingOptions,
+}>() {
   /**
    * Define a bot with global configuration
    */
   static define(config: BotDefinitionConfig): BotDefinition {
-    return new BotDefinition(config)
+    return new BotDefinition(config);
   }
 
   /**
@@ -59,7 +56,7 @@ export class Bot extends Context.Tag<Bot>()(
     return Layer.succeed(Bot, {
       token: config.token,
       polling: config.polling ?? {},
-    })
+    });
   }
 }
 
@@ -79,4 +76,4 @@ export const BotLive = {
    */
   makePolling: (config: PollingBotConfig): Layer.Layer<Bot> =>
     Bot.makePolling(config),
-}
+};

@@ -1,25 +1,49 @@
-import { Command, Bot } from "tfx"
-import { Effect, Layer, Config } from "effect"
-import { BunRuntime } from "@effect/platform-bun"
+import { BunRuntime } from "@effect/platform-bun";
 
-const EchoCommand = Command.make("echo", "Repeats everything that you send")
-  .withAlias("e")
+import { Config, Effect, Layer } from "effect";
 
+import { Bot, BotBuilder, Command } from "../src";
+
+// Define the echo command
+const EchoCommand = Command.make(
+  "echo",
+  "Repeats everything that you send"
+).withAlias("e");
+
+// Implement the echo command with its handler
 const EchoCommandLive = Command.makeLayer(EchoCommand).handler(
   ({ ctx, update }) =>
     Effect.gen(function* () {
-      const text = update.message?.text ?? ""
+      const text = update.message?.text ?? "";
       // Extract args (everything after /echo)
-      const args = text.replace(/^\/\w+\s*/, "")
-      yield* ctx.reply(args)
+      const args = text.replace(/^\/\w+\s*/, "");
+      yield* ctx.reply(args);
     })
-)
+);
 
-const BotLive = Bot.makePolling({
+// Define the bot with global configuration (no error handler here)
+const MyBot = Bot.make("Echo Bot!").add(EchoCommand);
+
+// Create the polling bot layer - this provides the Bot service
+const PollingBotLayer = Bot.makePolling({
   token: Config.redacted("BOT_TOKEN"),
   polling: { timeout: 30 },
-}).pipe(
-  Layer.provide(EchoCommandLive)
-)
+});
 
-Layer.launch(BotLive).pipe(BunRuntime.runMain)
+// Implement the bot with commands and error handling
+const MyBotLive = BotBuilder.launch(MyBot)
+  .pipe(Layer.provide(EchoCommandLive))
+  .pipe(
+    Layer.catchAllDefect((defect) =>
+      Effect.logError(
+        `Unexpected error: ${
+          defect instanceof Error ? defect.message : String(defect)
+        }`
+      )
+    )
+  );
+
+// Combine everything together
+const AppLive = MyBotLive.pipe(Layer.provide(PollingBotLayer));
+
+Layer.launch(AppLive).pipe(BunRuntime.runMain);

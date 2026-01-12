@@ -20,7 +20,7 @@ export const extractCommand = (
 
   return {
     command: match[1],
-    args: match[2],
+    args: match[2]
   }
 }
 
@@ -30,7 +30,7 @@ export const extractCommand = (
  */
 export const matchCommand = (
   update: Update,
-  commands: Map<string, CommandConfig[]>
+  commands: Map<string, Array<CommandConfig>>
 ): MatchedCommand | null => {
   const text = update.message?.text
   if (!text) return null
@@ -38,14 +38,14 @@ export const matchCommand = (
   const extracted = extractCommand(text)
   if (!extracted) return null
 
-  const { command, args } = extracted
+  const { args, command } = extracted
 
   // Check exact match first
   const exactMatches = commands.get(command)
   if (exactMatches && exactMatches.length > 0) {
     return {
       config: exactMatches[0],
-      args,
+      args
     }
   }
 
@@ -55,7 +55,7 @@ export const matchCommand = (
       if (config.aliases.includes(command)) {
         return {
           config,
-          args,
+          args
         }
       }
     }

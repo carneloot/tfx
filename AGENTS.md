@@ -173,3 +173,29 @@ test/
 4. Follow the barrel export pattern in index.ts
 5. Test files should be co-located with `test/` directory, not inline
 6. Use camelCase for variable names, PascalCase for file names (when they're classes)
+
+## Example Pattern: Echo Bot
+
+The `examples/echo-bot.ts` file demonstrates the recommended pattern for TFX applications. When making changes to the core Bot or Command API, **always update this example** to keep it in sync. The pattern follows Effect's HttpApi design:
+
+1. **Define**: Create command/bot definitions (no implementation details)
+   ```ts
+   const MyBot = Bot.define({ /* config */ })
+   const MyCommand = Command.make("name", "description")
+   ```
+
+2. **Implement**: Create implementation layers with handlers and error handling
+   ```ts
+   const MyCommandLive = Command.makeLayer(MyCommand).handler(...)
+   const MyBotLive = Layer.succeed(MyBot)
+     .pipe(Layer.provide(MyCommandLive))
+     .pipe(Layer.catchAllDefect(...)) // Error handling on implementation only
+   ```
+
+3. **Wire**: Provide the polling/transport layer to the implementation
+   ```ts
+   const PollingBotLayer = BotLive.makePolling({ token, polling })
+   const AppLive = MyBotLive.pipe(Layer.provide(PollingBotLayer))
+   ```
+
+**Key principle**: The bot definition and bot implementation are **separate variables**. Error handlers belong only on the implementation layer, not the definition.
