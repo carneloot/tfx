@@ -124,21 +124,24 @@ bunx tsx ./path/file.ts    # Execute TypeScript file directly
 ```
 src/
   ├── index.ts                 # Main barrel export
-  ├── Bot.ts                   # Core Bot class
-  ├── Command.ts               # Command system
-  ├── CommandGroup.ts          # Command grouping
-  ├── Middleware.ts            # Middleware layer
-  ├── BotContext.ts            # Bot context type
+  ├── Bot.ts                   # Bot service definition and factory
+  ├── Command.ts               # Command definition with builders
+  ├── CommandGroup.ts          # Command grouping with nesting
+  ├── Middleware.ts            # Middleware base class
+  ├── BotContext.ts            # Handler context with reply helpers
   ├── errors/                  # Error classes
-  │   └── BotError.ts
+  │   └── BotError.ts          # Custom error types
   └── internal/                # Internal implementation
-      ├── TgClient.ts          # Telegram client
-      ├── Routing.ts           # Command routing
-      ├── Polling.ts           # Update polling
-      └── Handler.ts           # Command execution
+      ├── TgClient.ts          # @effect-ak/tg-bot-client wrapper
+      ├── Routing.ts           # Command matching and routing
+      ├── Polling.ts           # Long polling loop
+      └── Handler.ts           # Handler execution pipeline
 
 test/
   └── *.test.ts               # Test files (Vitest)
+
+examples/
+  └── echo-bot.ts             # Example echo bot demonstrating TFX API
 ```
 
 ## Testing Guidelines
@@ -158,12 +161,82 @@ test/
 
 ## Key Dependencies
 
+### Core
 - **effect**: ^3.17.7 - Core Effect library
 - **@effect/eslint-plugin**: Code quality
 - **@effect/vitest**: Testing utilities
 - **@effect/build-utils**: Build automation
+
+### Telegram Bot Integration
+- **@effect-ak/tg-bot-client** - Type-safe HTTP client for Telegram Bot API
+  - Repository: ~/repos/tg-bot-client
+  - Main exports: `makeTgBotClient(config)` for HTTP client
+  - Usage: `client.execute(method, params)` for type-safe API calls
+  - Handles: Long polling with `get_updates`, file uploads/downloads
+  
+- **@effect-ak/tg-bot-api** - TypeScript types from Telegram Bot API
+  - Repository: ~/repos/tg-bot-client (package: @effect-ak/tg-bot-api)
+  - Main exports: `Api`, `Update`, `Message`, `Chat`, `User`, etc.
+  - Usage: Type-safe API method signatures and Telegram domain types
+
+### Effect Patterns (for HTTP/Platform reference)
+- **@effect/platform** - Platform abstractions for Node.js, Deno, Bun
+  - Reference: ~/repos/effect
+  - Pattern reference: HttpApi, HttpApiBuilder, HttpApiMiddleware
+  - TFX follows similar declarative-first API design
+
+- **@effect/platform-bun** - Bun runtime support for @effect/platform
+  - Used in examples: `BunRuntime.runMain`
+
+### Build
 - TypeScript 5.6.2
 - Babel for CommonJS transformation
+
+## TFX Architecture Overview
+
+TFX follows a **three-layer pattern** similar to @effect/platform:
+
+### 1. Definition Layer (Declarative)
+- `Command.make()` - Define commands with name and description
+- `CommandGroup.make()` - Group commands with common prefix
+- `Bot.define()` - Define bot configuration
+- Pure data structures, no side effects
+
+### 2. Implementation Layer (Providers)
+- `Command.makeLayer()` - Create layer providing command implementation
+- `CommandGroup.makeLayer()` - Create layer providing group commands
+- `Bot.makePolling()` - Create polling transport layer
+- Use `Layer.provide()` to compose dependencies
+
+### 3. Runtime Layer (Execution)
+- `Layer.launch()` - Start the bot
+- Polling loop continuously fetches updates
+- Updates routed to command handlers
+- Global error handling via `onDefect`
+
+### Key Patterns
+
+**Commands**
+- Global scope (not chat-specific)
+- Support multiple aliases (.withAlias())
+- Handler receives full Update object
+- Handler error channel = never (forced error handling)
+- Extract args as raw string after trigger
+
+**CommandGroups**
+- Create prefix-based triggers (/admin ban, /admin kick)
+- Support nesting (.addSubGroup())
+- Most-specific-match routing wins
+
+**Middleware**
+- Global (runs on every update) and per-command
+- Can enhance BotContext with additional services
+- Returns success/failure result
+
+**Error Handling**
+- Command handlers must handle all errors internally
+- Global `onDefect` for unexpected system errors
+- Defects separate from normal errors
 
 ## Notes for Agents
 
@@ -173,6 +246,8 @@ test/
 4. Follow the barrel export pattern in index.ts
 5. Test files should be co-located with `test/` directory, not inline
 6. Use camelCase for variable names, PascalCase for file names (when they're classes)
+7. Read plan.md before implementing new features for complete design context
+8. Update examples/echo-bot.ts when changing core Bot or Command APIs
 
 ## Example Pattern: Echo Bot
 
