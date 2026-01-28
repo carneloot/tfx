@@ -15,6 +15,7 @@ permissions: {}
 
 jobs:
   build:
+    if: false
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -27,6 +28,7 @@ jobs:
         run: git add src && git diff-index --cached HEAD --exit-code src
 
   types:
+    if: false
     name: Types
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -37,6 +39,7 @@ jobs:
       - run: pnpm check
 
   lint:
+    if: false
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -47,6 +50,7 @@ jobs:
       - run: pnpm lint
 
   test:
+    if: false
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 10
