@@ -91,6 +91,7 @@ scratchpad/*
 **/modular-mcp.json
 .rulesync/rules/*.local.md
 !.rulesync/.aiignore
+opencode.json
 
 # opensrc - source code for packages
 opensrc/
