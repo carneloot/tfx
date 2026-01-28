@@ -13,7 +13,7 @@ const EchoCommand = Command.make(
 // Implement the echo command with its handler
 const EchoCommandLive = Command.makeLayer(EchoCommand).handler(
   ({ ctx, update }) =>
-    Effect.gen(function* () {
+    Effect.gen(function*() {
       const text = update.message?.text ?? ""
       // Extract args (everything after /echo)
       const args = text.replace(/^\/\w+\s*/, "")
