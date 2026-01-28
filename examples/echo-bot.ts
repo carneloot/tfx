@@ -2,25 +2,21 @@ import { BunRuntime } from "@effect/platform-bun"
 
 import { Config, Effect, Layer } from "effect"
 
-import { Bot, BotBuilder, Command, CommandRegistry } from "../src"
+import { Bot, BotBuilder, command } from "../src"
 
 // Define the echo command
-const EchoCommand = Command.make(
-  "echo",
-  "Repeats everything that you send"
-).withAlias("e")
-
-// Implement the echo command with its handler
-const EchoCommandLive = Command.makeLayer(EchoCommand).handler(
+const EchoCommand = command("echo", "e")
+  .withDescription("Repeats everything that you send")
+  .handler(
   ({ ctx, update }) =>
     Effect.gen(function*() {
       const text = update.message?.text ?? ""
-      // Extract args (everything after /echo)
       const args = text.replace(/^\/\w+\s*/, "")
       yield* ctx.reply(args)
     })
-)
+  )
 
+// Implement the echo command with its handler
 // Define the bot with global configuration (no error handler here)
 const MyBot = Bot.make("Echo Bot!").add(EchoCommand)
 
@@ -31,10 +27,7 @@ const PollingBotLayer = Bot.makePolling({
 })
 
 // Implement the bot with commands and error handling
-const MyBotLive = BotBuilder.launch(MyBot).pipe(
-  Layer.provide(EchoCommandLive),
-  Layer.provide(CommandRegistry.live())
-)
+const MyBotLive = BotBuilder.launch(MyBot)
 
 // Combine everything together
 const AppLive = MyBotLive.pipe(Layer.provide(PollingBotLayer))

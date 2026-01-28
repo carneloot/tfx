@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Ref } from "effect"
-import type { CommandConfig, CommandHandler } from "../Command.js"
+import type { CommandDefinition } from "../Command.js"
 
 /**
  * Registry service that tracks command handlers
@@ -8,12 +8,9 @@ import type { CommandConfig, CommandHandler } from "../Command.js"
 export class CommandRegistry extends Context.Tag("tfx/CommandRegistry")<
   CommandRegistry,
   {
-    readonly registerCommand: (
-      config: CommandConfig,
-      handler: CommandHandler
-    ) => Effect.Effect<void>
-    readonly getHandler: (name: string) => Effect.Effect<CommandHandler | undefined>
-    readonly getAllHandlers: () => Effect.Effect<Map<string, CommandHandler>>
+    readonly registerCommand: (definition: CommandDefinition) => Effect.Effect<void>
+    readonly getCommand: (keyword: string) => Effect.Effect<CommandDefinition | undefined>
+    readonly getAllCommands: () => Effect.Effect<Map<string, CommandDefinition>>
   }
 >() {
   /**
@@ -23,27 +20,23 @@ export class CommandRegistry extends Context.Tag("tfx/CommandRegistry")<
     return Layer.effect(
       CommandRegistry,
       Effect.gen(function*() {
-        const handlersRef = yield* Ref.make(new Map<string, CommandHandler>())
-        const configsRef = yield* Ref.make(new Map<string, CommandConfig>())
+        const commandsRef = yield* Ref.make(new Map<string, CommandDefinition>())
 
         return {
-          registerCommand: (config, handler) =>
+          registerCommand: (definition) =>
             Effect.gen(function*() {
-              yield* Ref.update(handlersRef, (map) => {
+              yield* Ref.update(commandsRef, (map) => {
                 const newMap = new Map(map)
-                newMap.set(config.name, handler)
-                return newMap
-              })
-              yield* Ref.update(configsRef, (map) => {
-                const newMap = new Map(map)
-                newMap.set(config.name, config)
+                for (const keyword of definition.keywords) {
+                  newMap.set(keyword, definition)
+                }
                 return newMap
               })
             }),
 
-          getHandler: (name) => Ref.get(handlersRef).pipe(Effect.map((map) => map.get(name))),
+          getCommand: (keyword) => Ref.get(commandsRef).pipe(Effect.map((map) => map.get(keyword))),
 
-          getAllHandlers: () => Ref.get(handlersRef)
+          getAllCommands: () => Ref.get(commandsRef)
         }
       })
     )

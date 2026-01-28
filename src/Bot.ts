@@ -1,8 +1,7 @@
 import type { Update } from "@effect-ak/tg-bot-api"
 import type { Config } from "effect"
 import { Context, Effect, Layer } from "effect"
-import type { CommandBuilder } from "./Command.js"
-import type { CommandRegistry } from "./internal/CommandRegistry.js"
+import type { CommandDefinition } from "./Command.js"
 import type { TgBotClient } from "./internal/TgClient.js"
 
 /**
@@ -16,7 +15,7 @@ export interface BotDefinitionConfig {
   /**
    * Commands registered with this bot
    */
-  commands: ReadonlyArray<CommandBuilder>
+  commands: ReadonlyArray<CommandDefinition>
   /**
    * Handler for defects (unexpected errors at runtime)
    * Note: Command handler errors should be handled in the commands themselves
@@ -100,7 +99,7 @@ export class BotBuilder {
   /**
    * Add a command to the bot
    */
-  add(command: CommandBuilder): BotBuilder {
+  add(command: CommandDefinition): BotBuilder {
     return new BotBuilder({
       ...this.config,
       commands: [...this.config.commands, command]
@@ -120,7 +119,7 @@ export class BotBuilder {
    */
   static launch(
     bot: BotBuilder
-  ): Layer.Layer<never, never, Bot | TgBotClient | CommandRegistry> {
+  ): Layer.Layer<never, never, Bot | TgBotClient> {
     // This will be implemented to wire polling + routing + handlers
     return Layer.effectDiscard(
       Effect.gen(function*() {
@@ -128,17 +127,15 @@ export class BotBuilder {
         const { longPollingLoop } = yield* Effect.promise(() => import("./internal/Polling.js"))
         const { matchCommand } = yield* Effect.promise(() => import("./internal/Routing.js"))
         const { executeHandler } = yield* Effect.promise(() => import("./internal/Handler.js"))
-        const { CommandRegistry } = yield* Effect.promise(() => import("./internal/CommandRegistry.js"))
 
         const botService = yield* Bot
-        const registry = yield* CommandRegistry
 
         // Build command map from bot definition
-        const commandMap = new Map<string, Array<any>>()
-        for (const cmd of bot.config.commands) {
-          const config = cmd.getConfig()
-          const existing = commandMap.get(config.name) ?? []
-          commandMap.set(config.name, [...existing, config])
+        const commandMap = new Map<string, CommandDefinition>()
+        for (const command of bot.config.commands) {
+          for (const keyword of command.keywords) {
+            commandMap.set(keyword, command)
+          }
         }
 
         // Start polling loop - this runs forever
@@ -148,15 +145,7 @@ export class BotBuilder {
               const matched = matchCommand(update, commandMap)
               if (!matched) return
 
-              const handler = yield* registry.getHandler(matched.config.name)
-              if (!handler) {
-                yield* Effect.logWarning(
-                  `No handler found for command: ${matched.config.name}`
-                )
-                return
-              }
-
-              yield* executeHandler(handler, update)
+              yield* executeHandler(matched.command.handler, update)
             }),
           botService.polling.timeout ?? 30,
           botService.polling.limit ?? 100

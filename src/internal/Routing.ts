@@ -1,11 +1,11 @@
 import type { Update } from "@effect-ak/tg-bot-api"
-import type { CommandConfig } from "../Command.js"
+import type { CommandDefinition } from "../Command.js"
 
 /**
  * Information about a matched command
  */
 export interface MatchedCommand {
-  readonly config: CommandConfig
+  readonly command: CommandDefinition
   readonly args: string
 }
 
@@ -30,7 +30,7 @@ export const extractCommand = (
  */
 export const matchCommand = (
   update: Update,
-  commands: Map<string, Array<CommandConfig>>
+  commands: Map<string, CommandDefinition>
 ): MatchedCommand | null => {
   const text = update.message?.text
   if (!text) return null
@@ -41,23 +41,11 @@ export const matchCommand = (
   const { args, command } = extracted
 
   // Check exact match first
-  const exactMatches = commands.get(command)
-  if (exactMatches && exactMatches.length > 0) {
+  const matched = commands.get(command)
+  if (matched) {
     return {
-      config: exactMatches[0],
+      command: matched,
       args
-    }
-  }
-
-  // Check if command is an alias
-  for (const [_, configs] of commands) {
-    for (const config of configs) {
-      if (config.aliases.includes(command)) {
-        return {
-          config,
-          args
-        }
-      }
     }
   }
 

@@ -1,74 +1,11 @@
 import type { Update } from "@effect-ak/tg-bot-api"
-import { Context, Effect, Layer } from "effect"
+import { Context, Layer } from "effect"
+import type { Effect } from "effect"
 import type { BotContext } from "./BotContext.js"
-import type { CommandRegistry } from "./internal/CommandRegistry.js"
+import type { Middleware } from "./Middleware.js"
 
 /**
- * Represents a command trigger (e.g., /echo)
- */
-export interface CommandConfig {
-  readonly name: string
-  readonly description: string
-  readonly aliases: ReadonlyArray<string>
-}
-
-/**
- * A Command represents a Telegram bot command handler
- */
-export class Command extends Context.Tag("tfx/Command")<
-  Command,
-  CommandConfig
->() {
-  /**
-   * Create a new command
-   * @param name The command name (without /)
-   * @param description Description of what the command does
-   */
-  static make(name: string, description: string): CommandBuilder {
-    return new CommandBuilder({
-      name,
-      description,
-      aliases: []
-    })
-  }
-
-  /**
-   * Create a layer that provides this command
-   */
-  static makeLayer(
-    command: CommandBuilder
-  ): CommandLayerBuilder {
-    return new CommandLayerBuilder(command.config)
-  }
-}
-
-/**
- * Builder for creating commands with fluent API
- */
-export class CommandBuilder {
-  constructor(readonly config: CommandConfig) {}
-
-  /**
-   * Add an alias for this command
-   * @param alias Alternative trigger for this command
-   */
-  withAlias(alias: string): CommandBuilder {
-    return new CommandBuilder({
-      ...this.config,
-      aliases: [...this.config.aliases, alias]
-    })
-  }
-
-  /**
-   * Get the configuration
-   */
-  getConfig(): CommandConfig {
-    return this.config
-  }
-}
-
-/**
- * Handler function signature for commands
+ * Defines the handler signature for a command.
  */
 export type CommandHandler = (input: {
   ctx: BotContext
@@ -76,40 +13,125 @@ export type CommandHandler = (input: {
 }) => Effect.Effect<void, never, any>
 
 /**
- * Builder for creating command layers
+ * Full command definition with a handler.
  */
-export class CommandLayerBuilder {
-  private _handler?: CommandHandler
+export interface CommandDefinition {
+  readonly keywords: ReadonlyArray<string>
+  readonly description?: string
+  readonly handler: CommandHandler
+  readonly middlewares?: ReadonlyArray<Middleware<any, any>>
+}
 
-  constructor(readonly config: CommandConfig) {}
+/**
+ * Command definition without a handler (used by builders).
+ */
+export interface CommandDefinitionBase {
+  readonly keywords: ReadonlyArray<string>
+  readonly description?: string
+  readonly middlewares?: ReadonlyArray<Middleware<any, any>>
+}
 
+/**
+ * A Command represents a Telegram bot command handler
+ */
+export class Command extends Context.Tag("tfx/Command")<
+  Command,
+  CommandDefinition
+>() {
   /**
-   * Set the handler for this command
-   * Returns a layer that registers the command when provided with CommandRegistry
+   * Create a builder for a command definition.
+   * @param keywords One or more keywords used to match this command
    */
-  handler(fn: CommandHandler): Layer.Layer<never, never, CommandRegistry> {
-    this._handler = fn
-    return this.buildLayer()
+  static make(...keywords: Array<string>): CommandBuilder {
+    return new CommandBuilder({
+      keywords,
+      middlewares: []
+    })
   }
 
   /**
-   * Build the layer (internal use)
+   * Create a command definition with a handler.
+   * @param definition Command definition (must include a handler)
    */
-  private buildLayer(): Layer.Layer<never, never, CommandRegistry> {
-    if (!this._handler) {
-      throw new Error(`No handler set for command: ${this.config.name}`)
-    }
-
-    const config = this.config
-    const handler = this._handler
-
-    // Import CommandRegistry dynamically to avoid circular dependency
-    return Layer.effectDiscard(
-      Effect.gen(function*() {
-        const { CommandRegistry } = yield* Effect.promise(() => import("./internal/CommandRegistry.js"))
-        const registry = yield* CommandRegistry
-        yield* registry.registerCommand(config, handler)
-      })
-    ) as Layer.Layer<never, never, CommandRegistry>
+  static define(definition: CommandDefinition): CommandDefinition {
+    return definition
   }
 }
+
+/**
+ * Create a command definition with a handler.
+ * @param definition Command definition (must include a handler)
+ */
+export const defineCommand = (definition: CommandDefinition): CommandDefinition => definition
+
+/**
+ * Builder for creating commands with fluent API
+ */
+export class CommandBuilder {
+  constructor(readonly config: CommandDefinitionBase) {}
+
+  /**
+   * Add a description for this command.
+   * @param description Short description shown in help output
+   */
+  withDescription(description: string): CommandBuilder {
+    return new CommandBuilder({
+      ...this.config,
+      description
+    })
+  }
+
+  /**
+   * Add an additional keyword for this command.
+   * @param keyword Additional keyword used for matching
+   */
+  withKeyword(keyword: string): CommandBuilder {
+    return new CommandBuilder({
+      ...this.config,
+      keywords: [...this.config.keywords, keyword]
+    })
+  }
+
+  /**
+   * Add middleware to this command (not executed in v1).
+   * @param middlewares Middleware list
+   */
+  withMiddlewares(
+    middlewares: ReadonlyArray<Middleware<any, any>>
+  ): CommandBuilder {
+    return new CommandBuilder({
+      ...this.config,
+      middlewares: [...(this.config.middlewares ?? []), ...middlewares]
+    })
+  }
+
+  /**
+   * Set the handler for this command and finalize the definition.
+   */
+  handler(handler: CommandHandler): CommandDefinition {
+    return {
+      ...this.config,
+      handler
+    }
+  }
+
+  /**
+   * Get the configuration without a handler.
+   */
+  getConfig(): CommandDefinitionBase {
+    return this.config
+  }
+}
+
+/**
+ * Build a command definition with a fluent API.
+ * @param keywords One or more keywords used to match this command
+ */
+export const command = (...keywords: Array<string>): CommandBuilder => Command.make(...keywords)
+
+/**
+ * Create a layer that provides a command definition.
+ * @param definition Full command definition (including handler)
+ */
+export const makeCommandLayer = (definition: CommandDefinition): Layer.Layer<never, never, Command> =>
+  Layer.succeed(Command, definition)

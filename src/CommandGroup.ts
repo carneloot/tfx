@@ -1,5 +1,5 @@
 import { Context, Layer } from "effect"
-import type { CommandBuilder, CommandLayerBuilder } from "./Command.js"
+import type { CommandDefinition } from "./Command.js"
 
 /**
  * Represents a group of commands with a common prefix
@@ -7,7 +7,7 @@ import type { CommandBuilder, CommandLayerBuilder } from "./Command.js"
 export interface CommandGroupConfig {
   readonly name: string
   readonly description: string
-  readonly commands: ReadonlyArray<CommandBuilder | CommandLayerBuilder>
+  readonly commands: ReadonlyArray<CommandDefinition>
   readonly subgroups: ReadonlyArray<CommandGroup>
 }
 
@@ -50,7 +50,7 @@ export class CommandGroupBuilder {
   /**
    * Add a command to this group
    */
-  add(command: CommandBuilder | CommandLayerBuilder): CommandGroupBuilder {
+  add(command: CommandDefinition): CommandGroupBuilder {
     return new CommandGroupBuilder({
       ...this.config,
       commands: [...this.config.commands, command]

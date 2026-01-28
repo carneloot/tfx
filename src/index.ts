@@ -2,9 +2,8 @@
 export { Bot, BotBuilder, BotDefinition, BotLive } from "./Bot.js"
 export type { BotDefinitionConfig, PollingBotConfig, PollingOptions } from "./Bot.js"
 
-export { Command } from "./Command.js"
-export type { CommandConfig, CommandHandler } from "./Command.js"
-export { CommandBuilder, CommandLayerBuilder } from "./Command.js"
+export { Command, command, CommandBuilder, defineCommand, makeCommandLayer } from "./Command.js"
+export type { CommandDefinition, CommandDefinitionBase, CommandHandler } from "./Command.js"
 
 export { CommandGroup } from "./CommandGroup.js"
 export type { CommandGroupConfig } from "./CommandGroup.js"
