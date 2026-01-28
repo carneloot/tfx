@@ -194,6 +194,7 @@ examples/
 ### Telegram Bot Integration
 
 - **@effect-ak/tg-bot-client** - Type-safe HTTP client for Telegram Bot API
+
   - Repository: ~/repos/tg-bot-client
   - Main exports: `makeTgBotClient(config)` for HTTP client
   - Usage: `client.execute(method, params)` for type-safe API calls
@@ -207,6 +208,7 @@ examples/
 ### Effect Patterns (for HTTP/Platform reference)
 
 - **@effect/platform** - Platform abstractions for Node.js, Deno, Bun
+
   - Reference: ~/repos/effect
   - Pattern reference: HttpApi, HttpApiBuilder, HttpApiMiddleware
   - TFX follows similar declarative-first API design
@@ -221,56 +223,41 @@ examples/
 
 ## TFX Architecture Overview
 
-TFX follows a **three-layer pattern** similar to @effect/platform:
+TFX follows a **command-first** model inspired by `@effect/cli` and centered on a single registration + runtime flow:
 
-### 1. Definition Layer (Declarative)
+### 1. Command Definition
 
-- `Command.make()` - Define commands with name and description
-- `CommandGroup.make()` - Group commands with common prefix
-- `Bot.define()` - Define bot configuration
-- Pure data structures, no side effects
+- `Command.make(...)` defines a command with keywords, description, and a required handler
+- Commands are registered in a command registry (optionally generating a help command)
 
-### 2. Implementation Layer (Providers)
+### 2. Runtime (Long Polling)
 
-- `Command.makeLayer()` - Create layer providing command implementation
-- `CommandGroup.makeLayer()` - Create layer providing group commands
-- `Bot.makePolling()` - Create polling transport layer
-- Use `Layer.provide()` to compose dependencies
-
-### 3. Runtime Layer (Execution)
-
-- `Layer.launch()` - Start the bot
-- Polling loop continuously fetches updates
-- Updates routed to command handlers
-- Global error handling via `onDefect`
+- `run(...)` or `start(...)` receives a token and a command registry
+- Long polling reads updates and dispatches to matching command handlers
+- Missing matches are ignored by default (no automatic error replies)
 
 ### Key Patterns
 
 **Commands**
 
-- Global scope (not chat-specific)
-- Support multiple aliases (.withAlias())
-- Handler receives full Update object
-- Handler error channel = never (forced error handling)
-- Extract args as raw string after trigger
+- Keywords list for matching (e.g., `start`, `ping`)
+- Optional description for help output
+- Handler is required and returns an Effect
+- Handler receives Telegram context (and update data) to reply
 
-**CommandGroups**
+**Command Registry**
 
-- Create prefix-based triggers (/admin ban, /admin kick)
-- Support nesting (.addSubGroup())
-- Most-specific-match routing wins
+- Registers a list of commands as the bot program input
+- Generates a help command by default (optionally disabled)
+- Supports an optional help intro string
 
 **Middleware**
 
-- Global (runs on every update) and per-command
-- Can enhance BotContext with additional services
-- Returns success/failure result
+- API can exist for future use but is not executed in v1
 
 **Error Handling**
 
-- Command handlers must handle all errors internally
-- Global `onDefect` for unexpected system errors
-- Defects separate from normal errors
+- Command handlers handle errors inside their own Effect
 
 ## Notes for Agents
 
@@ -282,18 +269,23 @@ TFX follows a **three-layer pattern** similar to @effect/platform:
 6. Use camelCase for variable names, PascalCase for file names (when they're classes)
 7. Read plan.md before implementing new features for complete design context
 8. Update examples/echo-bot.ts when changing core Bot or Command APIs
+9. Use `osgrep` for semantic code search when exploring the codebase
 
 ## Example Pattern: Echo Bot
 
 The `examples/echo-bot.ts` file demonstrates the recommended pattern for TFX applications. When making changes to the core Bot or Command API, **always update this example** to keep it in sync. The pattern follows Effect's HttpApi design:
 
 1. **Define**: Create command/bot definitions (no implementation details)
+
    ```ts
-   const MyBot = Bot.define({/* config */});
+   const MyBot = Bot.define({
+     /* config */
+   });
    const MyCommand = Command.make("name", "description");
    ```
 
 2. **Implement**: Create implementation layers with handlers and error handling
+
    ```ts
    const MyCommandLive = Command.makeLayer(MyCommand).handler(...)
    const MyBotLive = Layer.succeed(MyBot)
