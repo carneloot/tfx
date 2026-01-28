@@ -13,10 +13,15 @@ export type CommandHandler = (input: {
 }) => Effect.Effect<void, never, any>
 
 /**
+ * Non-empty list of keywords used for command matching.
+ */
+export type CommandKeywords = readonly [string, ...Array<string>]
+
+/**
  * Full command definition with a handler.
  */
 export interface CommandDefinition {
-  readonly keywords: ReadonlyArray<string>
+  readonly keywords: CommandKeywords
   readonly description?: string
   readonly handler: CommandHandler
   readonly middlewares?: ReadonlyArray<Middleware<any, any>>
@@ -26,7 +31,7 @@ export interface CommandDefinition {
  * Command definition without a handler (used by builders).
  */
 export interface CommandDefinitionBase {
-  readonly keywords: ReadonlyArray<string>
+  readonly keywords: CommandKeywords
   readonly description?: string
   readonly middlewares?: ReadonlyArray<Middleware<any, any>>
 }
@@ -42,7 +47,7 @@ export class Command extends Context.Tag("tfx/Command")<
    * Create a builder for a command definition.
    * @param keywords One or more keywords used to match this command
    */
-  static make(...keywords: Array<string>): CommandBuilder {
+  static make(...keywords: CommandKeywords): CommandBuilder {
     return new CommandBuilder({
       keywords,
       middlewares: []
@@ -88,7 +93,7 @@ export class CommandBuilder {
   withKeyword(keyword: string): CommandBuilder {
     return new CommandBuilder({
       ...this.config,
-      keywords: [...this.config.keywords, keyword]
+      keywords: [...this.config.keywords, keyword] as CommandKeywords
     })
   }
 
@@ -124,10 +129,20 @@ export class CommandBuilder {
 }
 
 /**
- * Build a command definition with a fluent API.
+ * Build a command definition with a fluent API or define it directly.
+ * @param definition Full command definition (including handler)
  * @param keywords One or more keywords used to match this command
  */
-export const command = (...keywords: Array<string>): CommandBuilder => Command.make(...keywords)
+export function command(definition: CommandDefinition): CommandDefinition
+export function command(...keywords: CommandKeywords): CommandBuilder
+export function command(
+  ...args: [CommandDefinition] | CommandKeywords
+): CommandDefinition | CommandBuilder {
+  const [first] = args
+  return typeof first === "string"
+    ? Command.make(...(args as CommandKeywords))
+    : Command.define(first)
+}
 
 /**
  * Create a layer that provides a command definition.
