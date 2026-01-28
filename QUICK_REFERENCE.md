@@ -2,16 +2,17 @@
 
 ## File Locations
 
-| Document | Purpose | When to Read |
-|----------|---------|--------------|
-| `plan.md` | Full architecture & design (300+ lines) | For complete understanding |
-| `IMPLEMENTATION_STATUS.md` | Status & phase roadmap | For what to build next |
-| `FILE_STRUCTURE.md` | Module organization | For file navigation |
-| `QUICK_REFERENCE.md` | This file | For quick lookup |
+| Document                   | Purpose                                 | When to Read               |
+| -------------------------- | --------------------------------------- | -------------------------- |
+| `plan.md`                  | Full architecture & design (300+ lines) | For complete understanding |
+| `IMPLEMENTATION_STATUS.md` | Status & phase roadmap                  | For what to build next     |
+| `FILE_STRUCTURE.md`        | Module organization                     | For file navigation        |
+| `QUICK_REFERENCE.md`       | This file                               | For quick lookup           |
 
 ## Main API Classes
 
 ### Command
+
 ```typescript
 import { Command } from "tfx"
 
@@ -27,53 +28,57 @@ const MyCommandLive = Command.makeLayer(MyCmd).handler(
 ```
 
 ### CommandGroup
+
 ```typescript
-import { CommandGroup } from "tfx"
+import { CommandGroup } from "tfx";
 
 // Define
 const AdminGroup = CommandGroup.make("admin", "Admin commands")
   .add(Command1)
   .add(Command2)
-  .addSubGroup(NestedGroup)  // Nesting supported
+  .addSubGroup(NestedGroup); // Nesting supported
 
 // Implement
-const AdminGroupLive = CommandGroup.makeLayer(AdminGroup)
+const AdminGroupLive = CommandGroup.makeLayer(AdminGroup);
 ```
 
 ### Bot
+
 ```typescript
-import { Bot } from "tfx"
-import { Layer, Config } from "effect"
+import { Config, Layer } from "effect";
+import { Bot } from "tfx";
 
 // Define configuration
 const BotDef = Bot.define({
-  onDefect: (error, ctx) => Effect.logError(error)
-})
+  onDefect: (error, ctx) => Effect.logError(error),
+});
 
 // Create layer
 const BotLive = Bot.makePolling({
   token: Config.redacted("BOT_TOKEN"),
-  polling: { timeout: 30, limit: 100 }
+  polling: { timeout: 30, limit: 100 },
 }).pipe(
-  Layer.provide([CommandLive, GroupLive])
-)
+  Layer.provide([CommandLive, GroupLive]),
+);
 
 // Run
-Layer.launch(BotLive).pipe(BunRuntime.runMain)
+Layer.launch(BotLive).pipe(BunRuntime.runMain);
 ```
 
 ### BotContext (in handlers)
+
 ```typescript
-handler: ({ ctx, update }) => Effect.gen(function* () {
-  // Reply with text
-  yield* ctx.reply("Hello!")
-  
-  // Reply with formatting
-  yield* ctx.reply("Hello!", {
-    parse_mode: "HTML",
-    disable_notification: true
-  })
-})
+handler: (({ ctx, update }) =>
+  Effect.gen(function*() {
+    // Reply with text
+    yield* ctx.reply("Hello!");
+
+    // Reply with formatting
+    yield* ctx.reply("Hello!", {
+      parse_mode: "HTML",
+      disable_notification: true,
+    });
+  }));
 ```
 
 ## Handler Signature
@@ -89,6 +94,7 @@ type CommandHandler = (input: {
 ```
 
 ## Middleware (Pattern)
+
 ```typescript
 class MyMiddleware extends Context.Tag<MyMiddleware>()(...) {}
 
@@ -103,11 +109,13 @@ const MyCommand = Command.make(...).requiresMiddleware(MyMiddleware)
 ## Most-Specific-Match Routing
 
 Priority order:
+
 1. Exact command match (`/admin ban`)
 2. Alias match
 3. Duplicate triggers → **Error at layer creation**
 
 Example:
+
 ```
 /admin ban      ← Matches /admin ban command first
 /admin          ← Would match only if /admin ban not defined
@@ -116,23 +124,24 @@ Example:
 ## Error Handling
 
 **In Handlers** (must handle):
+
 ```typescript
-handler: ({ ctx, update }) =>
-  Effect.gen(function* () {
+handler: (({ ctx, update }) =>
+  Effect.gen(function*() {
     try {
-      yield* someEffect
+      yield* someEffect;
     } catch (e) {
-      yield* ctx.reply("Error: " + e.message)
+      yield* ctx.reply("Error: " + e.message);
     }
-  })
+  }));
 ```
 
 **Globally** (defects):
+
 ```typescript
 Bot.define({
-  onDefect: (defect, { command, update }) =>
-    Effect.logError(defect)
-})
+  onDefect: (defect, { command, update }) => Effect.logError(defect),
+});
 ```
 
 ## File Organization Quick Map
@@ -171,40 +180,44 @@ src/
 ## Common Patterns
 
 ### Simple Echo Bot
+
 ```typescript
-const Echo = Command.make("echo", "Echo").withAlias("e")
+const Echo = Command.make("echo", "Echo").withAlias("e");
 const EchoLive = Command.makeLayer(Echo).handler(
   ({ ctx, update }) =>
-    Effect.gen(function* () {
-      const args = update.message?.text?.replace(/^\/\w+\s*/, "") ?? ""
-      yield* ctx.reply(args)
-    })
-)
-const BotLive = Bot.makePolling({ token: "..." }).pipe(Layer.provide(EchoLive))
-Layer.launch(BotLive).pipe(BunRuntime.runMain)
+    Effect.gen(function*() {
+      const args = update.message?.text?.replace(/^\/\w+\s*/, "") ?? "";
+      yield* ctx.reply(args);
+    }),
+);
+const BotLive = Bot.makePolling({ token: "..." }).pipe(Layer.provide(EchoLive));
+Layer.launch(BotLive).pipe(BunRuntime.runMain);
 ```
 
 ### Command with Alias
+
 ```typescript
 Command.make("start", "Start bot")
   .withAlias("begin")
-  .withAlias("hello")
+  .withAlias("hello");
 ```
 
 ### Nested Groups
+
 ```typescript
 const Mod = CommandGroup.make("mod", "Moderation")
-  .add(BanCmd)
+  .add(BanCmd);
 
 const Admin = CommandGroup.make("admin", "Admin")
-  .addSubGroup(Mod)  // Creates /admin mod [commands]
+  .addSubGroup(Mod); // Creates /admin mod [commands]
 ```
 
 ### With Formatting
+
 ```typescript
-ctx.reply("**Bold** text", { 
-  parse_mode: "Markdown" 
-})
+ctx.reply("**Bold** text", {
+  parse_mode: "Markdown",
+});
 ```
 
 ## To Get Started

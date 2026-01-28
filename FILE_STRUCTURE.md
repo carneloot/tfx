@@ -32,36 +32,36 @@ tfx/
 
 ### Top-Level Documents
 
-| File | Purpose |
-|------|---------|
-| `plan.md` | Complete architecture, API design, examples, and design decisions |
-| `IMPLEMENTATION_STATUS.md` | Current implementation status and phase-by-phase roadmap |
-| `FILE_STRUCTURE.md` | This file - overview of module organization |
+| File                       | Purpose                                                           |
+| -------------------------- | ----------------------------------------------------------------- |
+| `plan.md`                  | Complete architecture, API design, examples, and design decisions |
+| `IMPLEMENTATION_STATUS.md` | Current implementation status and phase-by-phase roadmap          |
+| `FILE_STRUCTURE.md`        | This file - overview of module organization                       |
 
 ### Core API (`src/`)
 
-| File | Exports | Purpose |
-|------|---------|---------|
-| `index.ts` | All public APIs | Main entry point, re-exports all public types and functions |
-| `Bot.ts` | Bot, BotLive, BotDefinition | Bot service definition and factory methods |
-| `Command.ts` | Command, CommandBuilder, CommandLayerBuilder | Command definition with fluent builder API |
-| `CommandGroup.ts` | CommandGroup, CommandGroupBuilder | Grouping related commands with nesting |
-| `Middleware.ts` | Middleware, makeMiddlewareLayer | Middleware base class and helpers |
-| `BotContext.ts` | BotContext, makeBotContext, ReplyOptions | Handler context with reply helpers |
+| File              | Exports                                      | Purpose                                                     |
+| ----------------- | -------------------------------------------- | ----------------------------------------------------------- |
+| `index.ts`        | All public APIs                              | Main entry point, re-exports all public types and functions |
+| `Bot.ts`          | Bot, BotLive, BotDefinition                  | Bot service definition and factory methods                  |
+| `Command.ts`      | Command, CommandBuilder, CommandLayerBuilder | Command definition with fluent builder API                  |
+| `CommandGroup.ts` | CommandGroup, CommandGroupBuilder            | Grouping related commands with nesting                      |
+| `Middleware.ts`   | Middleware, makeMiddlewareLayer              | Middleware base class and helpers                           |
+| `BotContext.ts`   | BotContext, makeBotContext, ReplyOptions     | Handler context with reply helpers                          |
 
 ### Internal Infrastructure (`src/internal/`)
 
-| File | Purpose |
-|------|---------|
-| `TgClient.ts` | Wraps @effect-ak/tg-bot-client in Effect pattern |
-| `Routing.ts` | Extracts commands from messages, matches to handlers |
-| `Polling.ts` | Long polling loop implementation |
-| `Handler.ts` | Handler execution with context injection |
+| File          | Purpose                                              |
+| ------------- | ---------------------------------------------------- |
+| `TgClient.ts` | Wraps @effect-ak/tg-bot-client in Effect pattern     |
+| `Routing.ts`  | Extracts commands from messages, matches to handlers |
+| `Polling.ts`  | Long polling loop implementation                     |
+| `Handler.ts`  | Handler execution with context injection             |
 
 ### Error Handling (`src/errors/`)
 
-| File | Exports | Purpose |
-|------|---------|---------|
+| File          | Exports                                                                     | Purpose            |
+| ------------- | --------------------------------------------------------------------------- | ------------------ |
 | `BotError.ts` | BotError, CommandConflictError, MissingMiddlewareError, MissingCommandError | Custom error types |
 
 ## Dependencies
@@ -76,27 +76,36 @@ Effect.ts (peer dependency)
 ## Implementation Phases
 
 ### Phase 1: Core Infrastructure
+
 Implement the skeleton code in:
+
 - `TgClient.ts` - Telegram client wrapper
 - `Command.ts` - Context tags for commands
 - `Handler.ts` - Handler execution pipeline
 
 ### Phase 2: Bot Runner
+
 Implement in:
+
 - `Bot.ts` - Connect polling to handlers
 - `BotContext.ts` - Message sending
 
 ### Phase 3: Routing & Groups
+
 Implement in:
+
 - `Routing.ts` - Command matching algorithm
 - `CommandGroup.ts` - Group composition and nesting
 
 ### Phase 4: Middleware
+
 Implement in:
+
 - `Middleware.ts` - Middleware tag system and execution
 - Update `Handler.ts` to run middleware before handlers
 
 ### Phase 5: Polish & Testing
+
 - Add tests in `test/` directory
 - Verify type safety
 - Update examples
@@ -107,34 +116,34 @@ Implement in:
 
 ```typescript
 // Bot API
-export { Bot, BotLive, BotDefinition }
-export type { BotDefinitionConfig, PollingOptions, PollingBotConfig }
+export { Bot, BotDefinition, BotLive };
+export type { BotDefinitionConfig, PollingBotConfig, PollingOptions };
 
 // Command API
-export { Command }
-export type { CommandConfig, CommandHandler }
-export { CommandBuilder, CommandLayerBuilder }
+export { Command };
+export type { CommandConfig, CommandHandler };
+export { CommandBuilder, CommandLayerBuilder };
 
 // CommandGroup API
-export { CommandGroup }
-export type { CommandGroupConfig }
-export { CommandGroupBuilder, CommandGroupLayerBuilder }
+export { CommandGroup };
+export type { CommandGroupConfig };
+export { CommandGroupBuilder, CommandGroupLayerBuilder };
 
 // Middleware API
-export { Middleware, makeMiddlewareLayer }
-export type { MiddlewareResult }
+export { makeMiddlewareLayer, Middleware };
+export type { MiddlewareResult };
 
 // BotContext API
-export { makeBotContext }
-export type { BotContext, ReplyOptions }
+export { makeBotContext };
+export type { BotContext, ReplyOptions };
 
 // Errors
 export {
   BotError,
   CommandConflictError,
-  MissingMiddlewareError,
   MissingCommandError,
-}
+  MissingMiddlewareError,
+};
 ```
 
 ## Type Hierarchy

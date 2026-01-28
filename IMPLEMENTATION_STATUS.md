@@ -7,6 +7,7 @@ The foundation for TFX (Telegram Framework on Effect.ts) has been set up with:
 ### Files Created
 
 #### Core API Files
+
 - **`src/Bot.ts`** - Bot definition and factory
 - **`src/Command.ts`** - Command definition and builder pattern
 - **`src/CommandGroup.ts`** - Command grouping with nesting support
@@ -14,15 +15,18 @@ The foundation for TFX (Telegram Framework on Effect.ts) has been set up with:
 - **`src/BotContext.ts`** - Handler context with reply methods
 
 #### Internal Infrastructure
+
 - **`src/internal/TgClient.ts`** - Wrapper around @effect-ak/tg-bot-client
 - **`src/internal/Routing.ts`** - Command matching and routing logic
 - **`src/internal/Polling.ts`** - Long polling loop implementation
 - **`src/internal/Handler.ts`** - Handler execution pipeline
 
 #### Error Handling
+
 - **`src/errors/BotError.ts`** - Custom error types
 
 #### Exports & Documentation
+
 - **`src/index.ts`** - Main package exports
 - **`plan.md`** - Comprehensive architecture and design documentation
 - **`examples/echo-bot.ts`** - Updated example with correct API
@@ -30,6 +34,7 @@ The foundation for TFX (Telegram Framework on Effect.ts) has been set up with:
 ### Architecture Implemented
 
 The codebase follows effect.ts patterns:
+
 1. ✅ **Declarative API** - Command.make(), CommandGroup.make(), etc
 2. ✅ **Layer-based composition** - Bot.makePolling() creates layers
 3. ✅ **Type-safe Context.Tag system** - For dependency injection
@@ -39,6 +44,7 @@ The codebase follows effect.ts patterns:
 ### Current State
 
 The core implementation is now **FUNCTIONAL** ✅:
+
 - ✅ Proper type signatures matching the design doc
 - ✅ JSDoc comments for all public APIs
 - ✅ **Full implementation of Bot, Command, and Registry systems**
@@ -96,21 +102,27 @@ The core implementation is now **FUNCTIONAL** ✅:
    - ✅ Handles Config.redacted for token management
 
 ### ⚠️ Phase 3: CommandGroup System (STUB - Not Required for Basic Bot)
+
 These are placeholder implementations:
+
 1. **CommandGroup Nesting** (`src/CommandGroup.ts`)
    - ⚠️ Basic structure in place
    - ❌ Not yet functional
    - ❌ Layer creation not implemented
 
 ### ⚠️ Phase 4: Middleware System (STUB - Not Required for Basic Bot)
+
 These are placeholder implementations:
+
 1. **Middleware** (`src/Middleware.ts`)
    - ⚠️ Interface defined
    - ❌ Not yet integrated with bot execution
    - ❌ No middleware execution in handler pipeline
 
 ### 🎯 Ready for Testing
+
 The bot is ready to test with the echo-bot example:
+
 1. Type safety: ✅ All types check successfully
 2. Layer composition: ✅ Proper Effect layer patterns
 3. Error handling: ✅ Uses Effect.logError for defects
@@ -128,6 +140,7 @@ The bot is ready to test with the echo-bot example:
 ## Implementation Summary
 
 ### What Works Now ✅
+
 - **Bot Definition**: Create bots with `Bot.make(name).add(command)`
 - **Command Definition**: Define commands with `Command.make(name, desc).withAlias(alias)`
 - **Command Handlers**: Attach handlers with `Command.makeLayer(cmd).handler(fn)`
@@ -137,6 +150,7 @@ The bot is ready to test with the echo-bot example:
 - **Type Safety**: Full type checking with Effect's Context.Tag system
 
 ### How to Use
+
 ```typescript
 const MyBot = Bot.make("MyBot").add(EchoCommand)
 const EchoCommandLive = Command.makeLayer(EchoCommand).handler(...)
@@ -161,42 +175,43 @@ Layer.launch(AppLive).pipe(BunRuntime.runMain)
 The target API once complete:
 
 ```typescript
-import { Command, CommandGroup, Bot } from "tfx"
-import { Effect, Layer, Config } from "effect"
-import { BunRuntime } from "@effect/platform-bun"
+import { BunRuntime } from "@effect/platform-bun";
+import { Config, Effect, Layer } from "effect";
+import { Bot, Command, CommandGroup } from "tfx";
 
 // Define commands
 const EchoCommand = Command.make("echo", "Echo messages")
-  .withAlias("e")
+  .withAlias("e");
 
 const EchoCommandLive = Command.makeLayer(EchoCommand).handler(
   ({ ctx, update }) =>
-    Effect.gen(function* () {
-      const text = update.message?.text ?? ""
-      const args = text.replace(/^\/\w+\s*/, "")
-      yield* ctx.reply(args, { parse_mode: "HTML" })
-    })
-)
+    Effect.gen(function*() {
+      const text = update.message?.text ?? "";
+      const args = text.replace(/^\/\w+\s*/, "");
+      yield* ctx.reply(args, { parse_mode: "HTML" });
+    }),
+);
 
 // Define command groups
 const AdminGroup = CommandGroup.make("admin", "Admin commands")
-  .add(BanCommand)
+  .add(BanCommand);
 
-const AdminGroupLive = CommandGroup.makeLayer(AdminGroup)
+const AdminGroupLive = CommandGroup.makeLayer(AdminGroup);
 
 // Create bot
 const BotLive = Bot.makePolling({
   token: Config.redacted("BOT_TOKEN"),
   polling: { timeout: 30 },
 }).pipe(
-  Layer.provide([EchoCommandLive, AdminGroupLive])
-)
+  Layer.provide([EchoCommandLive, AdminGroupLive]),
+);
 
 // Run
-Layer.launch(BotLive).pipe(BunRuntime.runMain)
+Layer.launch(BotLive).pipe(BunRuntime.runMain);
 ```
 
 This will be fully type-safe with:
+
 - ✅ Type checking that all commands are provided
 - ✅ Type checking that all middleware is provided
 - ✅ Handler type safety (no throws, error handling required)

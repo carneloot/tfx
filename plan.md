@@ -7,6 +7,7 @@ A type-safe Telegram bot framework built on effect.ts, providing an API similar 
 ### Core Philosophy
 
 TFX follows effect.ts patterns:
+
 - **Declarative first**: Separate definitions from implementations
 - **Type-safe dependency injection**: Context.Tag system for services and middleware
 - **Composable layers**: Build complex bots from simple, testable components
@@ -38,8 +39,8 @@ Commands represent `/command` triggers in Telegram.
 ```typescript
 // Define a command with description
 const EchoCommand = Command.make("echo", "Repeats everything you send")
-  .withAlias("e")           // Supports multiple aliases
-  .withAlias("repeat")
+  .withAlias("e") // Supports multiple aliases
+  .withAlias("repeat");
 
 // Declare what services/middleware this command needs
 interface EchoCommandDeps {
@@ -49,42 +50,44 @@ interface EchoCommandDeps {
 // Create a layer that implements the command
 const EchoCommandLive = Command.makeLayer(EchoCommand).handler(
   ({ ctx, update }) =>
-    Effect.gen(function* () {
+    Effect.gen(function*() {
       // update is the full Telegram Update object
       // Extract args from the message (everything after /echo)
-      const text = update.message?.text ?? ""
-      const args = text.replace(/^\/\w+\s*/, "")
-      
+      const text = update.message?.text ?? "";
+      const args = text.replace(/^\/\w+\s*/, "");
+
       // Reply with formatted text
-      yield* ctx.reply(args, { parse_mode: "HTML" })
-    })
-)
+      yield* ctx.reply(args, { parse_mode: "HTML" });
+    }),
+);
 
 // Commands are global - they work in any chat
 // Handlers must have error channel be 'never' (no throws)
 ```
 
 **Handler Signature:**
+
 ```typescript
 type CommandHandler = (input: {
-  ctx: BotContext
-  update: Update
-}) => Effect<void, never, Requirements>
+  ctx: BotContext;
+  update: Update;
+}) => Effect<void, never, Requirements>;
 ```
 
 **BotContext Methods:**
+
 ```typescript
 interface BotContext {
-  reply(text: string, options?: ReplyOptions): Effect<void, never, BotTgClient>
+  reply(text: string, options?: ReplyOptions): Effect<void, never, BotTgClient>;
 }
 
 type ReplyOptions = {
-  parse_mode?: "HTML" | "Markdown" | "MarkdownV2"
-  disable_web_page_preview?: boolean
-  disable_notification?: boolean
-  protect_content?: boolean
-  reply_to_message_id?: number
-}
+  parse_mode?: "HTML" | "Markdown" | "MarkdownV2";
+  disable_web_page_preview?: boolean;
+  disable_notification?: boolean;
+  protect_content?: boolean;
+  reply_to_message_id?: number;
+};
 ```
 
 ### Command Groups
@@ -96,19 +99,20 @@ Group related commands under a common prefix. Groups can be nested.
 const AdminGroup = CommandGroup.make("admin", "Admin commands")
   .add(BanCommand)
   .add(KickCommand)
-  .add(WarnCommand)
+  .add(WarnCommand);
 
 // Group creates triggers like /admin ban, /admin kick, /admin warn
 
 // Nested groups
 const ModGroup = CommandGroup.make("mod", "Moderation commands")
-  .addSubGroup(AdminGroup)  // Contains /mod admin ban, /mod admin kick, etc
+  .addSubGroup(AdminGroup); // Contains /mod admin ban, /mod admin kick, etc
 
 // Layer for group (no handler, just composition)
-const AdminGroupLive = CommandGroup.makeLayer(AdminGroup)
+const AdminGroupLive = CommandGroup.makeLayer(AdminGroup);
 ```
 
 **Trigger Matching Priority:**
+
 - Most specific match wins
 - `/admin ban` before `/admin` before `/`
 - If multiple commands match equally, layer creation fails with error
@@ -122,9 +126,9 @@ Middleware process updates before command matching. Similar to `HttpApiMiddlewar
 class AuthMiddleware extends Context.Tag<AuthMiddleware>()(
   "AuthMiddleware",
   {
-    success: authenticateUser,  // What it provides (a tag)
+    success: authenticateUser, // What it provides (a tag)
     provides: AuthenticatedUser, // Service it makes available to handlers
-  }
+  },
 ) {}
 
 class AuthenticatedUser extends Context.Tag<AuthenticatedUser>()(
@@ -132,7 +136,7 @@ class AuthenticatedUser extends Context.Tag<AuthenticatedUser>()(
   {
     userId: Schema.Number,
     username: Schema.String,
-  }
+  },
 ) {}
 
 // Implement the middleware
@@ -142,22 +146,23 @@ const AuthMiddlewareLive = Layer.succeed(
     failure: UnauthorizedError,
     provides: AuthenticatedUser,
     handler: ({ update }) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // Extract user from update, validate, etc
         return {
           userId: update.from?.id ?? 0,
           username: update.from?.username ?? "anonymous",
-        }
-      })
-  }
-)
+        };
+      }),
+  },
+);
 
 // Commands can declare middleware dependencies
 const AdminCommand = Command.make("admin", "Admin only")
-  .requiresMiddleware(AuthMiddleware)
+  .requiresMiddleware(AuthMiddleware);
 ```
 
 **Middleware Execution:**
+
 - Global middleware runs on every update
 - Per-command middleware runs before that command's handler
 - Middleware can short-circuit (return failure) to prevent handler execution
@@ -172,8 +177,8 @@ Define the bot once, implement it multiple times (testing, multiple environments
 const BotDefinition = Bot.define({
   // Global error handler for defects (not command errors)
   onDefect: (defect, context: { command?: string; update: Update }) =>
-    Effect.logError(defect)
-})
+    Effect.logError(defect),
+});
 
 // BotLive - concrete implementation
 const BotLive = BotLive.makePolling({
@@ -189,22 +194,23 @@ const BotLive = BotLive.makePolling({
     AdminGroupLive,
     AuthMiddlewareLive,
   ]),
-  Layer.provide(/* other services */)
-)
+  Layer.provide(), /* other services */
+);
 
 // Run the bot
-Layer.launch(BotLive).pipe(BunRuntime.runMain)
+Layer.launch(BotLive).pipe(BunRuntime.runMain);
 ```
 
 **Polling Options:**
+
 ```typescript
 type PollingOptions = {
-  timeout?: number              // Long polling timeout (5-120 seconds)
-  limit?: number                // Updates per poll (1-100)
-  allowed_updates?: string[]    // Filter update types
-  on_error?: "stop" | "continue" // What to do on poll errors
-  log_level?: "debug" | "info"
-}
+  timeout?: number; // Long polling timeout (5-120 seconds)
+  limit?: number; // Updates per poll (1-100)
+  allowed_updates?: string[]; // Filter update types
+  on_error?: "stop" | "continue"; // What to do on poll errors
+  log_level?: "debug" | "info";
+};
 ```
 
 ## Type-Safe Command Tags
@@ -223,8 +229,9 @@ const BotLive = BotLive.makePolling(...).pipe(
 ```
 
 **Similar for CommandGroups:**
+
 ```typescript
-const AdminGroupLive: Layer<never, never, AdminGroup>
+const AdminGroupLive: Layer<never, never, AdminGroup>;
 ```
 
 ## Error Handling Strategy
@@ -234,26 +241,24 @@ const AdminGroupLive: Layer<never, never, AdminGroup>
 Command handlers have error channel `never`, meaning they must handle all errors internally:
 
 ```typescript
-const MyCommand = Command.make("test")
+const MyCommand = Command.make("test");
 
 const MyCommandLive = Command.makeLayer(MyCommand).handler(
   ({ ctx, update }) =>
-    Effect.gen(function* () {
+    Effect.gen(function*() {
       try {
         // Operations that might fail
-        const result = yield* someEffect
+        const result = yield* someEffect;
       } catch (e) {
         // Handle or reply with error message
-        yield* ctx.reply("An error occurred")
+        yield* ctx.reply("An error occurred");
       }
       // OR use Effect.catchAll
       return yield* someEffect.pipe(
-        Effect.catchAll(err => 
-          ctx.reply("An error occurred")
-        )
-      )
-    })
-)
+        Effect.catchAll(err => ctx.reply("An error occurred")),
+      );
+    }),
+);
 ```
 
 ### Global Defect Handling
@@ -263,11 +268,11 @@ Defects (unexpected errors at runtime, not in handlers) go to `onDefect`:
 ```typescript
 const BotDefinition = Bot.define({
   onDefect: (defect, { command, update }) =>
-    Effect.gen(function* () {
-      yield* Effect.logError(defect)
+    Effect.gen(function*() {
+      yield* Effect.logError(defect);
       // Could send to error tracking service, notify admins, etc
-    })
-})
+    }),
+});
 ```
 
 ## File Structure
@@ -294,6 +299,7 @@ src/
 ## Implementation Phases
 
 ### Phase 1: Core Types & Infrastructure
+
 - [ ] BotContext type with reply methods
 - [ ] Command.make() and Command.makeLayer()
 - [ ] Context.Tag system for commands
@@ -301,24 +307,28 @@ src/
 - [ ] Error types
 
 ### Phase 2: Bot Runner
+
 - [ ] Bot.define() for configuration
 - [ ] BotLive.makePolling() layer creator
 - [ ] Polling loop with long polling
 - [ ] Update dispatch to handlers
 
 ### Phase 3: Command Routing
+
 - [ ] Extract command trigger from message
 - [ ] Match against defined commands and aliases
 - [ ] Conflict detection (duplicate triggers at layer creation)
 - [ ] Most-specific-match precedence
 
 ### Phase 4: CommandGroup System
+
 - [ ] CommandGroup.make() and composition
 - [ ] Nested groups with proper prefix handling
 - [ ] CommandGroup layers and tags
 - [ ] Group handler aggregation
 
 ### Phase 5: Middleware System
+
 - [ ] Middleware.make() base pattern
 - [ ] Per-command middleware attachment
 - [ ] Global middleware execution
@@ -326,6 +336,7 @@ src/
 - [ ] Middleware tags and dependency tracking
 
 ### Phase 6: Integration & Polish
+
 - [ ] Integration testing
 - [ ] Example bot fully working
 - [ ] Documentation and JSDoc comments
@@ -337,30 +348,30 @@ src/
 ### Simple Echo Bot
 
 ```typescript
-import { Command, Bot } from "tfx"
-import { Effect, Layer, Config } from "effect"
-import { BunRuntime } from "@effect/platform-bun"
+import { BunRuntime } from "@effect/platform-bun";
+import { Config, Effect, Layer } from "effect";
+import { Bot, Command } from "tfx";
 
 const EchoCommand = Command.make("echo", "Repeats what you send")
-  .withAlias("e")
+  .withAlias("e");
 
 const EchoCommandLive = Command.makeLayer(EchoCommand).handler(
   ({ ctx, update }) =>
-    Effect.gen(function* () {
-      const text = update.message?.text ?? ""
-      const args = text.replace(/^\/\w+\s*/, "")
-      yield* ctx.reply(args, { parse_mode: "HTML" })
-    })
-)
+    Effect.gen(function*() {
+      const text = update.message?.text ?? "";
+      const args = text.replace(/^\/\w+\s*/, "");
+      yield* ctx.reply(args, { parse_mode: "HTML" });
+    }),
+);
 
 const BotLive = Bot.makePolling({
   token: Config.redacted("BOT_TOKEN"),
   polling: { timeout: 30 },
 }).pipe(
-  Layer.provide(EchoCommandLive)
-)
+  Layer.provide(EchoCommandLive),
+);
 
-Layer.launch(BotLive).pipe(BunRuntime.runMain)
+Layer.launch(BotLive).pipe(BunRuntime.runMain);
 ```
 
 ### Bot with Groups and Middleware
@@ -371,12 +382,12 @@ class RequireAdmin extends Context.Tag<RequireAdmin>()(
   "RequireAdmin",
   {
     provides: AdminUser,
-  }
+  },
 ) {}
 
 class AdminUser extends Context.Tag<AdminUser>()(
   "AdminUser",
-  { userId: Schema.Number }
+  { userId: Schema.Number },
 ) {}
 
 const RequireAdminLive = Layer.succeed(
@@ -385,26 +396,26 @@ const RequireAdminLive = Layer.succeed(
     handler: ({ update }) =>
       update.message?.from?.id === ADMIN_ID
         ? Effect.succeed({ userId: ADMIN_ID })
-        : Effect.fail(new UnauthorizedError())
-  }
-)
+        : Effect.fail(new UnauthorizedError()),
+  },
+);
 
 // Admin commands
 const BanCommand = Command.make("ban", "Ban a user")
-  .requiresMiddleware(RequireAdmin)
+  .requiresMiddleware(RequireAdmin);
 
 const BanCommandLive = Command.makeLayer(BanCommand).handler(
   ({ ctx, update }) =>
-    Effect.gen(function* () {
-      const admin = yield* AdminUser
-      yield* ctx.reply(`Admin ${admin.userId} banned a user`)
-    })
-)
+    Effect.gen(function*() {
+      const admin = yield* AdminUser;
+      yield* ctx.reply(`Admin ${admin.userId} banned a user`);
+    }),
+);
 
 const AdminGroup = CommandGroup.make("admin")
-  .add(BanCommand)
+  .add(BanCommand);
 
-const AdminGroupLive = CommandGroup.makeLayer(AdminGroup)
+const AdminGroupLive = CommandGroup.makeLayer(AdminGroup);
 
 const BotLive = Bot.makePolling({
   token: Config.redacted("BOT_TOKEN"),
@@ -412,9 +423,9 @@ const BotLive = Bot.makePolling({
   Layer.provide(RequireAdminLive),
   Layer.provide(AdminGroupLive),
   Layer.provide(BanCommandLive),
-)
+);
 
-Layer.launch(BotLive).pipe(BunRuntime.runMain)
+Layer.launch(BotLive).pipe(BunRuntime.runMain);
 ```
 
 ## Design Decisions
