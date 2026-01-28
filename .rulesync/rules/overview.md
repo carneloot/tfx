@@ -1,3 +1,11 @@
+---
+root: true
+targets:
+  - '*'
+description: ''
+globs:
+  - '**/*'
+---
 # AGENTS.md - Coding Guidelines for AI Agents
 
 This document provides essential information for AI coding agents operating in this repository.
