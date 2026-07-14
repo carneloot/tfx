@@ -274,6 +274,35 @@ global
 → handler
 ```
 
+### 6.5 Contextual Telegram helpers
+
+Provide small, scoped, yieldable context services for ergonomic Telegram operations. These are built-in handler services, not mutable grammY-style context objects and not replacements for `Telegram.Telegram`.
+
+- `UpdateContext.UpdateContext` is available for every dispatched update and exposes decoded update data plus derived update, user, and chat identifiers when present.
+- `MessageContext.MessageContext` is available only to command and message handlers and exposes current message/chat data plus message-bound helpers.
+- `CallbackQueryContext.CallbackQueryContext` is available only to callback-query handlers and exposes callback data plus callback-bound helpers.
+
+Builders provide applicable context services automatically, so they do not remain as unresolved application Layer requirements. Conversation input declarations provide matching services: message-text input provides `MessageContext`, while callback-data input provides `CallbackQueryContext`.
+
+Initial `MessageContext` helpers:
+
+- `reply(text, options?)`, which sends to the current chat without quoting the current message by default;
+- `replyToCurrent(text, options?)`, which adds Telegram reply parameters;
+- `react(reaction, options?)`;
+- `editText(text, options?)`;
+- `delete()`;
+- `sendChatAction(action)`.
+
+Initial `CallbackQueryContext` helpers:
+
+- `answer(options?)`;
+- `editMessageText(text, options?)`;
+- `deleteMessage()`.
+
+Helpers derive applicable chat ID, message ID, message-thread ID, business-connection ID, reply parameters, or callback-query ID and delegate to the yieldable `Telegram.Telegram` service. Options reuse generated Telegram request types, successful results use generated Telegram result types, and failures remain `TelegramError`.
+
+Helpers are deliberately thin: no hidden retry, persistence, deduplication, or domain behavior. The full Telegram service remains available for every method that lacks a helper. Add further helpers only after repeated use across features or third-party packages demonstrates value; do not manually duplicate the complete Telegram Bot API surface.
+
 ## 7. Conversations
 
 ### 7.1 Model
@@ -558,6 +587,7 @@ Type tests cover:
 - propagation of schema decoding services;
 - conversation step state and transition inference;
 - middleware-provided and middleware-required services;
+- context-service availability only for compatible handler and conversation input kinds;
 - final unresolved Layer requirements;
 - intentional invalid examples through `@ts-expect-error` fixtures.
 
@@ -568,6 +598,8 @@ Unit and integration tests cover:
 - Telegram envelope and error mapping;
 - command matching and bot username suffixes;
 - middleware ordering;
+- contextual helper derivation of chat, message, thread, business-connection, and callback identifiers;
+- equivalence between contextual helper calls and low-level Telegram service requests;
 - conversation transitions, revision conflicts, timeout, and migration;
 - food parsing and timezone boundaries;
 - reminder scheduling;
@@ -698,6 +730,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Sequential update handling per partition, concurrent across partitions using Effect fibers.
 - Immutable HttpApi-style bot declarations and exhaustive Layer-backed builders.
 - Middleware provides Effect services.
+- Scoped `UpdateContext`, `MessageContext`, and `CallbackQueryContext` services provide thin Telegram helpers while `Telegram.Telegram` remains the complete low-level API.
 - Ordered, schema-driven command parsing uses the pure `CommandInput` module; all text leaf codecs have encoded type `string` and propagate decoding services.
 - Generated Telegram schemas/client from pinned Photon OpenAPI plus tfx patches.
 - `Telegram.Telegram` is yieldable; public methods unwrap successful results.
