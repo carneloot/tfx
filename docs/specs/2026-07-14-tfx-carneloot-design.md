@@ -182,7 +182,7 @@ Mappings preserve Telegram error code, description, parameters, method name, and
 
 ### 6.1 Declarations instead of mutable registration
 
-Replace the original `BotPlugin.make` concept with immutable HttpApi-style declarations:
+Use immutable HttpApi-style declarations as the primary bot composition model:
 
 ```ts
 const PetFood = BotGroup.make("petFood")
