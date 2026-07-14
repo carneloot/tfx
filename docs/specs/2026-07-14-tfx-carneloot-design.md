@@ -356,9 +356,13 @@ Commands start a declared conversation through a yieldable `Conversations.Conver
 
 Only one conversation may be active for `(bot, chat, user)`. Starting another conversation fails with `ConversationAlreadyActive` unless the caller explicitly chooses `conflict: "replace"`. `/cancelar` terminates the active conversation and removes reply keyboards.
 
-### 7.4 Persistence
+### 7.4 Storage and persistence
 
-PostgreSQL conversation rows contain:
+`@tfx/conversations` defines the yieldable `ConversationStorage.ConversationStorage` service consumed by the conversation runtime. Storage is always provided explicitly; there is no implicit or reference default that could silently select non-durable storage in production.
+
+The same package exports `MemoryConversationStorage.layer`, a scoped in-process implementation for development, examples, tests, and bots that intentionally accept restart data loss. It supports the complete storage contract, including create/start, load by bot/chat/user scope, optimistic revision transitions, complete/cancel, expiration, version migration, and conflict behavior. Closing its Layer scope discards all state. It does not support multi-process coordination or restart durability.
+
+`@tfx/conversations-postgres` exports `PostgresConversationStorage.layer`, implementing the same service and semantics with durable PostgreSQL state. Carneloot explicitly provides this Layer. PostgreSQL conversation rows contain:
 
 - bot ID;
 - conversation ID and version;
@@ -368,7 +372,7 @@ PostgreSQL conversation rows contain:
 - optimistic revision;
 - creation, update, and expiration timestamps.
 
-Transitions use compare-and-swap revision updates. Version changes require declared schema migrations. Unknown or invalid persisted state fails through a typed storage or migration error and can be safely cancelled after reporting.
+Transitions use compare-and-swap revision updates. Version changes require declared schema migrations. Unknown or invalid persisted state fails through a typed storage or migration error and can be safely cancelled after reporting. Both implementations must pass the shared conversation-storage conformance suite; durability and multi-process tests apply only to PostgreSQL.
 
 ### 7.5 Routing priority
 
@@ -662,6 +666,8 @@ Unit and integration tests cover:
 - callback namespace collision, malformed payload, and 64-byte-limit handling;
 - empty and duplicate choice options, cancellation, invalid input, callback acknowledgement, and reply-keyboard removal;
 - conversation transitions, revision conflicts, timeout, and migration;
+- explicit memory and PostgreSQL conversation-storage Layer selection;
+- shared storage semantics across memory and PostgreSQL implementations;
 - food parsing and timezone boundaries;
 - reminder scheduling;
 - deduplication leases;
@@ -793,6 +799,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Middleware provides Effect services; declarations track only request-scoped ordering contracts, while implementation infrastructure is inferred from Layers.
 - Scoped `UpdateContext`, `MessageContext`, and `CallbackQueryContext` services provide thin Telegram helpers while `Telegram.Telegram` remains the complete low-level API.
 - Pure immutable keyboard builders, namespaced typed callback data, and state-machine-native conversation input/choice/prompt helpers cover Carneloot interactions; persistent menus are deferred.
+- Conversation storage is an explicitly provided service; `@tfx/conversations` includes a scoped memory Layer and `@tfx/conversations-postgres` supplies the durable Carneloot Layer.
 - Ordered, schema-driven command parsing uses the pure `CommandInput` module; all text leaf codecs have encoded type `string` and propagate decoding services.
 - Generated Telegram schemas/client from pinned Photon OpenAPI plus tfx patches.
 - `Telegram.Telegram` is yieldable; public methods unwrap successful results.
