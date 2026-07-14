@@ -782,7 +782,7 @@ Each slice includes:
 - fresh code review;
 - runnable release or demonstration.
 
-Earlier slices may use internal test helpers. Slice 4 extracts, stabilizes, documents, and publishes reusable testing APIs.
+Slice 1 establishes one private test harness under `packages/tfx/test/internal` and `packages/postgres/test/internal`, excluded from package exports. It includes fake Telegram/request recording, update fixtures, an in-memory delivery source, conversation scenario support, PostgreSQL test Layer/migration reset, and conversation/job/deduplicator conformance functions. Slices 2–3 extend these same helpers rather than creating parallel harnesses. Slice 4 extracts, stabilizes, documents, and publishes them as reusable testing APIs.
 
 ### 14.2 Compile-time coverage
 
@@ -859,7 +859,7 @@ Deliver the smallest complete tfx and Carneloot path for:
 - `/colocar_racao`;
 - durable feeding reminders.
 
-This slice includes only tfx capabilities needed by that path: Telegram generation/facade, declaration/builders, middleware, contextual helpers, keyboards/callback data, conversation input/choice/prompt helpers, polling, PostgreSQL conversations/jobs/deduplication, and internal test support.
+This slice includes only tfx capabilities needed by that path: Telegram generation/facade, declaration/builders, middleware, contextual helpers, keyboards/callback data, conversation input/choice/prompt helpers, polling, PostgreSQL conversations/jobs/deduplication, and the single private test harness defined above. Storage conformance contracts and minimal fake services are implemented now even though public testing packages wait until Slice 4.
 
 Likely plan boundaries include Telegram transport, typed bot kernel, conversations, PostgreSQL infrastructure, and Carneloot owned-pet application behavior. Final boundaries are chosen during slice planning.
 
@@ -929,7 +929,7 @@ Publish `@tfx/testing-postgres` with:
 - deduplicator conformance suite;
 - lease, crash, retry, and concurrency fixtures.
 
-Migrate reusable internal helpers from prior slices to these stable public APIs. This slice may use separate plans for core harnesses, conversation scenarios, adapter conformance, and PostgreSQL test infrastructure.
+Migrate reusable internal helpers from prior slices to these stable public APIs. Extraction must preserve all prior behavioral and conformance suites without weaker assertions; temporary internal re-exports may support incremental import changes. Public naming, documentation, packaging, and broader third-party matrices belong here, but foundational semantics are not redesigned. This slice may use separate plans for core harnesses, conversation scenarios, adapter conformance, and PostgreSQL test infrastructure.
 
 ## 16. Feature-parity acceptance
 
