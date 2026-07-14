@@ -187,8 +187,7 @@ Use immutable HttpApi-style declarations as the primary bot composition model:
 ```ts
 const PetFood = BotGroup.make("petFood")
   .add(Command.make("addFood", {
-    name: "colocar_racao",
-    input: FoodCommandInput
+    name: "colocar_racao"
   }))
   .add(Command.make("foodStatus", {
     name: "status_racao"
@@ -217,11 +216,38 @@ A third-party package exports a declaration fragment and its implementation Laye
 
 Runtime validation still rejects collisions that TypeScript cannot always prove across independently assembled packages, including duplicate Telegram command names and callback namespaces.
 
-### 6.3 Command input inference
+### 6.3 CommandInput module and inference
 
-Follow Effect CLI's config inference approach without coupling tfx to Effect CLI's parser internals. Command input declarations infer handler values from schemas and argument combinators.
+Provide a first-class, pure `CommandInput` composition module. It contains immutable parser descriptions and combinators, not a service or Layer. Follow Effect CLI's config inference approach without coupling tfx to Effect CLI's parser internals.
 
-For example, `/todos` can declare required food amount and optional local time, producing a handler input with exact inferred fields. Raw command text remains available only through an explicit low-level input declaration.
+Initial combinators:
+
+- `CommandInput.none`, used automatically when `Command.make` omits `input`;
+- `CommandInput.argument(name, schema)`;
+- `CommandInput.rest(name, schema)`;
+- `CommandInput.optional(input)`;
+- `CommandInput.repeated(input)`;
+- `CommandInput.sequence(...inputs)`;
+- `CommandInput.map(input, transform)`.
+
+Positional order is defined only by the arguments passed to `sequence`; JavaScript object-key order never defines command syntax. The result is an inferred readonly record keyed by declared argument names. Types and runtime construction reject duplicate output names, required positional input after optional input, input after `rest`, and more than one `rest` input.
+
+Every leaf schema must decode **from string**. Public constructors constrain schemas to `Schema.ConstraintCodec<any, string>` and use `Schema.decodeEffect`, so `Schema.String`, `Schema.NumberFromString`, and domain codecs such as `Codec<FoodAmount, string>` are accepted while `Schema.Number` is rejected at compile time. Schema decoding requirements propagate from `S["DecodingServices"]` through `CommandInput` into the resulting handler and Layer requirements.
+
+`Command.make` defaults omitted `input` to `CommandInput.none`, producing an empty readonly input record without requiring explicit boilerplate. `/colocar_racao` uses this default because food input arrives in a later conversation message. `/todos` declares ordered command input:
+
+```ts
+const AddFoodToAllInput = CommandInput.sequence(
+  CommandInput.argument("amount", FoodAmountFromString),
+  CommandInput.optional(
+    CommandInput.rest("when", FoodDateTimeFromString)
+  )
+)
+```
+
+The first parser consumes one token. The optional `rest` parser consumes either `HH:mm` or the multi-token `DD/MM[/YYYY] HH:mm` form. Its inferred result contains required `amount` and optional `when`. Aliases such as `/todos` and `/colocar_racao_todos` share one input declaration.
+
+Raw unparsed command text is available only through an explicit low-level string codec declaration.
 
 ### 6.4 Middleware service provisioning
 
@@ -263,7 +289,7 @@ Use explicit, serializable state machines rather than replayed functions. A conv
 - optional idle timeout;
 - explicit state migrations.
 
-The declaration derives a discriminated persisted-state union from its steps. Authors do not maintain a parallel union manually.
+The declaration derives a discriminated persisted-state union from its steps. Authors do not maintain a parallel union manually. Conversation text and callback-data input constructors apply the same `Schema.ConstraintCodec<any, string>` rule as `CommandInput`, because their raw payload is text; their schema decoding-service requirements also propagate into the conversation Layer.
 
 ### 7.2 Implementation
 
@@ -525,7 +551,9 @@ Earlier slices may use internal test helpers. Slice 4 extracts, stabilizes, docu
 Type tests cover:
 
 - unknown and missing group, command, and conversation handlers;
-- command input inference;
+- command input ordering, inferred records, and invalid composition constraints;
+- rejection of non-string-encoded command, conversation-text, and callback-data codecs;
+- propagation of schema decoding services;
 - conversation step state and transition inference;
 - middleware-provided and middleware-required services;
 - final unresolved Layer requirements;
@@ -668,6 +696,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Sequential update handling per partition, concurrent across partitions using Effect fibers.
 - Immutable HttpApi-style bot declarations and exhaustive Layer-backed builders.
 - Middleware provides Effect services.
+- Ordered, schema-driven command parsing uses the pure `CommandInput` module; all text leaf codecs have encoded type `string` and propagate decoding services.
 - Generated Telegram schemas/client from pinned Photon OpenAPI plus tfx patches.
 - `Telegram.Telegram` is yieldable; public methods unwrap successful results.
 - `TelegramError` follows Effect `AiError` structure.
