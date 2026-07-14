@@ -564,7 +564,13 @@ This preserves ordering for a chat or user's conversation while allowing unrelat
 
 Core internal code always yields `UpdateDeduplicator.UpdateDeduplicator`. It is a `Context.Reference` with a no-op default. Applications override it by providing a Layer; no deduplication plugin is installed.
 
-`@tfx/postgres` exports `PostgresUpdateDeduplicator.layer`, implementing persisted claims with processing status, lease expiration, attempts, completion time, and retention cleanup. Carneloot provides this Layer by default.
+`@tfx/postgres` exports `PostgresUpdateDeduplicator.layer`, implementing persisted claims with processing status, lease expiration, attempts, completion time, fencing generation, and retention cleanup. Carneloot provides this Layer by default.
+
+A claim returns one of three states: `Acquired` with a generation-bearing claim token, `Completed`, or `InProgress` with a bounded completion handle. A concurrent webhook request that finds `InProgress` waits only until the active claim completes or its own request deadline approaches. Successful original completion makes the duplicate return `2xx`; retryable original failure or wait timeout makes it return `503`. A previously `Completed` update returns `2xx` immediately. This avoids both duplicate execution and unbounded HTTP waits.
+
+Claims are never stolen before lease expiry. Active processing heartbeats its lease. Expired-lease takeover increments generation, and complete/release operations compare update ID, generation, and processing status. A stale token fails with `ClaimLost` and cannot complete or release a newer claim. Lease loss interrupts the local processing fiber when possible, but domain writes still use update-derived idempotency because fencing cannot undo an external side effect already started by a stale process.
+
+Same-process waiters use an Effect `Deferred`; PostgreSQL remains source of truth. Future replicas may observe completion through bounded PostgreSQL polling or notification without changing the service contract. The no-op default treats every update as independently acquired and provides no duplicate protection.
 
 Polling acknowledgement follows the accepted-terminal-state and contiguous-offset rules above. If Telegram redelivers a batch, completed update IDs are skipped. Webhook success returns `2xx`; retryable failures permit Telegram retry.
 
@@ -772,6 +778,7 @@ Unit and integration tests cover:
 - explicit polling-versus-webhook descriptor selection and dynamic Effect Config selection;
 - long-poll startup, webhook deletion, pending-update policy, allowed-update inference, offset advancement, batch redelivery, retry classification, and scoped stop;
 - webhook registration/control, secret-header validation, HttpApi mounting, bounded intake, completion acknowledgement, HTTP outcome mapping, concurrent duplicate claims, and scoped shutdown;
+- bounded in-progress claim waiting, lease heartbeat, expired takeover generation, stale completion/release rejection, and local interruption after claim loss;
 - empty and duplicate choice options, cancellation, invalid input, callback acknowledgement, and reply-keyboard removal;
 - conversation transitions, revision conflicts, duplicate last-applied update detection, timeout, and migration;
 - pre-CAS domain idempotency, post-CAS enter/afterCommit ordering, crash windows, and handled output failure;
