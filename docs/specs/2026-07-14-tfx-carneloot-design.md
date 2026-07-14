@@ -75,6 +75,30 @@ Package boundaries may be refined by a slice implementation plan, but these rule
 - Infrastructure implementations are services and Layers, not behavior plugins.
 - Node.js and Bun are both covered by package validation.
 
+### 4.1 Workspace toolchain
+
+Use **pnpm workspaces** as the package manager and workspace implementation. Pin the initial package manager through `packageManager: "pnpm@10.17.1"` and commit `pnpm-lock.yaml`. Use `workspace:` dependency ranges for internal packages.
+
+Use:
+
+- pnpm recursive and filtered commands for package selection;
+- TypeScript project references for compilation order and incremental builds;
+- Changesets for package versioning, changelogs, and npm publication;
+- Bun as the Carneloot production runtime and one CI test runtime, not as the repository package manager;
+- Node.js as the other supported runtime and CI test runtime.
+
+Do not introduce Turborepo initially. pnpm filtering and TypeScript project references are sufficient for the expected package graph and avoid a second task-graph/cache configuration. Turborepo may be proposed later only after measurements show repeated unchanged work, unacceptable local or CI build duration, or a concrete need for remote caching.
+
+Representative workspace configuration:
+
+```yaml
+packages:
+  - packages/*
+  - apps/*
+```
+
+Root commands should expose full-repository checks and pnpm-filterable package commands. Publishing always uses the pnpm/Changesets workflow even though Carneloot executes on Bun.
+
 ## 5. Telegram Bot API generation and facade
 
 ### 5.1 Source specification
@@ -637,4 +661,5 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - `TelegramError` follows Effect `AiError` structure.
 - Update deduplication is an overridable service with no-op default; Carneloot uses PostgreSQL implementation.
 - Known Carneloot bugs and security issues are fixed.
+- pnpm workspaces, TypeScript project references, and Changesets; Bun remains a runtime, and Turborepo is deferred until measured need.
 - Four product slices, each with one or more bounded implementation plans.
