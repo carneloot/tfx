@@ -374,7 +374,7 @@ The target step determines the required target-state type. Conversation handlers
 
 Commands start a declared conversation through a yieldable `Conversations.Conversations` service. `start(conversation, startupInput)` accepts only the declaration's startup-input type. The declaration's initializer converts that input into state for its fixed initial step. Callers cannot begin at an arbitrary internal step; a materially different entry path is a separate conversation or an explicit branch from the initial step.
 
-Only one conversation may be active for `(bot, chat, user)`. Starting another conversation fails with `ConversationAlreadyActive` unless the caller explicitly chooses `conflict: "replace"`. `/cancelar` terminates the active conversation and removes reply keyboards.
+Only one conversation may be active for `(bot, chat, user)`. Conversation lookup derives this identity through the same normalized `UpdateRoutingScope` extractor used by runtime partitioning; a chat-less update cannot accidentally enter a chat-scoped conversation. Starting another conversation fails with `ConversationAlreadyActive` unless the caller explicitly chooses `conflict: "replace"`. `/cancelar` terminates the active conversation and removes reply keyboards.
 
 ### 7.4 Storage and persistence
 
@@ -550,15 +550,11 @@ The runtime uses:
 - idle expiration for inactive partition groups;
 - structured interruption during shutdown.
 
-Default partition key:
+Before partitioning or conversation lookup, derive one normalized `UpdateRoutingScope`: `ChatUser(bot, chat, user)`, `Chat(bot, chat)`, `User(bot, user)`, `BusinessConnection(bot, connection)`, or final `Update(bot, updateId)` fallback. Message, callback, reaction, channel, inline, and business update extractors must map through this shared model. Conversation lookup uses compatible `ChatUser` identity directly and never treats the ordering partition key as conversation identity.
 
-```ts
-update.chatId
-  ?? update.userId
-  ?? `update:${update.updateId}`
-```
+`BotRuntime.layer` accepts an explicit partition strategy. Default `Partitioning.byChat` maps both `ChatUser` and `Chat` to bot/chat, then falls back to bot/user, bot/business-connection, or bot/update. This preserves strong chat-level ordering and matches Carneloot's mostly private-chat usage, while unrelated chats proceed concurrently.
 
-This preserves ordering for a chat or user's conversation while allowing unrelated chats to run concurrently.
+`Partitioning.byConversationScope` instead maps `ChatUser` to bot/chat/user, allowing unrelated users in one group to proceed concurrently at the cost of possible races in chat-shared handlers. Advanced applications may provide a total custom function from `UpdateRoutingScope` to a hashable partition key. Regardless of strategy, related conversation updates must resolve through the normalized routing scope, and chat-less inline callbacks are not eligible for a chat-scoped conversation.
 
 ### 8.5 Optional update deduplication
 
@@ -776,6 +772,8 @@ Unit and integration tests cover:
 - keyboard layout and generated markup output;
 - callback namespace collision, malformed payload, and 64-byte-limit handling;
 - explicit polling-versus-webhook descriptor selection and dynamic Effect Config selection;
+- normalized routing-scope extraction across message, callback, reaction, channel, inline, and business updates;
+- `byChat`, `byConversationScope`, and custom partition strategies, including chat-less conversation rejection;
 - long-poll startup, webhook deletion, pending-update policy, allowed-update inference, offset advancement, batch redelivery, retry classification, and scoped stop;
 - webhook registration/control, secret-header validation, HttpApi mounting, bounded intake, completion acknowledgement, HTTP outcome mapping, concurrent duplicate claims, and scoped shutdown;
 - bounded in-progress claim waiting, lease heartbeat, expired takeover generation, stale completion/release rejection, and local interruption after claim loss;
@@ -916,6 +914,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Webhook delivery uses an explicitly mounted HttpApi route, Telegram secret header, explicit remote registration, bounded intake, post-dispatch acknowledgement, and Effect-scoped shutdown.
 - One active conversation per bot/chat/user.
 - Conversation durability covers versioned state and duplicate transition prevention; domain effects are idempotent before CAS and Telegram outputs are explicit best-effort post-commit effects. Effect Workflow is not the initial substrate.
+- Normalized update routing scope is shared by conversation lookup and partitioning; `byChat` is default, with `byConversationScope` and custom strategies available.
 - Sequential update handling per partition, concurrent across partitions using Effect fibers.
 - Immutable HttpApi-style bot declarations and exhaustive Layer-backed builders.
 - Middleware provides Effect services; declarations track only request-scoped ordering contracts, while implementation infrastructure is inferred from Layers.
