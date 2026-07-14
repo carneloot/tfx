@@ -254,17 +254,21 @@ Raw unparsed command text is available only through an explicit low-level string
 
 ### 6.4 Middleware service provisioning
 
-Middleware enriches downstream handlers by providing Effect services rather than mutating a context object.
+Middleware enriches downstream handlers by providing Effect services rather than mutating a context object. Keep request-scoped composition requirements separate from implementation infrastructure requirements.
 
 A middleware declaration tracks:
 
 - literal identifier;
-- services it provides;
-- services it requires;
-- expected error schema or error type;
+- request-scoped services it provides downstream;
+- request-scoped services it requires from earlier middleware;
+- expected request-processing error schema or error type;
 - applicable handler scope.
 
-Applying middleware removes provided services from downstream requirements and adds its own requirements. For example, `RegisteredUser` provides `CurrentUser.CurrentUser` and requires `UserRepository`.
+Declaration-level `requires` exists only for middleware ordering and request context. Applying middleware removes its provided services from downstream handler requirements and requires its request-scoped prerequisites to already be available. For example, `RequireAdmin` may require `CurrentUser.CurrentUser` from earlier `RegisteredUser` middleware and then provide `CurrentAdmin.CurrentAdmin`.
+
+Repositories, database clients, configuration, and external clients belong to the middleware implementation Layer, not its declaration. `RegisteredUser` declares that it provides `CurrentUser.CurrentUser` and has no request-scoped prerequisite. `RegisteredUserLive` captures `UserRepository` while constructing the middleware, so its Layer type carries `UserRepository` as an input requirement and any construction error in its error channel. Providing that Layer propagates unresolved infrastructure requirements into the final application Layer normally.
+
+This separation lets bot declarations validate middleware order without coupling reusable contracts to one implementation's infrastructure.
 
 Middleware ordering is:
 
@@ -638,7 +642,8 @@ Type tests cover:
 - rejection of non-string-encoded command, conversation-text, and callback-data codecs;
 - propagation of schema decoding services;
 - conversation step state and transition inference;
-- middleware-provided and middleware-required services;
+- middleware-provided and request-scoped middleware-required services, including invalid ordering;
+- middleware implementation Layer requirements propagating separately into the application Layer;
 - context-service availability only for compatible handler and conversation input kinds;
 - callback-data string-codec, namespace, and typed choice-result inference;
 - final unresolved Layer requirements;
@@ -785,7 +790,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - One active conversation per bot/chat/user.
 - Sequential update handling per partition, concurrent across partitions using Effect fibers.
 - Immutable HttpApi-style bot declarations and exhaustive Layer-backed builders.
-- Middleware provides Effect services.
+- Middleware provides Effect services; declarations track only request-scoped ordering contracts, while implementation infrastructure is inferred from Layers.
 - Scoped `UpdateContext`, `MessageContext`, and `CallbackQueryContext` services provide thin Telegram helpers while `Telegram.Telegram` remains the complete low-level API.
 - Pure immutable keyboard builders, namespaced typed callback data, and state-machine-native conversation input/choice/prompt helpers cover Carneloot interactions; persistent menus are deferred.
 - Ordered, schema-driven command parsing uses the pure `CommandInput` module; all text leaf codecs have encoded type `string` and propagate decoding services.
