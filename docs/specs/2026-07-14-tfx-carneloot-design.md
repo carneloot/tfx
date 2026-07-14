@@ -56,11 +56,10 @@ Use a workspace monorepo:
 packages/
   tfx/                          # npm: tfx
   conversations/                # npm: @tfx/conversations
-  conversations-postgres/       # npm: @tfx/conversations-postgres
+  jobs/                         # npm: @tfx/jobs
   polling/                      # npm: @tfx/polling
   webhook/                      # npm: @tfx/webhook
-  jobs-postgres/                # npm: @tfx/jobs-postgres
-  dedup-postgres/               # npm: @tfx/dedup-postgres
+  postgres/                     # npm: @tfx/postgres
   testing/                      # npm: @tfx/testing
   testing-postgres/             # npm: @tfx/testing-postgres
 
@@ -111,6 +110,22 @@ packages:
 ```
 
 Root commands should expose full-repository checks and pnpm-filterable package commands. Publishing always uses the pnpm/Changesets workflow even though Carneloot executes on Bun.
+
+### 4.2 PostgreSQL adapter package
+
+Consolidate production PostgreSQL implementations in `@tfx/postgres` rather than publishing one PostgreSQL package per tfx service. The package provides:
+
+- `PostgresConversationStorage.layer` for `ConversationStorage`;
+- `PostgresJobStore.layer` for `JobStore`;
+- `PostgresUpdateDeduplicator.layer` for `UpdateDeduplicator`;
+- coordinated tfx PostgreSQL migrations;
+- `TfxPostgres.layer(options)` as a convenience Layer providing all three services.
+
+Individual Layers remain available so applications install only required capabilities without dynamic configuration that weakens Layer output types. Every adapter Layer requires an application-provided `PgClient.PgClient`; `@tfx/postgres` does not create a hidden second pool. This lets tfx adapters and application repositories share one Effect SQL client and transaction.
+
+The package owns one coordinated schema version for `tfx_conversations`, `tfx_jobs`, `tfx_job_attempts`, and `tfx_update_deduplication`, with configurable PostgreSQL schema and table prefix. It implements only tfx infrastructure contracts and never contains Carneloot users, pets, food, notification repositories, or other application persistence.
+
+Keep `@tfx/testing-postgres` separate so Docker, Testcontainers, migration reset, and conformance-test dependencies do not enter production installations.
 
 ## 5. Telegram Bot API generation and facade
 
@@ -362,7 +377,7 @@ Only one conversation may be active for `(bot, chat, user)`. Starting another co
 
 The same package exports `MemoryConversationStorage.layer`, a scoped in-process implementation for development, examples, tests, and bots that intentionally accept restart data loss. It supports the complete storage contract, including create/start, load by bot/chat/user scope, optimistic revision transitions, complete/cancel, expiration, version migration, and conflict behavior. Closing its Layer scope discards all state. It does not support multi-process coordination or restart durability.
 
-`@tfx/conversations-postgres` exports `PostgresConversationStorage.layer`, implementing the same service and semantics with durable PostgreSQL state. Carneloot explicitly provides this Layer. PostgreSQL conversation rows contain:
+`@tfx/postgres` exports `PostgresConversationStorage.layer`, implementing the same service and semantics with durable PostgreSQL state. Carneloot explicitly provides this Layer. PostgreSQL conversation rows contain:
 
 - bot ID;
 - conversation ID and version;
@@ -484,15 +499,17 @@ This preserves ordering for a chat or user's conversation while allowing unrelat
 
 Core internal code always yields `UpdateDeduplicator.UpdateDeduplicator`. It is a `Context.Reference` with a no-op default. Applications override it by providing a Layer; no deduplication plugin is installed.
 
-`@tfx/dedup-postgres` implements persisted claims with processing status, lease expiration, attempts, completion time, and retention cleanup. Carneloot provides this Layer by default.
+`@tfx/postgres` exports `PostgresUpdateDeduplicator.layer`, implementing persisted claims with processing status, lease expiration, attempts, completion time, and retention cleanup. Carneloot provides this Layer by default.
 
 Polling acknowledgement follows the accepted-terminal-state and contiguous-offset rules above. If Telegram redelivers a batch, completed update IDs are skipped. Webhook success returns `2xx`; retryable failures permit Telegram retry.
 
 Delivery remains at least once. Critical Carneloot writes use update-derived idempotency keys.
 
-## 9. PostgreSQL jobs and delivery
+## 9. Jobs and PostgreSQL delivery
 
-`@tfx/jobs-postgres` provides typed, schema-validated jobs through yieldable services and Layers.
+`@tfx/jobs` owns storage-neutral typed job declarations, job execution runtime, and the yieldable `JobStore.JobStore` contract. It exports an explicit scoped `MemoryJobStore.layer` for development, examples, tests, and intentionally non-durable single-process bots. No job store is selected implicitly.
+
+`@tfx/postgres` exports `PostgresJobStore.layer`, implementing durable scheduling, claiming, attempts, and completion through the same `JobStore` contract. Both stores pass shared behavior conformance tests, with durability and multi-process claim tests applying only to PostgreSQL.
 
 A job declaration contains:
 
@@ -688,8 +705,10 @@ Unit and integration tests cover:
 - long-poll startup, webhook deletion, pending-update policy, allowed-update inference, offset advancement, batch redelivery, retry classification, and scoped stop;
 - empty and duplicate choice options, cancellation, invalid input, callback acknowledgement, and reply-keyboard removal;
 - conversation transitions, revision conflicts, timeout, and migration;
-- explicit memory and PostgreSQL conversation-storage Layer selection;
+- explicit memory and PostgreSQL conversation- and job-store Layer selection;
 - shared storage semantics across memory and PostgreSQL implementations;
+- individual and aggregate `@tfx/postgres` Layer composition over one provided `PgClient`;
+- coordinated tfx PostgreSQL migrations;
 - food parsing and timezone boundaries;
 - reminder scheduling;
 - deduplication leases;
@@ -822,7 +841,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Middleware provides Effect services; declarations track only request-scoped ordering contracts, while implementation infrastructure is inferred from Layers.
 - Scoped `UpdateContext`, `MessageContext`, and `CallbackQueryContext` services provide thin Telegram helpers while `Telegram.Telegram` remains the complete low-level API.
 - Pure immutable keyboard builders, namespaced typed callback data, and state-machine-native conversation input/choice/prompt helpers cover Carneloot interactions; persistent menus are deferred.
-- Conversation storage is an explicitly provided service; `@tfx/conversations` includes a scoped memory Layer and `@tfx/conversations-postgres` supplies the durable Carneloot Layer.
+- Conversation and job storage are explicitly provided services; `@tfx/conversations` and `@tfx/jobs` include scoped memory Layers, while consolidated `@tfx/postgres` supplies durable conversation, job, and deduplication Layers plus coordinated migrations.
 - Ordered, schema-driven command parsing uses the pure `CommandInput` module; all text leaf codecs have encoded type `string` and propagate decoding services.
 - Generated Telegram schemas/client from pinned Photon OpenAPI plus tfx patches.
 - `Telegram.Telegram` is yieldable; public methods unwrap successful results.
