@@ -560,7 +560,7 @@ Before partitioning or conversation lookup, derive one normalized `UpdateRouting
 
 ### 8.5 Optional update deduplication
 
-Core internal code always yields `UpdateDeduplicator.UpdateDeduplicator`. It is a `Context.Reference` with a no-op default. Applications override it by providing a Layer; no deduplication plugin is installed.
+Core internal code always yields the required `UpdateDeduplicator.UpdateDeduplicator` `Context.Service`. It has no implicit or `Context.Reference` default, so `BotRuntime.layer` exposes an unresolved deduplicator requirement until application composition provides one. Core exports explicit `UpdateDeduplicator.layerNoop` for simple bots that intentionally accept duplicates; Carneloot never uses that Layer in production.
 
 `@tfx/postgres` exports `PostgresUpdateDeduplicator.layer`, implementing persisted claims with processing status, lease expiration, attempts, completion time, fencing generation, and retention cleanup. Carneloot provides this Layer by default.
 
@@ -568,7 +568,9 @@ A claim returns one of three states: `Acquired` with a generation-bearing claim 
 
 Claims are never stolen before lease expiry. Active processing heartbeats its lease. Expired-lease takeover increments generation, and complete/release operations compare update ID, generation, and processing status. A stale token fails with `ClaimLost` and cannot complete or release a newer claim. Lease loss interrupts the local processing fiber when possible, but domain writes still use update-derived idempotency because fencing cannot undo an external side effect already started by a stale process.
 
-Same-process waiters use an Effect `Deferred`; PostgreSQL remains source of truth. Future replicas may observe completion through bounded PostgreSQL polling or notification without changing the service contract. The no-op default treats every update as independently acquired and provides no duplicate protection.
+Same-process waiters use an Effect `Deferred`; PostgreSQL remains source of truth. Future replicas may observe completion through bounded PostgreSQL polling or notification without changing the service contract. The explicitly provided no-op Layer treats every update as independently acquired and provides no duplicate protection.
+
+Each implementation reports diagnostic metadata such as `mode: "none" | "durable"` and backend name. Carneloot's final Layer is incomplete without the PostgreSQL aggregate Layer, and production startup/tests assert durable PostgreSQL mode. This makes accidental omission type-visible while retaining explicit opt-in ergonomics for simple bots.
 
 Polling acknowledgement follows the accepted-terminal-state and contiguous-offset rules above. If Telegram redelivers a batch, completed update IDs are skipped. Webhook success returns `2xx`; retryable failures permit Telegram retry.
 
@@ -782,6 +784,7 @@ Type tests cover:
 - callback-data string-codec, namespace, and typed choice-result inference;
 - required single `UpdateDelivery` selection, rejecting omitted or multiple descriptors;
 - propagation of the selected delivery descriptor's Layer errors and requirements;
+- unresolved `UpdateDeduplicator` until an explicit no-op or concrete Layer is provided;
 - final unresolved Layer requirements;
 - intentional invalid examples through `@ts-expect-error` fixtures.
 
@@ -803,6 +806,7 @@ Unit and integration tests cover:
 - webhook registration/control, secret-header validation, HttpApi mounting, bounded intake, completion acknowledgement, HTTP outcome mapping, concurrent duplicate claims, and scoped shutdown;
 - webhook set/info/delete CLI behavior, explicit destructive flag, command-menu publication, typed exit failure, and absence of HTTP management route;
 - bounded in-progress claim waiting, lease heartbeat, expired takeover generation, stale completion/release rejection, and local interruption after claim loss;
+- explicit no-op versus durable deduplicator composition and startup diagnostic metadata;
 - empty and duplicate choice options, cancellation, invalid input, callback acknowledgement, and reply-keyboard removal;
 - conversation transitions, revision conflicts, duplicate last-applied update detection, timeout, and migration;
 - pre-CAS domain idempotency, post-CAS enter/afterCommit ordering, crash windows, and handled output failure;
@@ -954,7 +958,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Generated Telegram schemas/client from pinned Photon OpenAPI plus tfx patches.
 - `Telegram.Telegram` is yieldable; public methods unwrap successful results.
 - `TelegramError` follows Effect `AiError` structure.
-- Update deduplication is an overridable service with no-op default; Carneloot uses PostgreSQL implementation.
+- Update deduplication is a required service with an explicit no-op Layer for simple bots; Carneloot's production composition requires and verifies PostgreSQL durable mode.
 - Known Carneloot bugs and security issues are fixed.
 - mise-pinned Node.js, Bun, and pnpm; pnpm workspaces, TypeScript project references, and Changesets; Bun remains a runtime, and Turborepo is deferred until measured need.
 - Four product slices, each with one or more bounded implementation plans.
