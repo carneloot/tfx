@@ -55,8 +55,6 @@ Use a workspace monorepo:
 ```text
 packages/
   tfx/                          # npm: tfx
-  conversations/                # npm: @tfx/conversations
-  jobs/                         # npm: @tfx/jobs
   postgres/                     # npm: @tfx/postgres
   testing/                      # npm: @tfx/testing
   testing-postgres/             # npm: @tfx/testing-postgres
@@ -67,14 +65,22 @@ apps/
 
 Package boundaries may be refined by a slice implementation plan, but these rules are fixed:
 
-- `tfx` cannot depend on PostgreSQL, Redis, Bun-only APIs, or Carneloot code.
+- `tfx` cannot depend on PostgreSQL, Redis, Bun-only APIs, Node-only APIs, or Carneloot code.
 - Core `tfx` includes polling and webhook update-source Layers because every running bot must select one delivery mode.
 - Carneloot imports only tfx public package exports, never source internals.
 - Feature behavior is composed through bot declarations and implementation Layers.
 - Infrastructure implementations are services and Layers, not behavior plugins.
 - Node.js and Bun are both covered by package validation.
 
-### 4.1 Workspace toolchain
+### 4.1 Core and Effect platform boundary
+
+Follow Effect v4's package architecture: portable definitions and programs live in core, while backend- or host-specific implementations live outside core. `tfx` therefore owns bot declarations/runtime, Telegram contracts/facade, update sources, conversations, jobs, storage contracts, contextual helpers, and explicit portable memory Layers. Expose focused subpath modules such as `tfx/Bot`, `tfx/Command`, `tfx/Conversation`, `tfx/ConversationStorage`, `tfx/Job`, `tfx/JobStore`, `tfx/Polling`, and `tfx/Webhook`.
+
+Do not create `@tfx/platform-node` or `@tfx/platform-bun`. Core tfx requires Effect's platform-neutral services, including HTTP client/server contracts, and leaves their concrete Layers unresolved. Node.js applications import implementations directly from `@effect/platform-node`; Bun applications, including Carneloot production, import directly from `@effect/platform-bun`. `Webhook.layer` supplies the platform-neutral HttpApi route, while application code selects and provides the actual Effect HTTP server Layer. `Polling.layer` and the Telegram facade similarly consume the provided Effect HTTP client service.
+
+This keeps tfx host-neutral, avoids Layer-only wrapper packages, and lets applications use any Effect-supported platform without waiting for a tfx adapter.
+
+### 4.2 Workspace toolchain
 
 Use **pnpm workspaces** as the package manager and workspace implementation. Pin the initial package manager through `packageManager: "pnpm@10.17.1"` and commit `pnpm-lock.yaml`. Use `workspace:` dependency ranges for internal packages.
 
@@ -110,7 +116,7 @@ packages:
 
 Root commands should expose full-repository checks and pnpm-filterable package commands. Publishing always uses the pnpm/Changesets workflow even though Carneloot executes on Bun.
 
-### 4.2 PostgreSQL adapter package
+### 4.3 PostgreSQL adapter package
 
 Consolidate production PostgreSQL implementations in `@tfx/postgres` rather than publishing one PostgreSQL package per tfx service. The package provides:
 
@@ -372,9 +378,9 @@ Only one conversation may be active for `(bot, chat, user)`. Starting another co
 
 ### 7.4 Storage and persistence
 
-`@tfx/conversations` defines the yieldable `ConversationStorage.ConversationStorage` service consumed by the conversation runtime. Storage is always provided explicitly; there is no implicit or reference default that could silently select non-durable storage in production.
+Core `tfx/ConversationStorage` defines the yieldable `ConversationStorage.ConversationStorage` service consumed by the conversation runtime. Storage is always provided explicitly; there is no implicit or reference default that could silently select non-durable storage in production.
 
-The same package exports `MemoryConversationStorage.layer`, a scoped in-process implementation for development, examples, tests, and bots that intentionally accept restart data loss. It supports the complete storage contract, including create/start, load by bot/chat/user scope, optimistic revision transitions, complete/cancel, expiration, version migration, and conflict behavior. Closing its Layer scope discards all state. It does not support multi-process coordination or restart durability.
+Core tfx also exports `MemoryConversationStorage.layer`, a scoped in-process implementation for development, examples, tests, and bots that intentionally accept restart data loss. It supports the complete storage contract, including create/start, load by bot/chat/user scope, optimistic revision transitions, complete/cancel, expiration, version migration, and conflict behavior. Closing its Layer scope discards all state. It does not support multi-process coordination or restart durability.
 
 `@tfx/postgres` exports `PostgresConversationStorage.layer`, implementing the same service and semantics with durable PostgreSQL state. Carneloot explicitly provides this Layer. PostgreSQL conversation rows contain:
 
@@ -404,7 +410,7 @@ Invalid conversation input does not advance state.
 
 ### 7.6 Conversation input, choice, and prompt helpers
 
-Provide `ConversationInput`, `ConversationChoice`, and a yieldable `ConversationPrompt.ConversationPrompt` service in `@tfx/conversations`.
+Provide `ConversationInput`, `ConversationChoice`, and a yieldable `ConversationPrompt.ConversationPrompt` service in core tfx conversation modules.
 
 Initial input constructors:
 
@@ -510,7 +516,7 @@ Delivery remains at least once. Critical Carneloot writes use update-derived ide
 
 ## 9. Jobs and PostgreSQL delivery
 
-`@tfx/jobs` owns storage-neutral typed job declarations, job execution runtime, and the yieldable `JobStore.JobStore` contract. It exports an explicit scoped `MemoryJobStore.layer` for development, examples, tests, and intentionally non-durable single-process bots. No job store is selected implicitly.
+Core `tfx/Job` and `tfx/JobStore` own storage-neutral typed job declarations, job execution runtime, and the yieldable `JobStore.JobStore` contract. Core tfx exports an explicit scoped `MemoryJobStore.layer` for development, examples, tests, and intentionally non-durable single-process bots. No job store is selected implicitly.
 
 `@tfx/postgres` exports `PostgresJobStore.layer`, implementing durable scheduling, claiming, attempts, and completion through the same `JobStore` contract. Both stores pass shared behavior conformance tests, with durability and multi-process claim tests applying only to PostgreSQL.
 
@@ -847,7 +853,8 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Middleware provides Effect services; declarations track only request-scoped ordering contracts, while implementation infrastructure is inferred from Layers.
 - Scoped `UpdateContext`, `MessageContext`, and `CallbackQueryContext` services provide thin Telegram helpers while `Telegram.Telegram` remains the complete low-level API.
 - Pure immutable keyboard builders, namespaced typed callback data, and state-machine-native conversation input/choice/prompt helpers cover Carneloot interactions; persistent menus are deferred.
-- Conversation and job storage are explicitly provided services; `@tfx/conversations` and `@tfx/jobs` include scoped memory Layers, while consolidated `@tfx/postgres` supplies durable conversation, job, and deduplication Layers plus coordinated migrations.
+- Conversation and job contracts, runtimes, and scoped memory Layers live in core tfx, while consolidated `@tfx/postgres` supplies durable conversation, job, and deduplication Layers plus coordinated migrations.
+- Applications provide `@effect/platform-node` or `@effect/platform-bun` Layers directly; tfx does not publish Node/Bun platform wrapper packages.
 - Ordered, schema-driven command parsing uses the pure `CommandInput` module; all text leaf codecs have encoded type `string` and propagate decoding services.
 - Generated Telegram schemas/client from pinned Photon OpenAPI plus tfx patches.
 - `Telegram.Telegram` is yieldable; public methods unwrap successful results.
