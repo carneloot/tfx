@@ -180,7 +180,9 @@ Mappings preserve Telegram error code, description, parameters, method name, and
 
 ## 6. Type-safe bot declaration model
 
-### 6.1 Declarations instead of mutable registration
+### 6.1 Declarations and public naming
+
+Use `Bot`, `BotBuilder`, `BotGroup`, `Command`, and `CommandInput` as public composition names. Keep `Command` rather than `BotCommand` because Telegram's generated API already defines `BotCommand` as command-menu data. Keep `BotGroup` rather than generic `Group` because a group may contain commands, conversations, middleware, callbacks, and annotations. Generated Telegram command-menu data remains namespaced under Telegram schemas and is distinct from executable tfx `Command` declarations.
 
 Use immutable HttpApi-style declarations as the primary bot composition model:
 
