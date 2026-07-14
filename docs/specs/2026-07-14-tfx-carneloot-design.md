@@ -520,7 +520,9 @@ Stopping the polling Layer aborts the in-flight `getUpdates`, stops intake, and 
 
 Webhook configuration contains public base URL, route path, a `Redacted` Telegram secret token, inferred or explicit allowed-update types, optional Telegram `max_connections`, processing deadline, and bounded intake capacity. Use Telegram's `X-Telegram-Bot-Api-Secret-Token` request header and constant-time comparison. Do not place the secret in the URL path or logs.
 
-Webhook registration is explicit rather than an automatic Layer acquisition side effect. The application yields `Webhook.Webhook` and invokes `register`, which calls Telegram `setWebhook` with full public route URL, secret token, allowed-update types, optional maximum connections, and explicit `drop_pending_updates` defaulting to `false`. Carneloot's webhook-setup operation invokes this program and publishes the command menu after successful registration. Setup access must be administrative or deployment-only. Layer release does not automatically delete the remote webhook because that would break restarts and rolling deployment; explicit control operations may register, inspect, or delete it.
+Webhook registration is explicit rather than an automatic Layer acquisition side effect. The application yields `Webhook.Webhook` and invokes `register`, which calls Telegram `setWebhook` with full public route URL, secret token, allowed-update types, optional maximum connections, and explicit `drop_pending_updates` defaulting to `false`. Layer release does not automatically delete the remote webhook because that would break restarts and rolling deployment; explicit control operations may register, inspect, or delete it.
+
+Carneloot exposes webhook management only through deployment CLI programs: `webhook:set`, `webhook:info`, and `webhook:delete`. It does not retain state-changing `GET /api/set-webhook` or add an HTTP admin replacement. `webhook:set` loads validated config, constructs the same webhook descriptor, registers its public URL and secret header token, passes inferred allowed updates, and publishes the Portuguese command menu. Dropping pending updates requires an explicit `--drop-pending-updates` flag. Commands print typed results and exit non-zero on failure. Deployment starts and health-checks the application before running `webhook:set`.
 
 For each request, the endpoint:
 
@@ -696,8 +698,10 @@ Use Effect HttpApi for Carneloot HTTP endpoints and tfx webhook integration. Rep
 Required parity:
 
 - authenticated `POST /api/notify` behavior;
-- webhook setup behavior;
-- secret-validated Telegram webhook receiver.
+- explicit webhook set/info/delete deployment CLI capability replacing unsafe HTTP setup;
+- secret-validated `POST /api/webhook` Telegram receiver.
+
+The HTTP server exposes no webhook-management endpoint. Webhook registration is never an implicit startup or Layer-acquisition side effect.
 
 `POST /api/notify` performs direct concurrent delivery and returns a typed result: `200` when every recipient succeeds, `207` with delivered/failed counts and structured failure summaries when only some recipients succeed, and `502` when no recipient succeeds because of Telegram delivery failures. Authentication, missing-template, missing-variable, and database failures retain distinct typed responses. Non-idempotent sends are not blindly retried. Notification templates and subscriptions are imported and may be provisioned administratively in PostgreSQL; feature parity does not add a Telegram command or HTTP management API for them.
 
@@ -797,6 +801,7 @@ Unit and integration tests cover:
 - `byChat`, `byConversationScope`, and custom partition strategies, including chat-less conversation rejection;
 - long-poll startup, webhook deletion, pending-update policy, allowed-update inference, offset advancement, batch redelivery, retry classification, and scoped stop;
 - webhook registration/control, secret-header validation, HttpApi mounting, bounded intake, completion acknowledgement, HTTP outcome mapping, concurrent duplicate claims, and scoped shutdown;
+- webhook set/info/delete CLI behavior, explicit destructive flag, command-menu publication, typed exit failure, and absence of HTTP management route;
 - bounded in-progress claim waiting, lease heartbeat, expired takeover generation, stale completion/release rejection, and local interruption after claim loss;
 - empty and duplicate choice options, cancellation, invalid input, callback acknowledgement, and reply-keyboard removal;
 - conversation transitions, revision conflicts, duplicate last-applied update detection, timeout, and migration;
@@ -874,7 +879,7 @@ Deliver:
 - generic external notifications and reply forwarding;
 - imported or administratively provisioned notification templates and subscriptions;
 - authenticated notification HttpApi with explicit complete, partial, and failed delivery responses;
-- webhook setup and receiver;
+- webhook set/info/delete deployment CLI and secret-header receiver;
 - Portuguese Telegram command menu containing all 24 real commands, including `/start`, without synthetic `_`, `__`, or `___` heading commands;
 - tracing and production deployment.
 
@@ -934,7 +939,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - One active bot instance initially.
 - Core tfx contains polling and webhook delivery descriptors backed by internal Layers; `BotRuntime.layer` requires exactly one descriptor and applications never provide `UpdateSource` directly.
 - Long polling uses one in-flight `getUpdates`, inferred allowed-update types, batch settlement before contiguous acknowledgement, typed retries, and scoped cancellation.
-- Webhook delivery uses an explicitly mounted HttpApi route, Telegram secret header, explicit remote registration, bounded intake, post-dispatch acknowledgement, and Effect-scoped shutdown.
+- Webhook delivery uses an explicitly mounted HttpApi route, Telegram secret header, CLI-only remote set/info/delete operations, bounded intake, post-dispatch acknowledgement, and Effect-scoped shutdown.
 - One active conversation per bot/chat/user.
 - Conversation durability covers versioned state and duplicate transition prevention; domain effects are idempotent before CAS and Telegram outputs are explicit best-effort post-commit effects. Effect Workflow is not the initial substrate.
 - Normalized update routing scope is shared by conversation lookup and partitioning; `byChat` is default, with `byConversationScope` and custom strategies available.
