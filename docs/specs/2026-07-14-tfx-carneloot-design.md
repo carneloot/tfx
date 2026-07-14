@@ -66,7 +66,7 @@ apps/
 Package boundaries may be refined by a slice implementation plan, but these rules are fixed:
 
 - `tfx` cannot depend on PostgreSQL, Redis, Bun-only APIs, Node-only APIs, or Carneloot code.
-- Core `tfx` includes polling and webhook update-source Layers because every running bot must select one delivery mode.
+- Core `tfx` includes polling and webhook delivery descriptors backed by internal update-source Layers because every running bot must select one delivery mode.
 - Carneloot imports only tfx public package exports, never source internals.
 - Feature behavior is composed through bot declarations and implementation Layers.
 - Infrastructure implementations are services and Layers, not behavior plugins.
@@ -76,7 +76,7 @@ Package boundaries may be refined by a slice implementation plan, but these rule
 
 Follow Effect v4's package architecture: portable definitions and programs live in core, while backend- or host-specific implementations live outside core. `tfx` therefore owns bot declarations/runtime, Telegram contracts/facade, update sources, conversations, jobs, storage contracts, contextual helpers, and explicit portable memory Layers. Expose focused subpath modules such as `tfx/Bot`, `tfx/Command`, `tfx/Conversation`, `tfx/ConversationStorage`, `tfx/Job`, `tfx/JobStore`, `tfx/Polling`, and `tfx/Webhook`.
 
-Do not create `@tfx/platform-node` or `@tfx/platform-bun`. Core tfx requires Effect's platform-neutral services, including HTTP client/server contracts, and leaves their concrete Layers unresolved. Node.js applications import implementations directly from `@effect/platform-node`; Bun applications, including Carneloot production, import directly from `@effect/platform-bun`. `Webhook.layer` supplies the platform-neutral HttpApi route, while application code selects and provides the actual Effect HTTP server Layer. `Polling.layer` and the Telegram facade similarly consume the provided Effect HTTP client service.
+Do not create `@tfx/platform-node` or `@tfx/platform-bun`. Core tfx requires Effect's platform-neutral services, including HTTP client/server contracts, and leaves their concrete Layers unresolved. Node.js applications import implementations directly from `@effect/platform-node`; Bun applications, including Carneloot production, import directly from `@effect/platform-bun`. `Webhook.make` carries the platform-neutral HttpApi route, while application code selects and provides the actual Effect HTTP server Layer. The internal polling source Layer and Telegram facade similarly consume the provided Effect HTTP client service.
 
 This keeps tfx host-neutral, avoids Layer-only wrapper packages, and lets applications use any Effect-supported platform without waiting for a tfx adapter.
 
@@ -203,7 +203,7 @@ Mappings preserve Telegram error code, description, parameters, method name, and
 
 ### 6.1 Declarations and public naming
 
-Use `Bot`, `BotBuilder`, `BotGroup`, `Command`, and `CommandInput` as public composition names. Keep `Command` rather than `BotCommand` because Telegram's generated API already defines `BotCommand` as command-menu data. Keep `BotGroup` rather than generic `Group` because a group may contain commands, conversations, middleware, callbacks, and annotations. Generated Telegram command-menu data remains namespaced under Telegram schemas and is distinct from executable tfx `Command` declarations.
+Use `Bot`, `BotBuilder`, `BotRuntime`, `BotGroup`, `Command`, and `CommandInput` as public composition names. Keep `Command` rather than `BotCommand` because Telegram's generated API already defines `BotCommand` as command-menu data. Keep `BotGroup` rather than generic `Group` because a group may contain commands, conversations, middleware, callbacks, and annotations. Generated Telegram command-menu data remains namespaced under Telegram schemas and is distinct from executable tfx `Command` declarations.
 
 Use immutable HttpApi-style declarations as the primary bot composition model:
 
@@ -451,19 +451,29 @@ The first two are required by Carneloot and belong in initial slices. Persistent
 
 ## 8. Runtime, concurrency, and delivery
 
-### 8.1 Update sources
+### 8.1 Update delivery selection and internal sources
 
-Core `tfx` defines the `UpdateSource.UpdateSource` service and exports both `Polling.layer(options)` and `Webhook.layer(options)`. They expose the same decoded update-source boundary, and raw values are decoded using generated Effect Schemas before dispatch.
+Core `tfx` defines the internal `UpdateSource.UpdateSource` service plus a branded `UpdateDelivery<Mode, E, R>` descriptor. A descriptor carries one literal mode identifier and one Layer that provides `UpdateSource`; its Layer errors and requirements propagate into the resulting runtime Layer.
 
-Every running bot must explicitly provide exactly one source Layer. `UpdateSource` has no implicit default. Providing neither leaves an unresolved application requirement; configuring both is rejected during application construction or startup rather than selecting one by precedence. Polling and webhook remain mutually exclusive for one Telegram bot token.
+Applications do not provide `UpdateSource` directly. `BotRuntime.layer(bot, { delivery })` requires exactly one descriptor argument and installs its source Layer internally. Omitting `delivery` is a type error, and passing an array or multiple descriptors is not accepted by the API. This avoids relying on Effect Context or Layer merging to detect duplicate providers of the same service tag.
 
-`Webhook.layer` also exposes the secret-validated Effect HttpApi route that the application mounts into its server. Platform-specific Node.js or Bun server Layers remain application choices; webhook delivery itself stays platform-neutral inside core tfx.
+```ts
+const RuntimeLive = BotRuntime.layer(Carneloot, {
+  delivery: Polling.make({ timeout: "30 seconds" })
+})
+```
+
+Core constructors are `Polling.make(options)` and `Webhook.make(options)`. Polling and webhook remain mutually exclusive for one bot runtime and Telegram token. Runtime configuration chooses one descriptor explicitly, using `Layer.unwrap` when the mode comes from Effect `Config`.
+
+Third-party transports use `UpdateDelivery.make({ id, layer })` to create one branded descriptor backed by their own `UpdateSource` Layer. The bot runtime still receives one descriptor regardless of transport implementation.
+
+Both built-in descriptors expose the same decoded update-source boundary, and raw values are decoded using generated Effect Schemas before dispatch. A webhook descriptor additionally carries its secret-validated Effect HttpApi route and control service so application code can mount the same configured value into its server. Platform-specific Node.js or Bun server Layers remain application choices.
 
 ### 8.2 Long polling
 
 Long polling repeatedly calls Telegram `getUpdates` with one in-flight HTTP request. Telegram holds that request until an update is available or the configured long-poll timeout expires, then returns a batch. An empty timeout response is normal and immediately starts the next request.
 
-`Polling.layer` startup:
+The source Layer inside `Polling.make(options)` performs startup:
 
 1. initializes bot identity through the Telegram service;
 2. deletes any active webhook because Telegram does not permit webhook delivery and `getUpdates` for the same bot simultaneously;
@@ -482,7 +492,7 @@ Stopping the polling Layer aborts the in-flight `getUpdates`, stops intake, and 
 
 ### 8.3 Webhook delivery
 
-`Webhook.layer(options)` provides the `UpdateSource` implementation, a yieldable `Webhook.Webhook` control service, and a platform-neutral Effect HttpApi endpoint. Application code mounts that endpoint into its existing Effect HTTP server and provides `@effect/platform-node` or `@effect/platform-bun` server Layers directly.
+`Webhook.make(options)` returns a delivery descriptor carrying the internal `UpdateSource` Layer, a yieldable `Webhook.Webhook` control service, and a platform-neutral Effect HttpApi endpoint. Application code mounts that endpoint into its existing Effect HTTP server and provides `@effect/platform-node` or `@effect/platform-bun` server Layers directly.
 
 Webhook configuration contains public base URL, route path, a `Redacted` Telegram secret token, inferred or explicit allowed-update types, optional Telegram `max_connections`, processing deadline, and bounded intake capacity. Use Telegram's `X-Telegram-Bot-Api-Secret-Token` request header and constant-time comparison. Do not place the secret in the URL path or logs.
 
@@ -719,7 +729,8 @@ Type tests cover:
 - middleware implementation Layer requirements propagating separately into the application Layer;
 - context-service availability only for compatible handler and conversation input kinds;
 - callback-data string-codec, namespace, and typed choice-result inference;
-- unresolved `UpdateSource` when no polling or webhook Layer is selected;
+- required single `UpdateDelivery` selection, rejecting omitted or multiple descriptors;
+- propagation of the selected delivery descriptor's Layer errors and requirements;
 - final unresolved Layer requirements;
 - intentional invalid examples through `@ts-expect-error` fixtures.
 
@@ -734,7 +745,7 @@ Unit and integration tests cover:
 - equivalence between contextual helper calls and low-level Telegram service requests;
 - keyboard layout and generated markup output;
 - callback namespace collision, malformed payload, and 64-byte-limit handling;
-- explicit polling-versus-webhook source selection, including rejection when both are configured;
+- explicit polling-versus-webhook descriptor selection and dynamic Effect Config selection;
 - long-poll startup, webhook deletion, pending-update policy, allowed-update inference, offset advancement, batch redelivery, retry classification, and scoped stop;
 - webhook registration/control, secret-header validation, HttpApi mounting, bounded intake, completion acknowledgement, HTTP outcome mapping, concurrent duplicate claims, and scoped shutdown;
 - empty and duplicate choice options, cancellation, invalid input, callback acknowledgement, and reply-keyboard removal;
@@ -868,7 +879,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Node.js and Bun support; Bun production application.
 - PostgreSQL for domain data, conversations, scheduled and immediate delivery jobs, and deduplication.
 - One active bot instance initially.
-- Core tfx contains polling and webhook Layers; applications explicitly provide exactly one `UpdateSource`, with no default mode.
+- Core tfx contains polling and webhook delivery descriptors backed by internal Layers; `BotRuntime.layer` requires exactly one descriptor and applications never provide `UpdateSource` directly.
 - Long polling uses one in-flight `getUpdates`, inferred allowed-update types, batch settlement before contiguous acknowledgement, typed retries, and scoped cancellation.
 - Webhook delivery uses an explicitly mounted HttpApi route, Telegram secret header, explicit remote registration, bounded intake, post-dispatch acknowledgement, and Effect-scoped shutdown.
 - One active conversation per bot/chat/user.
