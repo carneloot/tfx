@@ -57,8 +57,6 @@ packages/
   tfx/                          # npm: tfx
   conversations/                # npm: @tfx/conversations
   jobs/                         # npm: @tfx/jobs
-  polling/                      # npm: @tfx/polling
-  webhook/                      # npm: @tfx/webhook
   postgres/                     # npm: @tfx/postgres
   testing/                      # npm: @tfx/testing
   testing-postgres/             # npm: @tfx/testing-postgres
@@ -70,6 +68,7 @@ apps/
 Package boundaries may be refined by a slice implementation plan, but these rules are fixed:
 
 - `tfx` cannot depend on PostgreSQL, Redis, Bun-only APIs, or Carneloot code.
+- Core `tfx` includes polling and webhook update-source Layers because every running bot must select one delivery mode.
 - Carneloot imports only tfx public package exports, never source internals.
 - Feature behavior is composed through bot declarations and implementation Layers.
 - Infrastructure implementations are services and Layers, not behavior plugins.
@@ -448,13 +447,17 @@ The first two are required by Carneloot and belong in initial slices. Persistent
 
 ### 8.1 Update sources
 
-Polling and webhook packages expose the same decoded update-source boundary. Raw values are decoded using generated Effect Schemas before dispatch.
+Core `tfx` defines the `UpdateSource.UpdateSource` service and exports both `Polling.layer(options)` and `Webhook.layer(options)`. They expose the same decoded update-source boundary, and raw values are decoded using generated Effect Schemas before dispatch.
+
+Every running bot must explicitly provide exactly one source Layer. `UpdateSource` has no implicit default. Providing neither leaves an unresolved application requirement; configuring both is rejected during application construction or startup rather than selecting one by precedence. Polling and webhook remain mutually exclusive for one Telegram bot token.
+
+`Webhook.layer` also exposes the secret-validated Effect HttpApi route that the application mounts into its server. Platform-specific Node.js or Bun server Layers remain application choices; webhook delivery itself stays platform-neutral inside core tfx.
 
 ### 8.2 Long polling
 
 Long polling repeatedly calls Telegram `getUpdates` with one in-flight HTTP request. Telegram holds that request until an update is available or the configured long-poll timeout expires, then returns a batch. An empty timeout response is normal and immediately starts the next request.
 
-`@tfx/polling` startup:
+`Polling.layer` startup:
 
 1. initializes bot identity through the Telegram service;
 2. deletes any active webhook because Telegram does not permit webhook delivery and `getUpdates` for the same bot simultaneously;
@@ -688,6 +691,7 @@ Type tests cover:
 - middleware implementation Layer requirements propagating separately into the application Layer;
 - context-service availability only for compatible handler and conversation input kinds;
 - callback-data string-codec, namespace, and typed choice-result inference;
+- unresolved `UpdateSource` when no polling or webhook Layer is selected;
 - final unresolved Layer requirements;
 - intentional invalid examples through `@ts-expect-error` fixtures.
 
@@ -702,6 +706,7 @@ Unit and integration tests cover:
 - equivalence between contextual helper calls and low-level Telegram service requests;
 - keyboard layout and generated markup output;
 - callback namespace collision, malformed payload, and 64-byte-limit handling;
+- explicit polling-versus-webhook source selection, including rejection when both are configured;
 - long-poll startup, webhook deletion, pending-update policy, allowed-update inference, offset advancement, batch redelivery, retry classification, and scoped stop;
 - empty and duplicate choice options, cancellation, invalid input, callback acknowledgement, and reply-keyboard removal;
 - conversation transitions, revision conflicts, timeout, and migration;
@@ -834,6 +839,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Node.js and Bun support; Bun production application.
 - PostgreSQL for domain data, conversations, scheduled and immediate delivery jobs, and deduplication.
 - One active bot instance initially.
+- Core tfx contains polling and webhook Layers; applications explicitly provide exactly one `UpdateSource`, with no default mode.
 - Long polling uses one in-flight `getUpdates`, inferred allowed-update types, batch settlement before contiguous acknowledgement, typed retries, and scoped cancellation.
 - One active conversation per bot/chat/user.
 - Sequential update handling per partition, concurrent across partitions using Effect fibers.
