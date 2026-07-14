@@ -79,8 +79,20 @@ Package boundaries may be refined by a slice implementation plan, but these rule
 
 Use **pnpm workspaces** as the package manager and workspace implementation. Pin the initial package manager through `packageManager: "pnpm@10.17.1"` and commit `pnpm-lock.yaml`. Use `workspace:` dependency ranges for internal packages.
 
+Commit a root `.mise.toml` as the canonical developer and CI toolchain definition. Initial exact pins are:
+
+```toml
+[tools]
+node = "24.18.0"
+bun = "1.3.14"
+pnpm = "10.17.1"
+```
+
+The `packageManager` field and mise pnpm version must match. Runtime compatibility metadata, CI matrices, and documentation must agree with the pinned Node and Bun release lines. Upgrades happen through reviewed commits that update all relevant pins and validation together. CI installs tools through mise before running repository commands.
+
 Use:
 
+- mise for reproducible local and CI tool versions;
 - pnpm recursive and filtered commands for package selection;
 - TypeScript project references for compilation order and incremental builds;
 - Changesets for package versioning, changelogs, and npm publication;
@@ -661,5 +673,5 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - `TelegramError` follows Effect `AiError` structure.
 - Update deduplication is an overridable service with no-op default; Carneloot uses PostgreSQL implementation.
 - Known Carneloot bugs and security issues are fixed.
-- pnpm workspaces, TypeScript project references, and Changesets; Bun remains a runtime, and Turborepo is deferred until measured need.
+- mise-pinned Node.js, Bun, and pnpm; pnpm workspaces, TypeScript project references, and Changesets; Bun remains a runtime, and Turborepo is deferred until measured need.
 - Four product slices, each with one or more bounded implementation plans.
