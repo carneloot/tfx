@@ -46,6 +46,7 @@ The work is divided into four slices. Every slice receives one or more separate 
 - Exactly-once Telegram message delivery; Telegram does not provide a general idempotency mechanism for sends.
 - Runtime loading of arbitrary JavaScript plugins from disk or a network location.
 - An initial Deno support guarantee.
+- A persistent interactive menu framework in the initial four slices; if later justified, it belongs in a separate `@tfx/menu` package.
 
 ## 4. Repository and packages
 
@@ -303,6 +304,16 @@ Helpers derive applicable chat ID, message ID, message-thread ID, business-conne
 
 Helpers are deliberately thin: no hidden retry, persistence, deduplication, or domain behavior. The full Telegram service remains available for every method that lacks a helper. Add further helpers only after repeated use across features or third-party packages demonstrates value; do not manually duplicate the complete Telegram Bot API surface.
 
+### 6.6 Keyboards and callback data
+
+Provide pure, immutable `ReplyKeyboard`, `InlineKeyboard`, and `CallbackData` modules in `tfx`. Keyboard builders produce generated Telegram reply-markup values and work inside or outside conversations. Prefer Effect-style constructors and combinators over mutable fluent classes.
+
+`CallbackData.make(namespace, codec)` binds a stable callback namespace to a `Schema.ConstraintCodec<any, string>`. Encoding adds the namespace, returns a branded callback-data string, and enforces Telegram's 1–64 byte limit. Decoding verifies the namespace before applying the codec. Bot construction rejects duplicate callback namespaces where statically assembled declarations expose them; runtime dispatch still rejects ambiguous registrations.
+
+`InlineKeyboard` supports rows and generated Telegram button variants, including callback, URL, and Web App buttons. `ReplyKeyboard` supports text rows plus one-time, resize, selective, persistent, and placeholder options represented by Telegram's generated markup types.
+
+These modules perform construction and validation only. They do not register handlers, wait for updates, or imply conversation state.
+
 ## 7. Conversations
 
 ### 7.1 Model
@@ -368,6 +379,47 @@ Within one update partition:
 7. fallback handling.
 
 Invalid conversation input does not advance state.
+
+### 7.6 Conversation input, choice, and prompt helpers
+
+Provide `ConversationInput`, `ConversationChoice`, and a yieldable `ConversationPrompt.ConversationPrompt` service in `@tfx/conversations`.
+
+Initial input constructors:
+
+- `ConversationInput.messageText(codec)`;
+- `ConversationInput.callbackData(callbackData)`;
+- `ConversationInput.reaction(codec)`;
+- `ConversationInput.command(command)`.
+
+Message-text and callback payload codecs must encode to string. Reaction input uses the generated Telegram reaction schema because its raw representation is structured update data. Schema decoding replaces replay-style `waitUntil` and form parsers: a step declares accepted input and optional invalid-input response, and the handler receives only decoded values. tfx does not expose imperative `await conversation.form.text()` or filtered-wait APIs because explicit state-machine steps own waiting and persistence.
+
+`ConversationChoice.inline(namespace, codec)`, `ConversationChoice.reply(namespace, codec)`, and `ConversationChoice.boolean({ yes, no })` create reusable typed choice declarations. The same declaration supplies prompt encoding and step input decoding, preventing render/parser mismatch. `ConversationPrompt.choice` renders dynamic options with text, labels, encoded values, columns, and optional cancellation.
+
+Choice input is a discriminated result:
+
+```ts
+type ChoiceResult<A> =
+  | { readonly _tag: "Selected"; readonly value: A }
+  | { readonly _tag: "Cancelled" }
+```
+
+Choice behavior:
+
+- requires a non-empty option collection and fails with typed `EmptyChoiceOptions` before sending an empty keyboard;
+- checks unique display labels for reply keyboards and unique encoded callback values for inline keyboards;
+- supports row/column layout and one-time reply keyboards;
+- can automatically acknowledge callback queries;
+- removes reply keyboards when a conversation completes or is cancelled;
+- supports a configurable invalid-input response;
+- never treats a typed selection as authorization: domain handlers recheck current pet/user access before mutation.
+
+Keep three concepts separate:
+
+1. Telegram command menu generated from `Command` declarations;
+2. one-shot inline or reply choices built from keyboards and `ConversationChoice`;
+3. persistent interactive menus with dynamic navigation and long-lived callbacks.
+
+The first two are required by Carneloot and belong in initial slices. Persistent menus are deferred to a future `@tfx/menu` package after demonstrated demand.
 
 ## 8. Runtime, concurrency, and delivery
 
@@ -588,6 +640,7 @@ Type tests cover:
 - conversation step state and transition inference;
 - middleware-provided and middleware-required services;
 - context-service availability only for compatible handler and conversation input kinds;
+- callback-data string-codec, namespace, and typed choice-result inference;
 - final unresolved Layer requirements;
 - intentional invalid examples through `@ts-expect-error` fixtures.
 
@@ -600,6 +653,9 @@ Unit and integration tests cover:
 - middleware ordering;
 - contextual helper derivation of chat, message, thread, business-connection, and callback identifiers;
 - equivalence between contextual helper calls and low-level Telegram service requests;
+- keyboard layout and generated markup output;
+- callback namespace collision, malformed payload, and 64-byte-limit handling;
+- empty and duplicate choice options, cancellation, invalid input, callback acknowledgement, and reply-keyboard removal;
 - conversation transitions, revision conflicts, timeout, and migration;
 - food parsing and timezone boundaries;
 - reminder scheduling;
@@ -629,7 +685,7 @@ Deliver the smallest complete tfx and Carneloot path for:
 - `/colocar_racao`;
 - durable feeding reminders.
 
-This slice includes only tfx capabilities needed by that path: Telegram generation/facade, declaration/builders, middleware, polling, conversations, PostgreSQL conversations/jobs/deduplication, and internal test support.
+This slice includes only tfx capabilities needed by that path: Telegram generation/facade, declaration/builders, middleware, contextual helpers, keyboards/callback data, conversation input/choice/prompt helpers, polling, PostgreSQL conversations/jobs/deduplication, and internal test support.
 
 Likely plan boundaries include Telegram transport, typed bot kernel, conversations, PostgreSQL infrastructure, and Carneloot owned-pet application behavior. Final boundaries are chosen during slice planning.
 
@@ -731,6 +787,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Immutable HttpApi-style bot declarations and exhaustive Layer-backed builders.
 - Middleware provides Effect services.
 - Scoped `UpdateContext`, `MessageContext`, and `CallbackQueryContext` services provide thin Telegram helpers while `Telegram.Telegram` remains the complete low-level API.
+- Pure immutable keyboard builders, namespaced typed callback data, and state-machine-native conversation input/choice/prompt helpers cover Carneloot interactions; persistent menus are deferred.
 - Ordered, schema-driven command parsing uses the pure `CommandInput` module; all text leaf codecs have encoded type `string` and propagate decoding services.
 - Generated Telegram schemas/client from pinned Photon OpenAPI plus tfx patches.
 - `Telegram.Telegram` is yieldable; public methods unwrap successful results.
