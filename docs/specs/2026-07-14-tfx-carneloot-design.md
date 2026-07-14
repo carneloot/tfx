@@ -390,6 +390,7 @@ Core tfx also exports `MemoryConversationStorage.layer`, a scoped in-process imp
 - current step;
 - encoded state;
 - optimistic revision;
+- last applied Telegram update ID;
 - creation, update, and expiration timestamps.
 
 Transitions use compare-and-swap revision updates. Version changes require declared schema migrations. Unknown or invalid persisted state fails through a typed storage or migration error and can be safely cancelled after reporting. Both implementations must pass the shared conversation-storage conformance suite; durability and multi-process tests apply only to PostgreSQL.
@@ -448,6 +449,29 @@ Keep three concepts separate:
 3. persistent interactive menus with dynamic navigation and long-lived callbacks.
 
 The first two are required by Carneloot and belong in initial slices. Persistent menus are deferred to a future `@tfx/menu` package after demonstrated demand.
+
+### 7.7 Consistency and side-effect boundary
+
+Conversation durability covers persisted step/state, schema version, optimistic revision, restart recovery, and duplicate transition prevention. It does not promise atomic Telegram sends or exactly-once arbitrary side effects.
+
+For one accepted conversation input, runtime ordering is:
+
+1. claim or recognize the Telegram update through configured deduplication;
+2. load conversation state and expected revision;
+3. decode input and run handler/domain effects;
+4. compare-and-swap the transition, revision, and last applied update ID;
+5. only after successful CAS, run target-step `enter` and optional transition `afterCommit` effects;
+6. complete the outer update claim.
+
+Domain effects executed before CAS must be idempotent using the Telegram `update_id` and domain identity; they may additionally use their own database transaction. Carneloot food mutations use update-derived uniqueness so retry after crash or revision conflict does not duplicate food. A CAS conflict does not run target-step `enter` or `afterCommit`; runtime reloads state and treats a transition already carrying the same last applied update ID as completed rather than applying that update to the next step.
+
+`transition.to`, `complete`, and cancellation may carry an ephemeral `afterCommit` Effect for success replies, reactions, or other non-durable follow-up. Target-step `enter` is also post-commit. These effects are not persisted. Failure or interruption after state commit does not roll state back and does not make the already-applied update eligible to transition again. Output failure is reported as handled-with-output-failure, and the current step can re-render its prompt on the next relevant input or through an explicit resume/re-render operation.
+
+Direct Telegram/context calls made inside the pre-CAS handler are outside tfx consistency guarantees and should not be used for critical conversation output. Non-idempotent Telegram sends are not blindly retried. A crash before a post-commit send can lose that output; an ambiguous transport outcome can still duplicate it. This is an explicit best-effort boundary, while update and domain processing remain at least once with application idempotency.
+
+Do not use `effect/unstable/workflow` as the initial conversation substrate. Its replay/activity model, cluster-backed durable engine, unstable API, and lack of explicit suspended-execution migrations do not match tfx's inspectable versioned step/state contract. A future optional integration may be considered for suitable long-running orchestration after the Effect API stabilizes, without changing the public conversation model.
+
+If production evidence later requires durable prompt delivery, add serializable conversation-output intents behind `JobStore` as a separate design change rather than silently strengthening initial guarantees.
 
 ## 8. Runtime, concurrency, and delivery
 
@@ -749,7 +773,8 @@ Unit and integration tests cover:
 - long-poll startup, webhook deletion, pending-update policy, allowed-update inference, offset advancement, batch redelivery, retry classification, and scoped stop;
 - webhook registration/control, secret-header validation, HttpApi mounting, bounded intake, completion acknowledgement, HTTP outcome mapping, concurrent duplicate claims, and scoped shutdown;
 - empty and duplicate choice options, cancellation, invalid input, callback acknowledgement, and reply-keyboard removal;
-- conversation transitions, revision conflicts, timeout, and migration;
+- conversation transitions, revision conflicts, duplicate last-applied update detection, timeout, and migration;
+- pre-CAS domain idempotency, post-CAS enter/afterCommit ordering, crash windows, and handled output failure;
 - explicit memory and PostgreSQL conversation- and job-store Layer selection;
 - shared storage semantics across memory and PostgreSQL implementations;
 - individual and aggregate `@tfx/postgres` Layer composition over one provided `PgClient`;
@@ -883,6 +908,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Long polling uses one in-flight `getUpdates`, inferred allowed-update types, batch settlement before contiguous acknowledgement, typed retries, and scoped cancellation.
 - Webhook delivery uses an explicitly mounted HttpApi route, Telegram secret header, explicit remote registration, bounded intake, post-dispatch acknowledgement, and Effect-scoped shutdown.
 - One active conversation per bot/chat/user.
+- Conversation durability covers versioned state and duplicate transition prevention; domain effects are idempotent before CAS and Telegram outputs are explicit best-effort post-commit effects. Effect Workflow is not the initial substrate.
 - Sequential update handling per partition, concurrent across partitions using Effect fibers.
 - Immutable HttpApi-style bot declarations and exhaustive Layer-backed builders.
 - Middleware provides Effect services; declarations track only request-scoped ordering contracts, while implementation infrastructure is inferred from Layers.
