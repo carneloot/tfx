@@ -435,7 +435,28 @@ The first two are required by Carneloot and belong in initial slices. Persistent
 
 Polling and webhook packages expose the same decoded update-source boundary. Raw values are decoded using generated Effect Schemas before dispatch.
 
-### 8.2 Effect concurrency
+### 8.2 Long polling
+
+Long polling repeatedly calls Telegram `getUpdates` with one in-flight HTTP request. Telegram holds that request until an update is available or the configured long-poll timeout expires, then returns a batch. An empty timeout response is normal and immediately starts the next request.
+
+`@tfx/polling` startup:
+
+1. initializes bot identity through the Telegram service;
+2. deletes any active webhook because Telegram does not permit webhook delivery and `getUpdates` for the same bot simultaneously;
+3. passes explicit `dropPendingUpdates` only to webhook deletion, defaulting to `false`;
+4. starts `getUpdates` with default 30-second long-poll timeout, optional batch limit, inferred or explicit allowed-update types, and current offset.
+
+The HTTP transport timeout must exceed the Telegram long-poll timeout by a configured margin. The bot declaration supplies the default `allowed_updates` set from its commands, conversations, callbacks, and update handlers. An explicit override is validated against observed declaration requirements so required update kinds are not silently omitted. Send `allowed_updates` on the first request and omit it on later requests because Telegram retains the setting.
+
+For each batch, tfx schema-decodes updates, dispatches them through deduplication and partitioned concurrency, and waits for the batch to settle before issuing an offset that confirms it. Telegram acknowledges every update below the next requested offset, so tfx advances only through updates in an accepted terminal state: successfully handled, already completed by deduplication, or deliberately classified as a permanent invalid update. A retryable dispatch or infrastructure failure prevents confirmation past that update and causes batch redelivery. With PostgreSQL deduplication, already completed members of the repeated batch are skipped; without deduplication, applications accept possible duplicate handling.
+
+Polling differs deliberately from grammY's simple runner, which advances by last tried update. tfx does not confirm an update merely because handler execution started. It still provides at-least-once rather than exactly-once processing.
+
+Polling retry behavior follows typed `TelegramError` reasons: `RateLimitError` honors `retryAfter`, transient network and internal Telegram failures use a configurable Effect schedule, and authentication or polling-conflict errors are terminal. A `409` commonly indicates an active webhook or another poller.
+
+Stopping the polling Layer aborts the in-flight `getUpdates`, stops intake, and follows scoped shutdown for active dispatch fibers. It does not issue a final acknowledgement request for unfinished updates.
+
+### 8.3 Effect concurrency
 
 No public worker, thread, or Promise-pool abstraction is used for update dispatch.
 
@@ -459,13 +480,13 @@ update.chatId
 
 This preserves ordering for a chat or user's conversation while allowing unrelated chats to run concurrently.
 
-### 8.3 Optional update deduplication
+### 8.4 Optional update deduplication
 
 Core internal code always yields `UpdateDeduplicator.UpdateDeduplicator`. It is a `Context.Reference` with a no-op default. Applications override it by providing a Layer; no deduplication plugin is installed.
 
 `@tfx/dedup-postgres` implements persisted claims with processing status, lease expiration, attempts, completion time, and retention cleanup. Carneloot provides this Layer by default.
 
-Polling does not acknowledge beyond a fetched batch until dispatch completes. If Telegram redelivers a batch, completed update IDs are skipped. Webhook success returns `2xx`; retryable failures permit Telegram retry.
+Polling acknowledgement follows the accepted-terminal-state and contiguous-offset rules above. If Telegram redelivers a batch, completed update IDs are skipped. Webhook success returns `2xx`; retryable failures permit Telegram retry.
 
 Delivery remains at least once. Critical Carneloot writes use update-derived idempotency keys.
 
@@ -664,6 +685,7 @@ Unit and integration tests cover:
 - equivalence between contextual helper calls and low-level Telegram service requests;
 - keyboard layout and generated markup output;
 - callback namespace collision, malformed payload, and 64-byte-limit handling;
+- long-poll startup, webhook deletion, pending-update policy, allowed-update inference, offset advancement, batch redelivery, retry classification, and scoped stop;
 - empty and duplicate choice options, cancellation, invalid input, callback acknowledgement, and reply-keyboard removal;
 - conversation transitions, revision conflicts, timeout, and migration;
 - explicit memory and PostgreSQL conversation-storage Layer selection;
@@ -793,6 +815,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Node.js and Bun support; Bun production application.
 - PostgreSQL for domain data, conversations, scheduled and immediate delivery jobs, and deduplication.
 - One active bot instance initially.
+- Long polling uses one in-flight `getUpdates`, inferred allowed-update types, batch settlement before contiguous acknowledgement, typed retries, and scoped cancellation.
 - One active conversation per bot/chat/user.
 - Sequential update handling per partition, concurrent across partitions using Effect fibers.
 - Immutable HttpApi-style bot declarations and exhaustive Layer-backed builders.
