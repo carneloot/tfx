@@ -1,0 +1,15 @@
+[submodule ".repos/effect"]
+	path = .repos/effect
+	url = https://github.com/effect-TS/effect-smol
+[submodule ".repos/grammy"]
+	path = .repos/grammy
+	url = https://github.com/grammyjs/grammy
+[submodule ".repos/grammy-storages"]
+	path = .repos/grammy-storages
+	url = https://github.com/grammyjs/storages
+[submodule ".repos/grammy-conversations"]
+	path = .repos/grammy-conversations
+	url = https://github.com/grammyjs/conversations
+[submodule ".repos/carneloot-bot"]
+	path = .repos/carneloot-bot
+	url = https://github.com/carneloot/carneloot-bot
