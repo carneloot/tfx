@@ -644,6 +644,7 @@ pet_food_entries
 api_keys
 notification_templates
 notification_subscriptions
+notification_events
 notification_deliveries
 
 tfx_conversations
@@ -692,6 +693,20 @@ Correct old behavior:
 - corrected reply entries reschedule reminders when required;
 - webhook secrets are validated;
 - partial notification delivery is represented accurately through the HTTP contract defined below.
+
+### 10.4 Notification events and deliveries
+
+Notification persistence is Carneloot application domain, not tfx infrastructure or `@tfx/postgres`. One `notification_event` represents one external notification invocation, feeding reminder, or food-added notification. Recipient rows in `notification_deliveries` correlate every attempted Telegram delivery to that event.
+
+An event stores kind, owner, optional template and pet references, and creation time. A delivery stores event, recipient user/chat, recipient role (`owner` or `subscriber`), optional Telegram message ID, status (`pending`, `sent`, `failed`, or `unknown`), error summary, and timestamps. Sent Telegram identity is unique by `(bot_id, recipient_chat_id, telegram_message_id)`.
+
+Before sending, Carneloot transactionally creates event plus pending recipient deliveries. It then sends recipients concurrently and updates each row independently: Telegram failure becomes `failed`; Telegram success plus persisted message ID becomes `sent`; Telegram success followed by an unconfirmed history write remains `pending` and recovery classifies it `unknown`. Unknown delivery is never retried automatically because Telegram may already have accepted it. No Telegram send starts if initial event/delivery transaction fails.
+
+Generic notification HTTP success counts only persisted `sent` rows. All sent returns `200`; mixed sent/failed/unknown returns `207`; no confirmed sent delivery returns `502`. Database failure after an external send cannot be reported as success.
+
+Reply routing looks up sent delivery by bot/chat/replied-message identity, loads its event, and then loads owner's sent delivery for the same event. Subscriber reply forwards to owner while replying to that exact owner message. Owner-role self-reply is rejected. Feeding-reminder event carries pet identity for safe pet-food routing. Food-added events remain silent but provide per-recipient audit status.
+
+Job-based notification delivery never retries recipients already confirmed `sent`; recipient delivery state scopes retry decisions. Crash after Telegram accepts a message but before status persistence remains an explicit unknown boundary rather than falsely sent or safely retryable.
 
 ## 11. HTTP API and deployment
 
@@ -820,6 +835,7 @@ Unit and integration tests cover:
 - job claims and retries;
 - one-step and multi-step job payload migration, persisted migration, missing/invalid/newer-version quarantine, unknown declaration, and quarantine release;
 - transactional food, reminder-job, and immediate delivery-job changes;
+- notification event/pending-delivery creation before sends, independent recipient outcomes, unknown send/history window, partial HTTP responses, exact owner-event reply correlation, and chat-scoped message identity;
 - importer validation.
 
 Use `TestClock` for timing behavior and real PostgreSQL for SQL semantics.
@@ -939,6 +955,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Effect-native APIs only.
 - Node.js and Bun support; Bun production application.
 - PostgreSQL for domain data, conversations, scheduled and immediate delivery jobs, and deduplication.
+- Carneloot owns notification event/delivery persistence and exact reply correlation; these tables and services are not tfx infrastructure.
 - Durable job payloads use named `VersionedSchema` nodes, linear migrations, and recoverable quarantine for incompatible stored work.
 - One active bot instance initially.
 - Core tfx contains polling and webhook delivery descriptors backed by internal Layers; `BotRuntime.layer` requires exactly one descriptor and applications never provide `UpdateSource` directly.
