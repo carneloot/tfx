@@ -74,7 +74,7 @@ Package boundaries may be refined by a slice implementation plan, but these rule
 
 ### 4.1 Core and Effect platform boundary
 
-Follow Effect v4's package architecture: portable definitions and programs live in core, while backend- or host-specific implementations live outside core. `tfx` therefore owns bot declarations/runtime, Telegram contracts/facade, update sources, conversations, jobs, storage contracts, contextual helpers, and explicit portable memory Layers. Expose focused subpath modules such as `tfx/Bot`, `tfx/Command`, `tfx/Conversation`, `tfx/ConversationStorage`, `tfx/Job`, `tfx/JobStore`, `tfx/Polling`, and `tfx/Webhook`.
+Follow Effect v4's package architecture: portable definitions and programs live in core, while backend- or host-specific implementations live outside core. `tfx` therefore owns bot declarations/runtime, Telegram contracts/facade, update sources, conversations, jobs, storage contracts, contextual helpers, and explicit portable memory Layers. Expose focused subpath modules such as `tfx/Bot`, `tfx/Command`, `tfx/Conversation`, `tfx/ConversationStorage`, `tfx/Job`, `tfx/JobStore`, `tfx/VersionedSchema`, `tfx/Polling`, and `tfx/Webhook`.
 
 Do not create `@tfx/platform-node` or `@tfx/platform-bun`. Core tfx requires Effect's platform-neutral services, including HTTP client/server contracts, and leaves their concrete Layers unresolved. Node.js applications import implementations directly from `@effect/platform-node`; Bun applications, including Carneloot production, import directly from `@effect/platform-bun`. `Webhook.make` carries the platform-neutral HttpApi route, while application code selects and provides the actual Effect HTTP server Layer. The internal polling source Layer and Telegram facade similarly consume the provided Effect HTTP client service.
 
@@ -581,10 +581,31 @@ Core `tfx/Job` and `tfx/JobStore` own storage-neutral typed job declarations, jo
 A job declaration contains:
 
 - literal job name;
-- version;
-- payload schema;
+- a `VersionedSchema` payload history whose final node supplies current version and payload schema;
 - retry policy;
 - handler requirements.
+
+Declare payload evolution through named version nodes and a linear history:
+
+```ts
+const V1 = VersionedSchema.version(1, FeedingReminderV1)
+const V2 = VersionedSchema.version(2, FeedingReminderV2)
+
+const FeedingReminderPayload = VersionedSchema.history(V1).pipe(
+  VersionedSchema.to(V2, migrateV1ToV2)
+)
+
+const FeedingReminder = Job.make("feeding-reminder", {
+  payload: FeedingReminderPayload,
+  retry: FeedingReminderRetry
+})
+```
+
+`VersionedSchema.to` infers source type from current history tail and destination type/version from named node, so migration declarations do not repeat `from` or `to` numbers. The final node determines current job payload type and persisted version. Version numbers are explicit and stable; construction validates strictly contiguous history with no duplicates or gaps. Migration functions are deterministic, independently testable, require no services, and perform no external side effects. The same abstraction may support conversation-state evolution where its derived state history fits.
+
+On claim, current-version payload decodes and executes. Older payload walks contiguous migrations, then persists migrated payload/version in same transaction before first execution attempt. Migration does not increment normal attempt count. Missing migration, invalid stored payload, or unknown job declaration moves row to recoverable `quarantined` status with structured reason; normal retry schedule does not repeat deterministic migration failure. A stored version newer than running declaration is quarantined as `UnsupportedNewerVersion`, never executed or deleted by older code. Compatible deployment or operator action may release quarantined work.
+
+Job statuses are `scheduled`, `running`, `completed`, `failed`, `quarantined`, and `cancelled`. Quarantine records reason, stored/current versions, schema issue when available, and timestamp. Job claim fencing prevents an old lease holder from completing work after takeover.
 
 Scheduling can use a stable conflict key. Carneloot uses one `feeding-reminder:<petId>` key per pet, so a newer latest feeding atomically replaces the prior schedule.
 
@@ -788,6 +809,7 @@ Unit and integration tests cover:
 - reminder scheduling;
 - deduplication leases;
 - job claims and retries;
+- one-step and multi-step job payload migration, persisted migration, missing/invalid/newer-version quarantine, unknown declaration, and quarantine release;
 - transactional food, reminder-job, and immediate delivery-job changes;
 - importer validation.
 
@@ -908,6 +930,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Effect-native APIs only.
 - Node.js and Bun support; Bun production application.
 - PostgreSQL for domain data, conversations, scheduled and immediate delivery jobs, and deduplication.
+- Durable job payloads use named `VersionedSchema` nodes, linear migrations, and recoverable quarantine for incompatible stored work.
 - One active bot instance initially.
 - Core tfx contains polling and webhook delivery descriptors backed by internal Layers; `BotRuntime.layer` requires exactly one descriptor and applications never provide `UpdateSource` directly.
 - Long polling uses one in-flight `getUpdates`, inferred allowed-update types, batch settlement before contiguous acknowledgement, typed retries, and scoped cancellation.
