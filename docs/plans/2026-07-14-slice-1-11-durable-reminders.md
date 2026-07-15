@@ -109,7 +109,7 @@ git commit -m "feat(carneloot): schedule durable feeding reminders"
 
 - [ ] **Step 1: Write Telegram outcome tests**
 
-Definitive success→sent with message identity. 429/explicit retry-after→failed retryable with `delivery.retry_at = now + retryAfter` and `JobOutcome.retryableFailure(error, retryAfter)` using the same delay; only failed recipients whose retry_at is due are claimable on that run. Permanent 400/403→failed permanent. Network timeout, interruption, malformed response, or post-send persistence uncertainty→unknown. Materialization remains idempotent; sent/unknown/permanent-failed recipients skip on job retry, future retryable failures keep the event open but are not claimed early, and mixed-recipient tests cover success plus due/future retryable outcomes.
+Definitive success→sent with message identity. 429/explicit retry-after→failed retryable with `delivery.retry_at = now + retryAfter`; only failed recipients whose retry_at is due are claimable on that run. After processing all currently due recipients, any remaining retryable failed delivery—including runs where none is currently claimable—returns `JobOutcome.retryableFailure(error, max(0, earliestRetryAt - now))`. Multiple recipient delays aggregate to the earliest `retry_at`; success is returned only when the exact event terminal-state rule is satisfied. Permanent 400/403→failed permanent. Network timeout, interruption, malformed response, or post-send persistence uncertainty→unknown. Materialization remains idempotent; sent/unknown/permanent-failed recipients skip on job retry, future retryable failures keep the event open but are not claimed early, and mixed-recipient tests cover success plus due/future retryable outcomes.
 
 - [ ] **Step 2: Implement recipient resolution/materialization**
 
@@ -126,7 +126,7 @@ Compute current pet-day total:
 
 - [ ] **Step 4: Implement fenced send**
 
-Claim transaction commits before Telegram call. Call Telegram. Finalize matching generation. Map Telegram results by certainty: a definitive API response (including 429 retry-after and permanent 400/403) is safe to classify; ambiguous transport timeout/disconnect, malformed response after possible send, persistence uncertainty, or fiber interruption after the sending fence becomes `unknown`. Job-worker interruption before a definitive delivery outcome leaves job/delivery leases for recovery and is never converted to permanent/fatal notification outcome. Complete the event only under the exact terminal-state rule above.
+Claim transaction commits before Telegram call. Call Telegram. Finalize matching generation. Map Telegram results by certainty: a definitive API response (including 429 retry-after and permanent 400/403) is safe to classify; ambiguous transport timeout/disconnect, malformed response after possible send, persistence uncertainty, or fiber interruption after the sending fence becomes `unknown`. Job-worker interruption before a definitive delivery outcome leaves job/delivery leases for recovery and is never converted to permanent/fatal notification outcome. Complete the event only under the exact terminal-state rule above; otherwise schedule the job at the earliest remaining retryable `retry_at`.
 
 - [ ] **Step 5: Run and commit**
 

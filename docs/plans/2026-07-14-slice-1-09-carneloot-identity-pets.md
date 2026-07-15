@@ -107,7 +107,7 @@ New owner: `/adicionar_pet` → `Qual o nome do seu pet?` → `Rex` → `Pet cad
 
 - [ ] **Step 2: Declare/implement AddPet conversation**
 
-Single `name` step uses message-text PetName codec. `CurrentUser` is request context, not authorization proof: final mutation passes only persisted primitive user/pet IDs and the repository re-queries current identity and ownership in its transaction. Handler writes through the use case, then completes with a conversation transition `afterCommit` success reply. `/cancelar` exits/removes keyboard.
+Single `name` step uses message-text PetName codec. `CurrentUser` is request context, not authorization proof: final mutation passes persisted primitive user/pet IDs, locks the pet, and rechecks `owner_id` against the supplied user ID in its transaction. If current Telegram identity must also be revalidated, pass `botId` and `telegramUserId` explicitly and query `telegram_identities`; do not claim IDs alone can re-query identity. Handler writes through the use case, then completes with a conversation transition `afterCommit` success reply. `/cancelar` exits/removes keyboard.
 
 - [ ] **Step 3: Implement list handler**
 
