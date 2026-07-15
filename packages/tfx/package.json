@@ -12,7 +12,12 @@
     ".": "./src/index.ts",
     "./Telegram": "./src/Telegram.ts",
     "./TelegramError": "./src/TelegramError.ts",
-    "./TelegramSchemas": "./src/TelegramSchemas.ts"
+    "./TelegramSchemas": "./src/TelegramSchemas.ts",
+    "./Bot": "./src/Bot.ts",
+    "./BotGroup": "./src/BotGroup.ts",
+    "./Command": "./src/Command.ts",
+    "./CommandInput": "./src/CommandInput.ts",
+    "./BotBuilder": "./src/BotBuilder.ts"
   },
   "files": [
     "dist",
@@ -24,7 +29,12 @@
       ".": "./dist/index.js",
       "./Telegram": "./dist/Telegram.js",
       "./TelegramError": "./dist/TelegramError.js",
-      "./TelegramSchemas": "./dist/TelegramSchemas.js"
+      "./TelegramSchemas": "./dist/TelegramSchemas.js",
+      "./Bot": "./dist/Bot.js",
+      "./BotGroup": "./dist/BotGroup.js",
+      "./Command": "./dist/Command.js",
+      "./CommandInput": "./dist/CommandInput.js",
+      "./BotBuilder": "./dist/BotBuilder.js"
     }
   },
   "peerDependencies": {
