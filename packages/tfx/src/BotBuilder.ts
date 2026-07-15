@@ -4,17 +4,22 @@ import type * as Bot from "./Bot.js"
 import type * as BotGroup from "./BotGroup.js"
 import type * as Command from "./Command.js"
 import type * as CommandInput from "./CommandInput.js"
+import type * as Middleware from "./Middleware.js"
+import { MessageContext } from "./MessageContext.js"
+import { UpdateContext } from "./UpdateContext.js"
 import { HandlerRegistry, type HandlerEntry } from "./internal/bot/HandlerRegistry.js"
 
 type GroupsOf<B> = B extends Bot.Bot<any, infer Groups> ? Groups : never
 type GroupAt<B, Id extends keyof GroupsOf<B>> = GroupsOf<B>[Id] extends BotGroup.BotGroup<any, any> ? GroupsOf<B>[Id] : never
 type CommandsOf<G> = G extends BotGroup.BotGroup<any, infer Commands> ? Commands : never
-type CommandAt<G, Id extends keyof CommandsOf<G>> = CommandsOf<G>[Id] extends Command.Command<any, any, any>
+type CommandAt<G, Id extends keyof CommandsOf<G>> = CommandsOf<G>[Id] extends Command.Command<any, any, any, any>
   ? CommandsOf<G>[Id]
   : never
-type Decoded<C> = C extends Command.Command<any, infer Input, any> ? CommandInput.Decoded<Input> : never
-type InputRequirements<C> = C extends Command.Command<any, infer Input, any> ? CommandInput.Requirements<Input> : never
-type DeclaredError<C> = C extends Command.Command<any, any, infer Error> ? Error : never
+type Decoded<C> = C extends Command.Command<any, infer Input, any, any> ? CommandInput.Decoded<Input> : never
+type InputRequirements<C> = C extends Command.Command<any, infer Input, any, any> ? CommandInput.Requirements<Input> : never
+type DeclaredError<C> = C extends Command.Command<any, any, infer Error, any> ? Error : never
+type MiddlewareProvided<C> = C extends Command.Command<any, any, any, infer M> ? Middleware.ProvidedBy<M> : never
+type HandlerRequirements<C, R> = Exclude<R, UpdateContext | MessageContext | MiddlewareProvided<C>>
 
 export interface Handlers<G extends BotGroup.BotGroup<any, any>, Remaining extends keyof CommandsOf<G>, Requirements> {
   /** Phantom state tracks implementations still required. */
@@ -25,11 +30,12 @@ export interface Handlers<G extends BotGroup.BotGroup<any, any>, Remaining exten
   handle<const Id extends Remaining, A, E extends DeclaredError<CommandAt<G, Id>>, R>(
     id: Id,
     handler: (input: Decoded<CommandAt<G, Id>>) => Effect.Effect<A, E, R>
-  ): Handlers<G, Exclude<Remaining, Id>, Requirements | R | InputRequirements<CommandAt<G, Id>>>
+  ): Handlers<G, Exclude<Remaining, Id>, Requirements | HandlerRequirements<CommandAt<G, Id>, R> | InputRequirements<CommandAt<G, Id>>>
 }
 
 const handlers = <G extends BotGroup.BotGroup<any, any>, Remaining extends keyof CommandsOf<G>, R>(
   groupId: string,
+  commands: Readonly<Record<string, Command.Command<any, any, any, any>>>,
   entries: ReadonlyArray<HandlerEntry>
 ): Handlers<G, Remaining, R> => ({
   _remaining: undefined as never,
@@ -37,7 +43,7 @@ const handlers = <G extends BotGroup.BotGroup<any, any>, Remaining extends keyof
   _entries: entries,
   handle(id, handler) {
     if (entries.some((entry) => entry.commandId === id)) throw new Error(`Duplicate implementation '${String(id)}' in group '${groupId}'`)
-    return handlers(groupId, [...entries, { groupId, commandId: String(id), handler }])
+    return handlers(groupId, commands, [...entries, { groupId, commandId: String(id), handler, middleware: commands[String(id)]!.middleware }])
   }
 })
 
@@ -53,6 +59,6 @@ export const group = <
   ) => Handlers<GroupAt<B, Id>, never, R>
 ): Layer.Layer<HandlerRegistry, never, R> => {
   const declaration = bot.groups[id] as GroupAt<B, Id>
-  const completed = implement(handlers(String(declaration.id), []))
+  const completed = implement(handlers(String(declaration.id), declaration.commands, []))
   return Layer.succeed(HandlerRegistry, Object.freeze([...completed._entries])) as Layer.Layer<HandlerRegistry, never, R>
 }

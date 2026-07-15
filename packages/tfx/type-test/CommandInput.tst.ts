@@ -21,6 +21,12 @@ void requirement
 const noEncodingRequirement: CommandInput.Requirements<ReturnType<typeof CommandInput.argument<"x", typeof serviced>>> = {} as DecodeService
 void noEncodingRequirement
 
+const many = CommandInput.repeated(CommandInput.argument("amount", serviced))
+const manyOutput: CommandInput.Decoded<typeof many> = { amount: [1, 2] }
+const manyRequirement: CommandInput.Requirements<typeof many> = {} as DecodeService
+void manyOutput
+void manyRequirement
+
 // @ts-expect-error command arguments must be encoded as strings
 CommandInput.argument("bad", numberEncoded)
 

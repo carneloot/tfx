@@ -18,7 +18,8 @@ export interface Middleware<
   readonly id: Id
   readonly scope: S
   readonly provides: Provides
-  /** Type witnesses only. Request prerequisites are supplied by earlier middleware. */
+  /** Request prerequisites, in declaration order. */
+  readonly requires: ReadonlyArray<AnyKey>
   readonly _requires: Requires
   readonly _error: Error
 }
@@ -43,15 +44,21 @@ export const make = <
   id,
   scope: options.scope,
   provides: options.provides,
+  requires: Object.freeze([...(options.requires ?? [])]),
   _requires: undefined as Identifier<Requires[number]>,
   _error: undefined as Error
 })
 
-type AnyMiddleware = Middleware<string, Scope, AnyKey, any, any>
-type Provided<D> = D extends Middleware<any, any, infer K, any, any> ? Identifier<K> : never
-type Required<D> = D extends Middleware<any, any, any, infer R, any> ? R : never
-type DeclaredError<D> = D extends Middleware<any, any, any, any, infer E> ? E : never
+export type AnyMiddleware = Middleware<string, Scope, AnyKey, any, any>
+export type Provided<D> = D extends Middleware<any, any, infer K, any, any> ? Identifier<K> : never
+export type Required<D> = D extends Middleware<any, any, any, infer R, any> ? R : never
+export type ProvidedBy<Items extends ReadonlyArray<AnyMiddleware>> = Provided<Items[number]>
+export type ValidOrder<Items extends ReadonlyArray<AnyMiddleware>, Available = never> =
+  Items extends readonly [infer Head extends AnyMiddleware, ...infer Tail extends readonly AnyMiddleware[]]
+    ? [Required<Head>] extends [Available] ? ValidOrder<Tail, Available | Provided<Head>> : false
+    : true
 
+type DeclaredError<D> = D extends Middleware<any, any, any, any, infer E> ? E : never
 export interface Application<D extends AnyMiddleware, Infrastructure, Error> {
   readonly declaration: D
   readonly effect: Effect.Effect<Service<D["provides"]>, Error, Required<D> | Infrastructure>

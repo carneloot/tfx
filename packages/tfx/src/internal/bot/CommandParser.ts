@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect"
 import type * as Schema from "effect/Schema"
-import { decode, type CommandInput, type Decoded, type Requirements, type RuntimeInput } from "../../CommandInput.js"
+import { CommandInputError, decode, type CommandInput, type Decoded, type Requirements, type RuntimeInput } from "../../CommandInput.js"
 
 export interface MessageEntity {
   readonly type: string
@@ -48,27 +48,40 @@ const remainder = (cursor: Cursor): string | undefined => {
   return value
 }
 
-const parseNode = (input: RuntimeInput, cursor: Cursor): Effect.Effect<any, Schema.SchemaError, any> => {
+const missing = (input: RuntimeInput) => Effect.fail(new CommandInputError("MissingInput", `Missing command argument '${input.name ?? "input"}'`))
+
+const parseNode = (input: RuntimeInput, cursor: Cursor): Effect.Effect<any, Schema.SchemaError | CommandInputError, any> => {
   switch (input._tag) {
     case "None": return Effect.succeed({})
     case "Argument": {
       const value = token(cursor)
       return value === undefined
-        ? Effect.die(new Error(`Missing command argument '${input.name}'`))
+        ? missing(input)
         : Effect.map(decode(input.schema!, value), (decoded) => ({ [input.name!]: decoded }))
     }
     case "Rest": {
       const value = remainder(cursor)
       return value === undefined
-        ? Effect.die(new Error(`Missing command argument '${input.name}'`))
+        ? missing(input)
         : Effect.map(decode(input.schema!, value), (decoded) => ({ [input.name!]: decoded }))
     }
     case "Repeated": {
-      const values: Array<string> = []
-      let value: string | undefined
-      while ((value = token(cursor)) !== undefined) values.push(value)
-      if (values.length === 0) return Effect.die(new Error(`Missing command argument '${input.name}'`))
-      return Effect.map(Effect.all(values.map((value) => decode(input.schema!, value))), (decoded) => ({ [input.name!]: decoded }))
+      const parts: Array<Record<string, unknown>> = []
+      const loop = (): Effect.Effect<Record<string, ReadonlyArray<unknown>>, Schema.SchemaError | CommandInputError, any> => {
+        skipWhitespace(cursor)
+        if (cursor.offset === cursor.source.length) {
+          if (parts.length === 0) return missing(input.input!)
+          const result: Record<string, Array<unknown>> = {}
+          for (const part of parts) for (const [name, value] of Object.entries(part)) (result[name] ??= []).push(value)
+          return Effect.succeed(result)
+        }
+        const before = cursor.offset
+        return Effect.flatMap(parseNode(input.input!, cursor), (part) => {
+          if (cursor.offset === before) return Effect.fail(new CommandInputError("InvalidSequence", "Repeated input did not consume command text"))
+          parts.push(part); return loop()
+        })
+      }
+      return loop()
     }
     case "Optional": {
       const before = cursor.offset
@@ -86,7 +99,7 @@ const parseNode = (input: RuntimeInput, cursor: Cursor): Effect.Effect<any, Sche
 export const parse = <I extends CommandInput<any, any, any, any, any>>(
   input: I,
   source: string
-): Effect.Effect<Decoded<I>, Schema.SchemaError, Requirements<I>> =>
+): Effect.Effect<Decoded<I>, Schema.SchemaError | CommandInputError, Requirements<I>> =>
   parseNode(input as RuntimeInput, { source, offset: 0 })
 
 export const parseCommand = <I extends CommandInput<any, any, any, any, any>>(
@@ -94,7 +107,7 @@ export const parseCommand = <I extends CommandInput<any, any, any, any, any>>(
   message: CommandMessage,
   commandName: string,
   botUsername: string
-): Effect.Effect<Decoded<I> | undefined, Schema.SchemaError, Requirements<I>> => {
+): Effect.Effect<Decoded<I> | undefined, Schema.SchemaError | CommandInputError, Requirements<I>> => {
   const source = matchCommand(message, commandName, botUsername)
   return source === undefined ? Effect.succeed(undefined) : parse(input, source)
 }

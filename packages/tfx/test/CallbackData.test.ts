@@ -18,14 +18,15 @@ describe("CallbackData", () => {
   })
 
   it("rejects duplicate namespaces", () => {
-    expect(() => CallbackData.registry(CallbackData.make("pet", Schema.String), CallbackData.make("pet", Schema.String)))
-      .toThrow("Duplicate callback namespace")
+    const values: ReadonlyArray<CallbackData.CallbackData<string>> = [CallbackData.make("pet", Schema.String), CallbackData.make("pet", Schema.String)]
+    expect(() => CallbackData.registry(...values)).toThrow("Duplicate callback namespace")
   })
 
   it("accepts 64 bytes and rejects 65 bytes", async () => {
     const value = CallbackData.make("n", Schema.String)
     await expect(run(value.encode("x".repeat(62)))).resolves.toHaveLength(64)
     await expect(run(value.encode("x".repeat(63)))).rejects.toMatchObject({ reason: "ByteLimit" })
+    await expect(run(value.decode(`n:${"x".repeat(63)}`))).rejects.toMatchObject({ reason: "ByteLimit" })
   })
 
   it("counts multibyte payloads as UTF-8 bytes", async () => {
