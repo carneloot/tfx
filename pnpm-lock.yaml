@@ -36,6 +36,39 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@types/node@24.13.3)(vite@8.1.4(@types/node@24.13.3)(yaml@2.9.0))
 
+  apps/carneloot-bot:
+    dependencies:
+      '@effect/platform-bun':
+        specifier: 4.0.0-beta.98
+        version: 4.0.0-beta.98(effect@4.0.0-beta.98)
+      '@tfx/postgres':
+        specifier: workspace:^
+        version: link:../../packages/postgres
+      effect:
+        specifier: 4.0.0-beta.98
+        version: 4.0.0-beta.98
+      tfx:
+        specifier: workspace:^
+        version: link:../../packages/tfx
+
+  packages/postgres:
+    dependencies:
+      '@effect/sql-pg':
+        specifier: 4.0.0-beta.98
+        version: 4.0.0-beta.98(effect@4.0.0-beta.98)
+      effect:
+        specifier: 4.0.0-beta.98
+        version: 4.0.0-beta.98
+      tfx:
+        specifier: workspace:^
+        version: link:../tfx
+
+  packages/tfx:
+    dependencies:
+      effect:
+        specifier: 4.0.0-beta.98
+        version: 4.0.0-beta.98
+
 packages:
 
   '@babel/runtime@7.29.7':

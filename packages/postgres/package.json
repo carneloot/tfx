@@ -1,0 +1,29 @@
+{
+  "name": "@tfx/postgres",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": [],
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "tfx": "workspace:^"
+  },
+  "peerDependencies": {
+    "@effect/sql-pg": "4.0.0-beta.98",
+    "effect": "4.0.0-beta.98"
+  }
+}
