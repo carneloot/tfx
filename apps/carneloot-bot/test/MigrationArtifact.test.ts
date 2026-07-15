@@ -6,15 +6,23 @@ import {
 	migration0001Checksum,
 	migration0001Sql,
 } from '../src/postgres/Migration0001Sql.js';
-describe('identity migration artifact', () => {
-	it('matches committed SQL and immutable SHA-256 checksum', () => {
-		const source = readFileSync(
-			new URL('../migrations/0001_identity_pets.sql', import.meta.url),
-			'utf8',
-		);
-		expect(migration0001Sql).toBe(source);
-		expect(createHash('sha256').update(source).digest('hex')).toBe(
-			migration0001Checksum,
-		);
-	});
+import {
+	migration0002Checksum,
+	migration0002Sql,
+} from '../src/postgres/Migration0002Sql.js';
+describe('application migration artifacts', () => {
+	it.each([
+		['0001_identity_pets.sql', migration0001Sql, migration0001Checksum],
+		['0002_pet_food.sql', migration0002Sql, migration0002Checksum],
+	] as const)(
+		'matches committed %s bytes and SHA-256',
+		(file, sql, checksum) => {
+			const source = readFileSync(
+				new URL(`../migrations/${file}`, import.meta.url),
+				'utf8',
+			);
+			expect(sql).toBe(source);
+			expect(createHash('sha256').update(source).digest('hex')).toBe(checksum);
+		},
+	);
 });
