@@ -81,7 +81,16 @@ export const execute = (
 					source.botId,
 					source.updateId,
 				);
-				if (replay !== undefined) return { entry: replay, replayed: true };
+				if (replay !== undefined) {
+					const settings = yield* repository.getSettings(access.petId);
+					const latest = yield* repository.latestEntry(access.petId);
+					return {
+						entry: replay,
+						replayed: true,
+						latest: latest?.id === replay.id,
+						timeZone: settings?.timeZone ?? null,
+					};
+				}
 				const amountMg = yield* Schema.decodeUnknownEffect(FoodAmount)(
 					amountInput,
 				).pipe(
@@ -98,10 +107,11 @@ export const execute = (
 							message: 'Pet day start is not configured',
 						}),
 					);
-				const fedAt = yield* FoodDateTime.parse(
-					foodDateTimeInput,
-					settings.timeZone,
-				);
+				const now = yield* Clock.currentTimeMillis;
+				const fedAt =
+					foodDateTimeInput.trim().length === 0
+						? now
+						: yield* FoodDateTime.parse(foodDateTimeInput, settings.timeZone);
 				const duplicate = yield* repository.findBusinessDuplicate(
 					access.petId,
 					fedAt,
@@ -112,7 +122,6 @@ export const execute = (
 							message: 'A food entry already exists within one minute',
 						}),
 					);
-				const now = yield* Clock.currentTimeMillis;
 				const id = Schema.decodeUnknownSync(FoodEntryId)(crypto.randomUUID());
 				const entry = yield* repository.insert({
 					id,
@@ -124,13 +133,19 @@ export const execute = (
 					now,
 				});
 				const latest = yield* repository.latestEntry(access.petId);
-				if (latest?.id === entry.id && settings.reminderDelayMs !== null)
+				const isLatest = latest?.id === entry.id;
+				if (isLatest && settings.reminderDelayMs !== null)
 					yield* scheduler.replaceForLatest({
 						petId: access.petId,
 						foodEntryId: entry.id,
 						runAt: entry.fedAt + settings.reminderDelayMs,
 					});
-				return { entry, replayed: false };
+				return {
+					entry,
+					replayed: false,
+					latest: isLatest,
+					timeZone: settings.timeZone,
+				};
 			}),
 		);
 	});

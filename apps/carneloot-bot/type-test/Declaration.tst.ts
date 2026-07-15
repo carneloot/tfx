@@ -23,7 +23,9 @@ BotBuilder.group(Carneloot, 'petFood', (handlers) =>
 		.handle('configureDayStart', () => Effect.map(CurrentUser, () => undefined))
 		.handle('configureReminderDelay', () =>
 			Effect.map(CurrentUser, () => undefined),
-		),
+		)
+		.handle('foodStatus', () => Effect.map(CurrentUser, () => undefined))
+		.handle('addFood', () => Effect.map(CurrentUser, () => undefined)),
 );
 class Audit extends Context.Service<Audit, { readonly id: string }>()(
 	'types/Audit',

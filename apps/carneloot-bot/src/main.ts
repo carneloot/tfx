@@ -23,6 +23,7 @@ export * as AddPetConversation from './bot/AddPetConversation.js';
 export * as PetFoodHandlers from './bot/PetFoodHandlers.js';
 export * as ConfigureDayStartConversation from './bot/conversations/ConfigureDayStartConversation.js';
 export * as ConfigureReminderDelayConversation from './bot/conversations/ConfigureReminderDelayConversation.js';
+export * as AddFoodConversation from './bot/conversations/AddFoodConversation.js';
 export * as CancelConversation from './bot/CancelConversation.js';
 export * as RegisteredUser from './bot/RegisteredUser.js';
 export * as CurrentUser from './bot/CurrentUser.js';

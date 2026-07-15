@@ -39,6 +39,20 @@ export const petFood = BotGroup.make('petFood')
 			middleware: [RegisteredUser],
 			error: undefined as unknown,
 		}),
+	)
+	.add(
+		Command.make('foodStatus', {
+			name: 'status_racao',
+			middleware: [RegisteredUser],
+			error: undefined as unknown,
+		}),
+	)
+	.add(
+		Command.make('addFood', {
+			name: 'colocar_racao',
+			middleware: [RegisteredUser],
+			error: undefined as unknown,
+		}),
 	);
 export const Carneloot = Bot.make('carneloot')
 	.add(account)
