@@ -77,6 +77,21 @@ describe('BotRuntime', () => {
 		expect(calls).toBe(1);
 	});
 
+	it('observes successful source termination', async () => {
+		const delivery = UpdateDelivery.fromSource('success', () => Effect.void);
+		await Effect.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(runtime(delivery));
+					yield* Effect.provide(
+						Effect.flatMap(BotRuntime.BotRuntime, (service) => service.await),
+						context,
+					);
+				}),
+			),
+		);
+	});
+
 	it('observes immediate and delayed source failures', async () => {
 		for (const delayed of [false, true]) {
 			const gate = Deferred.makeUnsafe<void>();
