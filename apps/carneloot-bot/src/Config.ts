@@ -12,12 +12,14 @@ export interface AppConfigService {
 	readonly botId: typeof Carneloot.name;
 	readonly botUsername: string;
 	readonly pollingTimeoutSeconds: number;
-	readonly pollingRetryMillis: number;
+	readonly pollingRetryDelayMillis: number;
 	readonly dispatchCapacity: number;
 	readonly dispatchConcurrency: number;
 	readonly jobIdleMillis: number;
 	readonly jobLeaseMillis: number;
+	readonly jobHeartbeatMillis: number;
 	readonly dedupLeaseMillis: number;
+	readonly dedupHeartbeatMillis: number;
 	readonly dedupWaitMillis: number;
 	readonly dedupRetentionMillis: number;
 	readonly tfxSchema: string;
@@ -35,16 +37,18 @@ const source = Config.all({
 	botId: Config.string('BOT_ID'),
 	botUsername: Config.string('BOT_USERNAME'),
 	pollingTimeoutSeconds: Config.int('POLLING_TIMEOUT_SECONDS'),
-	pollingRetryMillis: Config.int('POLLING_RETRY_MILLIS'),
+	pollingRetryDelayMillis: Config.int('POLLING_RETRY_DELAY_MILLIS'),
 	dispatchCapacity: Config.int('DISPATCH_CAPACITY'),
 	dispatchConcurrency: Config.int('DISPATCH_CONCURRENCY'),
 	jobIdleMillis: Config.int('JOB_IDLE_MILLIS'),
 	jobLeaseMillis: Config.int('JOB_LEASE_MILLIS'),
+	jobHeartbeatMillis: Config.int('JOB_HEARTBEAT_MILLIS'),
 	dedupLeaseMillis: Config.int('DEDUP_LEASE_MILLIS'),
+	dedupHeartbeatMillis: Config.int('DEDUP_HEARTBEAT_MILLIS'),
 	dedupWaitMillis: Config.int('DEDUP_WAIT_MILLIS'),
 	dedupRetentionMillis: Config.int('DEDUP_RETENTION_MILLIS'),
-	tfxSchema: Config.string('TFX_SCHEMA'),
-	tfxTablePrefix: Config.string('TFX_TABLE_PREFIX'),
+	tfxSchema: Config.string('TFX_POSTGRES_SCHEMA'),
+	tfxTablePrefix: Config.string('TFX_POSTGRES_TABLE_PREFIX'),
 });
 export const load = Effect.flatMap(source, (value) =>
 	Effect.try({
@@ -60,6 +64,24 @@ export const load = Effect.flatMap(source, (value) =>
 					throw new AppConfigValidationError(
 						`${name} must be a positive integer`,
 					);
+			if (!/^[A-Za-z0-9_]{1,32}$/u.test(value.botUsername))
+				throw new AppConfigValidationError('BOT_USERNAME is invalid');
+			if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(value.tfxSchema))
+				throw new AppConfigValidationError(
+					'TFX_POSTGRES_SCHEMA must be a SQL identifier',
+				);
+			if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(value.tfxTablePrefix))
+				throw new AppConfigValidationError(
+					'TFX_POSTGRES_TABLE_PREFIX must be a SQL identifier',
+				);
+			if (value.jobHeartbeatMillis >= value.jobLeaseMillis)
+				throw new AppConfigValidationError(
+					'JOB_HEARTBEAT_MILLIS must be less than JOB_LEASE_MILLIS',
+				);
+			if (value.dedupHeartbeatMillis >= value.dedupLeaseMillis)
+				throw new AppConfigValidationError(
+					'DEDUP_HEARTBEAT_MILLIS must be less than DEDUP_LEASE_MILLIS',
+				);
 			if (value.dispatchConcurrency > value.dispatchCapacity)
 				throw new AppConfigValidationError(
 					'DISPATCH_CONCURRENCY cannot exceed DISPATCH_CAPACITY',

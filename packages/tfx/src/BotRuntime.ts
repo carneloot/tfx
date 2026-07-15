@@ -32,6 +32,7 @@ export interface Options<
 	readonly leaseDuration?: number;
 	readonly waitTimeout?: number;
 	readonly retention?: number;
+	readonly heartbeatInterval?: number;
 }
 export const layer = <
 	B extends Bot.Bot<any, any>,
@@ -51,11 +52,20 @@ export const layer = <
 				['leaseDuration', options.leaseDuration],
 				['waitTimeout', options.waitTimeout],
 				['retention', options.retention],
+				['heartbeatInterval', options.heartbeatInterval],
 			] as const)
 				if (value !== undefined && (!Number.isFinite(value) || value <= 0))
 					return yield* Effect.die(
 						new Error(`${name} must be finite and positive`),
 					);
+			const leaseDuration = options.leaseDuration ?? 30_000;
+			if (
+				options.heartbeatInterval !== undefined &&
+				options.heartbeatInterval >= leaseDuration
+			)
+				return yield* Effect.die(
+					new Error('heartbeatInterval must be less than leaseDuration'),
+				);
 			const source = yield* UpdateSource;
 			const deduplicator = yield* UpdateDeduplicator;
 			const dispatcher = yield* Dispatcher.make({
@@ -74,6 +84,9 @@ export const layer = <
 				...(options.retention === undefined
 					? {}
 					: { retention: options.retention }),
+				...(options.heartbeatInterval === undefined
+					? {}
+					: { heartbeatInterval: options.heartbeatInterval }),
 			});
 			const sourceFiber = yield* Effect.forkScoped(
 				source.run(dispatcher.dispatch),

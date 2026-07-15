@@ -2,9 +2,11 @@ import type * as PgClient from '@effect/sql-pg/PgClient';
 import * as TfxPostgres from '@tfx/postgres/TfxPostgres';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
+import type { Router } from 'tfx/BotRouter';
 import { BotRuntime } from 'tfx/BotRuntime';
 import * as BotRuntimeLive from 'tfx/BotRuntime';
 import * as Conversations from 'tfx/Conversations';
+import { JobRuntime } from 'tfx/JobRuntime';
 import * as JobRuntimeLive from 'tfx/JobRuntime';
 import * as Middleware from 'tfx/Middleware';
 import type { Telegram } from 'tfx/Telegram';
@@ -17,6 +19,7 @@ import type { AppConfigService } from './Config.js';
 import * as FeedingReminderJobLive from './jobs/FeedingReminderJobLive.js';
 import { JobWorker } from './JobWorker.js';
 import * as JobWorkerLive from './JobWorker.js';
+import { NotificationRepository } from './ports/NotificationRepository.js';
 import { migrate } from './postgres/AppMigrator.js';
 import * as NotificationRecipientsLive from './postgres/NotificationRecipientsLive.js';
 import * as NotificationRepositoryLive from './postgres/NotificationRepositoryLive.js';
@@ -25,6 +28,46 @@ import * as PetRepositoryLive from './postgres/PetRepositoryLive.js';
 import * as ReminderSchedulerLive from './postgres/ReminderSchedulerLive.js';
 import * as UserRepositoryLive from './postgres/UserRepositoryLive.js';
 import * as AppRouter from './Router.js';
+
+export const core = <
+	D extends UpdateDelivery.UpdateDelivery<any, any, any>,
+	E,
+	R,
+>(
+	config: AppConfigService,
+	options: {
+		readonly delivery: D;
+		readonly router: Router;
+		readonly infrastructure: Layer.Layer<
+			JobRuntime | NotificationRepository | UpdateDeduplicator,
+			E,
+			R
+		>;
+	},
+): Layer.Layer<BotRuntime | JobWorker | UpdateDeduplicator, unknown, R> => {
+	const bot = Layer.provide(
+		BotRuntimeLive.layer(Carneloot, {
+			delivery: options.delivery,
+			capacity: config.dispatchCapacity,
+			concurrency: config.dispatchConcurrency,
+			leaseDuration: config.dedupLeaseMillis,
+			waitTimeout: config.dedupWaitMillis,
+			retention: config.dedupRetentionMillis,
+			heartbeatInterval: config.dedupHeartbeatMillis,
+			router: options.router,
+		}),
+		options.infrastructure,
+	);
+	const worker = Layer.provide(
+		JobWorkerLive.layer({
+			idleDelay: config.jobIdleMillis,
+			leaseDuration: config.jobLeaseMillis,
+			heartbeatInterval: config.jobHeartbeatMillis,
+		}),
+		options.infrastructure,
+	);
+	return Layer.mergeAll(bot, worker, options.infrastructure) as never;
+};
 
 export const portable = <
 	E,
@@ -93,6 +136,7 @@ export const portable = <
 					leaseDuration: config.dedupLeaseMillis,
 					waitTimeout: config.dedupWaitMillis,
 					retention: config.dedupRetentionMillis,
+					heartbeatInterval: config.dedupHeartbeatMillis,
 					router,
 				}),
 			),
@@ -103,6 +147,7 @@ export const portable = <
 		JobWorkerLive.layer({
 			idleDelay: config.jobIdleMillis,
 			leaseDuration: config.jobLeaseMillis,
+			heartbeatInterval: config.jobHeartbeatMillis,
 		}),
 		application,
 	);

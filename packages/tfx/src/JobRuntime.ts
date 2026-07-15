@@ -21,6 +21,7 @@ export interface JobRuntimeService {
 	>;
 	readonly runOne: (options?: {
 		readonly leaseDuration?: number;
+		readonly heartbeatInterval?: number;
 	}) => Effect.Effect<JobRecord | undefined, unknown>;
 	readonly problems: Effect.Effect<ReadonlyArray<JobRecord>, JobStoreError>;
 	readonly cancel: (id: string) => Effect.Effect<boolean, JobStoreError>;
@@ -79,8 +80,19 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 				runOne: (options = {}) =>
 					Effect.gen(function* () {
 						const leaseDuration = options.leaseDuration ?? 30_000;
+						const heartbeatInterval =
+							options.heartbeatInterval ??
+							Math.max(1, Math.floor(leaseDuration / 3));
 						if (!Number.isFinite(leaseDuration) || leaseDuration <= 0)
 							throw new TypeError('leaseDuration must be finite and positive');
+						if (
+							!Number.isFinite(heartbeatInterval) ||
+							heartbeatInterval <= 0 ||
+							heartbeatInterval >= leaseDuration
+						)
+							throw new TypeError(
+								'heartbeatInterval must be finite, positive, and less than leaseDuration',
+							);
 						const claimNow = yield* Clock.currentTimeMillis;
 						const claim = yield* store.claimForMigration(
 							claimNow,
@@ -148,24 +160,22 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							never,
 							CancelSignal | LeaseSignal | JobStoreError
 						> = Effect.suspend(() =>
-							Effect.flatMap(
-								Effect.sleep(Math.max(1, Math.floor(leaseDuration / 3))),
-								() =>
-									Effect.gen(function* () {
-										const current = yield* store.get(running.id);
-										if (current?.cancellationRequested)
-											return yield* Effect.fail(new CancelSignal());
-										const heartbeatNow = yield* Clock.currentTimeMillis;
-										if (
-											!(yield* store.heartbeat(
-												claim.token,
-												heartbeatNow,
-												leaseDuration,
-											))
-										)
-											return yield* Effect.fail(new LeaseSignal());
-										return yield* monitor;
-									}),
+							Effect.flatMap(Effect.sleep(heartbeatInterval), () =>
+								Effect.gen(function* () {
+									const current = yield* store.get(running.id);
+									if (current?.cancellationRequested)
+										return yield* Effect.fail(new CancelSignal());
+									const heartbeatNow = yield* Clock.currentTimeMillis;
+									if (
+										!(yield* store.heartbeat(
+											claim.token,
+											heartbeatNow,
+											leaseDuration,
+										))
+									)
+										return yield* Effect.fail(new LeaseSignal());
+									return yield* monitor;
+								}),
 							),
 						);
 						const exit = yield* Effect.exit(

@@ -9,16 +9,18 @@ const valid = {
 	BOT_ID: 'carneloot',
 	BOT_USERNAME: 'carneloot_bot',
 	POLLING_TIMEOUT_SECONDS: '30',
-	POLLING_RETRY_MILLIS: '1000',
+	POLLING_RETRY_DELAY_MILLIS: '1000',
 	DISPATCH_CAPACITY: '32',
 	DISPATCH_CONCURRENCY: '4',
 	JOB_IDLE_MILLIS: '100',
 	JOB_LEASE_MILLIS: '30000',
+	JOB_HEARTBEAT_MILLIS: '10000',
 	DEDUP_LEASE_MILLIS: '30000',
+	DEDUP_HEARTBEAT_MILLIS: '10000',
 	DEDUP_WAIT_MILLIS: '1000',
 	DEDUP_RETENTION_MILLIS: '86400000',
-	TFX_SCHEMA: 'tfx',
-	TFX_TABLE_PREFIX: 'bot_',
+	TFX_POSTGRES_SCHEMA: 'tfx',
+	TFX_POSTGRES_TABLE_PREFIX: 'bot_',
 };
 const load = (values: Record<string, string>) =>
 	Effect.provide(
@@ -38,6 +40,11 @@ describe('AppConfig', () => {
 		{ ...valid, JOB_IDLE_MILLIS: '0' },
 		{ ...valid, DISPATCH_CAPACITY: '2', DISPATCH_CONCURRENCY: '4' },
 		{ ...valid, DEDUP_LEASE_MILLIS: '100', DEDUP_WAIT_MILLIS: '101' },
+		{ ...valid, JOB_HEARTBEAT_MILLIS: '30000' },
+		{ ...valid, DEDUP_HEARTBEAT_MILLIS: '30000' },
+		{ ...valid, BOT_USERNAME: '' },
+		{ ...valid, TFX_POSTGRES_SCHEMA: 'bad-name' },
+		{ ...valid, TFX_POSTGRES_TABLE_PREFIX: 'bad-name' },
 	])('rejects invalid configuration %#', async (values) => {
 		expect((await Effect.runPromiseExit(load(values)))._tag).toBe('Failure');
 	});

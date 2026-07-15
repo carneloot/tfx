@@ -22,6 +22,7 @@ export const make = (options: {
 	readonly leaseDuration?: number;
 	readonly waitTimeout?: number;
 	readonly retention?: number;
+	readonly heartbeatInterval?: number;
 }): Effect.Effect<Dispatcher, never, Scope.Scope> =>
 	Effect.map(KeyedExecutor.make(options), (executor) => ({
 		dispatch: (update) => {
@@ -42,6 +43,9 @@ export const make = (options: {
 						...(options.retention === undefined
 							? {}
 							: { retention: options.retention }),
+						...(options.heartbeatInterval === undefined
+							? {}
+							: { heartbeatInterval: options.heartbeatInterval }),
 					},
 				),
 			);

@@ -17,11 +17,22 @@ export const dispatch = (
 		readonly leaseDuration?: number;
 		readonly waitTimeout?: number;
 		readonly retention?: number;
+		readonly heartbeatInterval?: number;
 	} = {},
 ): Effect.Effect<DispatchOutcome.DispatchOutcome, never> =>
 	Effect.uninterruptibleMask((restore) =>
 		Effect.gen(function* () {
 			const leaseDuration = options.leaseDuration ?? 30_000;
+			const heartbeatInterval =
+				options.heartbeatInterval ?? Math.max(1, Math.floor(leaseDuration / 3));
+			if (
+				!Number.isFinite(heartbeatInterval) ||
+				heartbeatInterval <= 0 ||
+				heartbeatInterval >= leaseDuration
+			)
+				return DispatchOutcome.fatal(
+					'heartbeatInterval must be finite, positive, and less than leaseDuration',
+				);
 			const claim = yield* restore(
 				dedup.claim(update.update_id, {
 					leaseDuration,
@@ -43,13 +54,11 @@ export const dispatch = (
 			}
 			const monitor: Effect.Effect<never, ClaimLost | UpdateDeduplicatorError> =
 				Effect.suspend(() =>
-					Effect.flatMap(
-						Effect.sleep(Math.max(1, Math.floor(leaseDuration / 3))),
-						() =>
-							Effect.flatMap(
-								dedup.heartbeat(claim.token, leaseDuration),
-								(alive) => (alive ? monitor : Effect.fail(new ClaimLost())),
-							),
+					Effect.flatMap(Effect.sleep(heartbeatInterval), () =>
+						Effect.flatMap(
+							dedup.heartbeat(claim.token, leaseDuration),
+							(alive) => (alive ? monitor : Effect.fail(new ClaimLost())),
+						),
 					),
 				);
 			return yield* Effect.gen(function* () {

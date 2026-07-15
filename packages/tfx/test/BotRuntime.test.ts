@@ -161,6 +161,26 @@ describe('BotRuntime', () => {
 		},
 	);
 
+	it('rejects heartbeat intervals at or above the dedup lease', async () => {
+		for (const heartbeatInterval of [0, 100, Number.POSITIVE_INFINITY]) {
+			const exit = await Effect.runPromiseExit(
+				Effect.scoped(
+					Layer.build(
+						Layer.provide(
+							BotRuntime.layer(Bot.make('bot'), {
+								delivery: UpdateDelivery.manual,
+								leaseDuration: 100,
+								heartbeatInterval,
+							}),
+							UpdateDeduplicator.layerNoop,
+						),
+					),
+				),
+			);
+			expect(exit._tag).toBe('Failure');
+		}
+	});
+
 	it('acknowledges only closed completed outcomes and marks fatal terminal', () => {
 		expect(DispatchOutcome.isAcknowledgeable(DispatchOutcome.handled)).toBe(
 			true,

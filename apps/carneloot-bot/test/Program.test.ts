@@ -14,7 +14,12 @@ const bot = (awaitEffect: Effect.Effect<void, unknown>) =>
 const worker = (awaitEffect: Effect.Effect<void, unknown>) =>
 	Layer.succeed(JobWorker, {
 		await: awaitEffect,
-		diagnostics: { recoveredDeliveries: 0, startupProblems: [] },
+		diagnostics: {
+			recoveredDeliveries: 0,
+			startupProblems: [],
+			failedJobIds: [],
+			quarantinedJobIds: [],
+		},
 		problems: Effect.succeed([]),
 	});
 describe('Program', () => {
@@ -31,6 +36,30 @@ describe('Program', () => {
 		);
 		expect(exit._tag).toBe('Failure');
 	});
+	it('fails release health on quarantined jobs with identities', async () => {
+		const result = await Effect.runPromise(
+			Effect.provide(
+				Effect.result(Program.releaseSmokeHealth),
+				Layer.succeed(JobWorker, {
+					await: Effect.never,
+					diagnostics: {
+						recoveredDeliveries: 0,
+						startupProblems: [],
+						failedJobIds: [],
+						quarantinedJobIds: ['q1'],
+					},
+					problems: Effect.succeed([
+						{ id: 'q1', status: 'quarantined' } as never,
+					]),
+				}),
+			),
+		);
+		expect(result).toMatchObject({
+			_tag: 'Failure',
+			failure: { _tag: 'ReleaseSmokeHealthError', quarantinedJobIds: ['q1'] },
+		});
+	});
+
 	it('fails fast when either retained lifecycle fails', async () => {
 		const durable = Layer.succeed(UpdateDeduplicator.UpdateDeduplicator, {
 			diagnostics: { mode: 'durable', backend: 'test' },

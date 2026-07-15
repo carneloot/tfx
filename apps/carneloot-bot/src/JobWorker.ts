@@ -11,6 +11,8 @@ import { NotificationRepository } from './ports/NotificationRepository.js';
 export interface JobWorkerDiagnostics {
 	readonly recoveredDeliveries: number;
 	readonly startupProblems: ReadonlyArray<JobRecord>;
+	readonly failedJobIds: ReadonlyArray<string>;
+	readonly quarantinedJobIds: ReadonlyArray<string>;
 }
 export interface JobWorkerService {
 	readonly await: Effect.Effect<void, unknown>;
@@ -23,6 +25,7 @@ export class JobWorker extends Context.Service<JobWorker, JobWorkerService>()(
 export interface Options {
 	readonly idleDelay: number;
 	readonly leaseDuration: number;
+	readonly heartbeatInterval: number;
 }
 const validate = (value: number, name: string) => {
 	if (!Number.isFinite(value) || value <= 0)
@@ -36,14 +39,28 @@ export const layer = (
 		Effect.gen(function* () {
 			validate(options.idleDelay, 'idleDelay');
 			validate(options.leaseDuration, 'leaseDuration');
+			validate(options.heartbeatInterval, 'heartbeatInterval');
+			if (options.heartbeatInterval >= options.leaseDuration)
+				throw new TypeError(
+					'heartbeatInterval must be less than leaseDuration',
+				);
 			const jobs = yield* JobRuntime;
 			const notifications = yield* NotificationRepository;
 			const now = yield* Clock.currentTimeMillis;
 			const recoveredDeliveries = yield* notifications.recoverAllExpired(now);
 			const startupProblems = yield* jobs.problems;
+			const failedJobIds = startupProblems
+				.filter((job) => job.status === 'failed')
+				.map((job) => job.id);
+			const quarantinedJobIds = startupProblems
+				.filter((job) => job.status === 'quarantined')
+				.map((job) => job.id);
 			const loop: Effect.Effect<void, unknown> = Effect.suspend(() =>
 				Effect.flatMap(
-					jobs.runOne({ leaseDuration: options.leaseDuration }),
+					jobs.runOne({
+						leaseDuration: options.leaseDuration,
+						heartbeatInterval: options.heartbeatInterval,
+					}),
 					(record) =>
 						record === undefined
 							? Effect.andThen(Effect.sleep(options.idleDelay), loop)
@@ -56,6 +73,8 @@ export const layer = (
 				diagnostics: Object.freeze({
 					recoveredDeliveries,
 					startupProblems,
+					failedJobIds,
+					quarantinedJobIds,
 				}),
 				problems: jobs.problems,
 			});

@@ -19,7 +19,7 @@ export const fromConfig = (config: AppConfigService) => {
 		telegram,
 		delivery: Polling.make({
 			timeout: config.pollingTimeoutSeconds,
-			retryDelay: config.pollingRetryMillis,
+			retryDelay: config.pollingRetryDelayMillis,
 		}),
 		botUsername: config.botUsername,
 	});

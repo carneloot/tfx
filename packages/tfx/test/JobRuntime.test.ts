@@ -153,15 +153,22 @@ describe('JobRuntime', () => {
 		expect(error).toMatchObject({ reason: 'StaleToken' });
 	});
 
-	it('rejects invalid lease durations', async () => {
+	it('rejects invalid heartbeat intervals', async () => {
 		const implementation = Job.implement(declaration, () => Effect.void);
 		const exit = await Effect.runPromise(
 			Effect.provide(
 				provide(
 					Effect.gen(function* () {
 						const runtime = yield* JobRuntime;
-						return yield* Effect.exit(
-							runtime.runOne({ leaseDuration: Infinity }),
+						return yield* Effect.forEach(
+							[0, 100, Number.POSITIVE_INFINITY],
+							(heartbeatInterval) =>
+								Effect.exit(
+									runtime.runOne({
+										leaseDuration: 100,
+										heartbeatInterval,
+									}),
+								),
 						);
 					}),
 					implementation,
@@ -169,7 +176,7 @@ describe('JobRuntime', () => {
 				TestClock.layer(),
 			),
 		);
-		expect(exit._tag).toBe('Failure');
+		expect(exit.every((value) => value._tag === 'Failure')).toBe(true);
 	});
 
 	it('quarantines unknown, newer, and invalid payload declarations without attempts', async () => {

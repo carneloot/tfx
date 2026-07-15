@@ -24,7 +24,11 @@ const notifications = (recovered: number) =>
 	} as never);
 const worker = (jobs: Layer.Layer<JobRuntime>, recovered = 0) =>
 	Layer.provide(
-		JobWorkerLive.layer({ idleDelay: 100, leaseDuration: 300 }),
+		JobWorkerLive.layer({
+			idleDelay: 100,
+			leaseDuration: 300,
+			heartbeatInterval: 100,
+		}),
 		Layer.merge(jobs, notifications(recovered)),
 	);
 
@@ -59,6 +63,8 @@ describe('JobWorker', () => {
 					expect(service.diagnostics).toEqual({
 						recoveredDeliveries: 4,
 						startupProblems: [problem],
+						failedJobIds: [],
+						quarantinedJobIds: ['problem'],
 					});
 					expect(calls).toBe(3);
 					yield* Effect.provide(TestClock.adjust(99), context);
@@ -118,7 +124,11 @@ describe('JobWorker', () => {
 				Effect.scoped(
 					Layer.build(
 						Layer.provide(
-							JobWorkerLive.layer({ idleDelay, leaseDuration: 1 }),
+							JobWorkerLive.layer({
+								idleDelay,
+								leaseDuration: 2,
+								heartbeatInterval: 1,
+							}),
 							Layer.merge(
 								runtime(() => Effect.never),
 								notifications(0),
