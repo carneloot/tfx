@@ -99,11 +99,38 @@ else
 					[{ ...recipient, id: deliveryId() }],
 					1_001,
 				);
-				return { first, repeated, a, b };
+				const attached = yield* repository.attachJob(
+					first.id,
+					crypto.randomUUID(),
+					1_002,
+				);
+				const attachedTwice = yield* repository.attachJob(
+					first.id,
+					crypto.randomUUID(),
+					1_003,
+				);
+				const cancelled = yield* repository.cancelEvent(first.id, 1_004);
+				const context = yield* repository.getDispatchContext(first.id);
+				return {
+					first,
+					repeated,
+					a,
+					b,
+					attached,
+					attachedTwice,
+					cancelled,
+					context,
+				};
 			});
 			const result = await Effect.runPromise(Effect.provide(program, layer));
 			expect(result.repeated.id).toBe(result.first.id);
 			expect(result.a[0]?.id).toBe(result.b[0]?.id);
+			expect(result).toMatchObject({
+				attached: true,
+				attachedTwice: false,
+				cancelled: true,
+				context: { status: 'cancelled' },
+			});
 		});
 
 		it('fences claims, due retries, stale finalizers, unknown reconciliation, and recovery', async () => {
