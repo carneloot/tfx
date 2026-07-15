@@ -2,11 +2,9 @@ import { Effect, Layer } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import { JobStore } from '../../src/JobStore.js';
-import type { Capabilities } from './ConversationStorageConformance.js';
 export const jobStoreConformance = (
 	name: string,
 	storeLayer: () => Layer.Layer<JobStore, unknown, never>,
-	capabilities: Capabilities = {},
 ) =>
 	describe(`${name} JobStore conformance`, () => {
 		const run = <A, E>(effect: Effect.Effect<A, E, JobStore>) =>
@@ -52,8 +50,4 @@ export const jobStoreConformance = (
 					).toBe(0);
 				}),
 			));
-		it.skipIf(!capabilities.multiProcess)(
-			'fences multiple processes',
-			() => {},
-		);
 	});

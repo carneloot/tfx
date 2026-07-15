@@ -4,11 +4,9 @@ import { describe, expect, it } from 'vitest';
 
 import * as DispatchOutcome from '../../src/DispatchOutcome.js';
 import { UpdateDeduplicator } from '../../src/UpdateDeduplicator.js';
-import type { Capabilities } from './ConversationStorageConformance.js';
 export const deduplicatorConformance = (
 	name: string,
 	dedupLayer: () => Layer.Layer<UpdateDeduplicator, unknown, never>,
-	capabilities: Capabilities = {},
 ) =>
 	describe(`${name} UpdateDeduplicator conformance`, () => {
 		const run = <A, E>(effect: Effect.Effect<A, E, UpdateDeduplicator>) =>
@@ -36,8 +34,4 @@ export const deduplicatorConformance = (
 					expect((yield* dedup.claim(1))._tag).toBe('Completed');
 				}),
 			));
-		it.skipIf(!capabilities.durableRestart)(
-			'retains completion after restart',
-			() => {},
-		);
 	});

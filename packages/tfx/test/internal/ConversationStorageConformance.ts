@@ -2,14 +2,9 @@ import { Effect, Layer } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import { ConversationStorage } from '../../src/ConversationStorage.js';
-export interface Capabilities {
-	readonly durableRestart?: boolean;
-	readonly multiProcess?: boolean;
-}
 export const conversationStorageConformance = (
 	name: string,
 	storageLayer: () => Layer.Layer<ConversationStorage, unknown, never>,
-	capabilities: Capabilities = {},
 ) =>
 	describe(`${name} ConversationStorage conformance`, () => {
 		const scope = { botId: `bot-${name}`, chatId: 1, userId: 2 };
@@ -120,12 +115,4 @@ export const conversationStorageConformance = (
 					).toBe('replacement-create');
 				}),
 			));
-		it.skipIf(!capabilities.durableRestart)(
-			'survives durable restart',
-			() => {},
-		);
-		it.skipIf(!capabilities.multiProcess)(
-			'serializes multiple processes',
-			() => {},
-		);
 	});

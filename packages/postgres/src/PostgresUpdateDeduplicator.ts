@@ -2,33 +2,116 @@ import * as PgClient from '@effect/sql-pg/PgClient';
 import * as Clock from 'effect/Clock';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
-import type { CompletedOutcome } from 'tfx/DispatchOutcome';
+import * as Schema from 'effect/Schema';
+import type { CompletedOutcome as CompletedOutcomeType } from 'tfx/DispatchOutcome';
 import {
 	UpdateDeduplicator,
+	UpdateDeduplicatorError,
 	type ObservedCompletion,
 	type UpdateDeduplicatorService,
 } from 'tfx/UpdateDeduplicator';
 
 import { migrate } from './internal/Migrator.js';
+import {
+	CompletedOutcome,
+	decode,
+	NullableUnknown,
+	RawInteger,
+	safeCause,
+	safeInteger,
+	timestamp,
+} from './internal/RowValidation.js';
 import { make } from './internal/Tables.js';
 import { defaults, type Options } from './Options.js';
+
+const RowSchema = Schema.Struct({
+	bot_id: Schema.String,
+	update_id: RawInteger,
+	status: Schema.Literals(['processing', 'completed', 'released']),
+	lease_generation: RawInteger,
+	lease_expires_at: Schema.Unknown,
+	outcome_json: NullableUnknown,
+	completed_at: Schema.Unknown,
+});
 type Row = {
-	bot_id: string;
-	update_id: string | number;
-	status: 'processing' | 'completed' | 'released';
-	lease_generation: string | number;
-	lease_expires_at: Date | string;
-	outcome_json: CompletedOutcome | null;
-	completed_at: Date | string | null;
+	readonly updateId: number;
+	readonly status: 'processing' | 'completed' | 'released';
+	readonly generation: number;
+	readonly leaseExpiresAt: number;
+	readonly outcome: CompletedOutcomeType | undefined;
+	readonly completedAt: number | undefined;
 };
+const invariant = (message: string, cause?: unknown) =>
+	new UpdateDeduplicatorError(
+		'InvariantViolation',
+		message,
+		cause === undefined ? undefined : safeCause(cause),
+	);
+const persistence = (cause: unknown) =>
+	cause instanceof UpdateDeduplicatorError
+		? cause
+		: new UpdateDeduplicatorError(
+				'PersistenceFailure',
+				'PostgreSQL update deduplication operation failed',
+				safeCause(cause),
+			);
+const protect = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+	effect.pipe(Effect.mapError(persistence));
+const decodeRow = (raw: unknown): Effect.Effect<Row, UpdateDeduplicatorError> =>
+	Effect.gen(function* () {
+		const value = yield* decode(RowSchema, raw, (cause) =>
+			invariant('Malformed update deduplication row', cause),
+		);
+		const updateId = yield* safeInteger(value.update_id, () =>
+			invariant('Unsafe deduplication update_id'),
+		);
+		const generation = yield* safeInteger(value.lease_generation, () =>
+			invariant('Unsafe deduplication generation'),
+		);
+		const leaseExpiresAt = yield* timestamp(value.lease_expires_at, () =>
+			invariant('Invalid deduplication lease timestamp'),
+		);
+		const completedAt =
+			value.completed_at === null
+				? undefined
+				: yield* timestamp(value.completed_at, () =>
+						invariant('Invalid deduplication completion timestamp'),
+					);
+		const outcome =
+			value.outcome_json === null
+				? undefined
+				: yield* decode(CompletedOutcome, value.outcome_json, (cause) =>
+						invariant('Malformed completed dispatch outcome', cause),
+					);
+		if (
+			(value.status === 'completed') !==
+			(outcome !== undefined && completedAt !== undefined)
+		)
+			return yield* Effect.fail(
+				invariant('Deduplication completion fields violate status invariant'),
+			);
+		return {
+			updateId,
+			status: value.status,
+			generation,
+			leaseExpiresAt,
+			outcome,
+			completedAt,
+		};
+	});
+
 export const layer = (
 	options: Options = {},
 	skipMigration = false,
-): Layer.Layer<UpdateDeduplicator, unknown, PgClient.PgClient> =>
+): Layer.Layer<
+	UpdateDeduplicator,
+	UpdateDeduplicatorError,
+	PgClient.PgClient
+> =>
 	Layer.effect(
 		UpdateDeduplicator,
 		Effect.andThen(
-			skipMigration ? Effect.void : migrate(options),
+			protect(skipMigration ? Effect.void : migrate(options)),
 			Effect.map(PgClient.PgClient, (sql) => {
 				const tables = make(options);
 				const schema = sql(tables.schema);
@@ -36,110 +119,133 @@ export const layer = (
 				const botId = options.botId ?? defaults.botId;
 				const get = (id: number, lock = false) =>
 					lock
-						? sql<Row>`SELECT * FROM ${schema}.${table} WHERE bot_id=${botId} AND update_id=${id} FOR UPDATE`
-						: sql<Row>`SELECT * FROM ${schema}.${table} WHERE bot_id=${botId} AND update_id=${id}`;
-				const service: any = {
+						? sql<
+								Record<string, unknown>
+							>`SELECT * FROM ${schema}.${table} WHERE bot_id=${botId} AND update_id=${id} FOR UPDATE`
+						: sql<
+								Record<string, unknown>
+							>`SELECT * FROM ${schema}.${table} WHERE bot_id=${botId} AND update_id=${id}`;
+				const read = (id: number, lock = false) =>
+					Effect.flatMap(get(id, lock), (rows) =>
+						rows[0] === undefined
+							? Effect.succeed(undefined)
+							: decodeRow(rows[0]),
+					);
+				const service = {
 					diagnostics: { mode: 'durable', backend: 'postgres' },
-					claim: (
-						updateId: number,
-						claimOptions: {
-							readonly leaseDuration?: number;
-							readonly waitTimeout?: number;
-						} = {},
-					) =>
-						Effect.gen(function* () {
-							const now = yield* Clock.currentTimeMillis;
-							const duration = claimOptions.leaseDuration ?? 30_000;
-							const wait = claimOptions.waitTimeout ?? 5_000;
-							return yield* sql.withTransaction(
-								Effect.gen(function* () {
-									const current = (yield* get(updateId, true))[0];
-									if (current === undefined) {
-										yield* sql`INSERT INTO ${schema}.${table} (bot_id,update_id,status,lease_generation,lease_expires_at,attempts,created_at,updated_at) VALUES (${botId},${updateId},'processing',1,${new Date(now + duration)},1,${new Date(now)},${new Date(now)})`;
-										return {
-											_tag: 'Acquired' as const,
-											token: { updateId, generation: 1 },
-										};
-									}
-									if (
-										current.status === 'completed' &&
-										current.completed_at !== null &&
-										new Date(current.lease_expires_at).getTime() > now
-									)
-										return {
-											_tag: 'Completed' as const,
-											outcome: current.outcome_json!,
-										};
-									if (
-										current.status === 'released' ||
-										new Date(current.lease_expires_at).getTime() <= now ||
-										current.status === 'completed'
-									) {
-										const generation = Number(current.lease_generation) + 1;
-										yield* sql`UPDATE ${schema}.${table} SET status='processing',lease_generation=${generation},lease_expires_at=${new Date(now + duration)},outcome_json=NULL,completed_at=NULL,attempts=attempts+1,updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${updateId}`;
-										return {
-											_tag: 'Acquired' as const,
-											token: { updateId, generation },
-										};
-									}
-									const started = now;
-									const observe: Effect.Effect<ObservedCompletion, unknown> =
-										Effect.suspend(() =>
+					claim: (updateId, claimOptions = {}) =>
+						protect(
+							Effect.gen(function* () {
+								if (!Number.isSafeInteger(updateId))
+									return yield* Effect.fail(
+										invariant('Unsafe update identifier'),
+									);
+								const now = yield* Clock.currentTimeMillis;
+								const duration = claimOptions.leaseDuration ?? 30_000;
+								const wait = claimOptions.waitTimeout ?? 5_000;
+								return yield* sql.withTransaction(
+									Effect.gen(function* () {
+										const current = yield* read(updateId, true);
+										if (current === undefined) {
+											yield* sql`INSERT INTO ${schema}.${table} (bot_id,update_id,status,lease_generation,lease_expires_at,attempts,created_at,updated_at) VALUES (${botId},${updateId},'processing',1,${new Date(now + duration)},1,${new Date(now)},${new Date(now)})`;
+											return {
+												_tag: 'Acquired' as const,
+												token: { updateId, generation: 1 },
+											};
+										}
+										if (
+											current.status === 'completed' &&
+											current.leaseExpiresAt > now
+										) {
+											if (current.outcome === undefined)
+												return yield* Effect.fail(
+													invariant('Completed update has no outcome'),
+												);
+											return {
+												_tag: 'Completed' as const,
+												outcome: current.outcome,
+											};
+										}
+										if (
+											current.status !== 'processing' ||
+											current.leaseExpiresAt <= now
+										) {
+											const generation = current.generation + 1;
+											if (!Number.isSafeInteger(generation))
+												return yield* Effect.fail(
+													invariant('Deduplication generation overflow'),
+												);
+											yield* sql`UPDATE ${schema}.${table} SET status='processing',lease_generation=${generation},lease_expires_at=${new Date(now + duration)},outcome_json=NULL,completed_at=NULL,attempts=attempts+1,updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${updateId}`;
+											return {
+												_tag: 'Acquired' as const,
+												token: { updateId, generation },
+											};
+										}
+										const started = now;
+										const observe: Effect.Effect<
+											ObservedCompletion,
+											UpdateDeduplicatorError
+										> = Effect.suspend(() =>
 											Effect.flatMap(Clock.currentTimeMillis, (time) => {
 												if (time - started >= wait)
 													return Effect.succeed({ _tag: 'TimedOut' });
-												return Effect.flatMap(get(updateId), (rows) => {
-													const row = rows[0];
-													if (row === undefined || row.status === 'released')
-														return Effect.succeed({ _tag: 'Released' });
-													if (row.status === 'completed')
-														return Effect.succeed({
-															_tag: 'Completed',
-															outcome: row.outcome_json!,
-														});
-													return Effect.andThen(
-														Effect.sleep(Math.min(50, wait)),
-														observe,
-													);
-												});
+												return Effect.flatMap(
+													protect(read(updateId)),
+													(row) => {
+														if (row === undefined || row.status === 'released')
+															return Effect.succeed({ _tag: 'Released' });
+														if (row.status === 'completed') {
+															if (row.outcome === undefined)
+																return Effect.fail(
+																	invariant('Completed update has no outcome'),
+																);
+															return Effect.succeed({
+																_tag: 'Completed',
+																outcome: row.outcome,
+															});
+														}
+														return Effect.andThen(
+															Effect.sleep(Math.min(50, wait)),
+															observe,
+														);
+													},
+												);
 											}),
 										);
-									return { _tag: 'InProgress' as const, await: observe };
-								}),
-							);
-						}),
-					heartbeat: (
-						token: Parameters<UpdateDeduplicatorService['heartbeat']>[0],
-						duration = 30_000,
-					) =>
-						Effect.flatMap(Clock.currentTimeMillis, (now) =>
-							Effect.map(
-								sql`UPDATE ${schema}.${table} SET lease_expires_at=${new Date(now + duration)},updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
-								(rows) => rows.length > 0,
+										return { _tag: 'InProgress' as const, await: observe };
+									}),
+								);
+							}),
+						),
+					heartbeat: (token, duration = 30_000) =>
+						protect(
+							Effect.flatMap(Clock.currentTimeMillis, (now) =>
+								Effect.map(
+									sql`UPDATE ${schema}.${table} SET lease_expires_at=${new Date(now + duration)},updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
+									(rows) => rows.length > 0,
+								),
 							),
 						),
-					complete: (
-						token: Parameters<UpdateDeduplicatorService['complete']>[0],
-						outcome: Parameters<UpdateDeduplicatorService['complete']>[1],
-						retention = 86_400_000,
-					) =>
-						Effect.flatMap(Clock.currentTimeMillis, (now) =>
-							Effect.map(
-								sql`UPDATE ${schema}.${table} SET status='completed',outcome_json=${sql.json(outcome)},completed_at=${new Date(now)},lease_expires_at=${new Date(now + retention)},updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
-								(rows) => rows.length > 0,
+					complete: (token, outcome, retention = 86_400_000) =>
+						protect(
+							Effect.flatMap(Clock.currentTimeMillis, (now) =>
+								Effect.map(
+									sql`UPDATE ${schema}.${table} SET status='completed',outcome_json=${sql.json(outcome)},completed_at=${new Date(now)},lease_expires_at=${new Date(now + retention)},updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
+									(rows) => rows.length > 0,
+								),
 							),
 						),
-					release: (
-						token: Parameters<UpdateDeduplicatorService['release']>[0],
-					) =>
-						Effect.flatMap(Clock.currentTimeMillis, (now) =>
-							Effect.map(
-								sql`UPDATE ${schema}.${table} SET status='released',lease_expires_at=${new Date(now)},updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
-								(rows) => rows.length > 0,
+					release: (token) =>
+						protect(
+							Effect.flatMap(Clock.currentTimeMillis, (now) =>
+								Effect.map(
+									sql`UPDATE ${schema}.${table} SET status='released',lease_expires_at=${new Date(now)},updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
+									(rows) => rows.length > 0,
+								),
 							),
 						),
-				};
-				return service as unknown as UpdateDeduplicatorService;
+				} satisfies UpdateDeduplicatorService;
+				return service;
 			}),
 		),
 	);

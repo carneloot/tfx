@@ -1,0 +1,99 @@
+import * as Effect from 'effect/Effect';
+import * as Schema from 'effect/Schema';
+
+export const RawInteger = Schema.Union([Schema.String, Schema.Number]);
+export const NullableInteger = Schema.Union([
+	Schema.Null,
+	Schema.String,
+	Schema.Number,
+]);
+export const NullableString = Schema.Union([Schema.Null, Schema.String]);
+export const NullableUnknown = Schema.Union([Schema.Null, Schema.Unknown]);
+
+export const CompletedOutcome = Schema.Union([
+	Schema.Struct({ _tag: Schema.Literal('Handled') }),
+	Schema.Struct({
+		_tag: Schema.Literal('HandledWithOutputFailure'),
+		error: Schema.String,
+	}),
+	Schema.Struct({
+		_tag: Schema.Literal('PermanentInvalid'),
+		reason: Schema.String,
+	}),
+]);
+
+export const JobOutcome = Schema.Union([
+	Schema.Struct({ _tag: Schema.Literal('Succeeded') }),
+	Schema.Struct({
+		_tag: Schema.Literal('RetryableFailure'),
+		error: Schema.Unknown,
+		retryAfter: Schema.optionalKey(Schema.Number),
+	}),
+	Schema.Struct({
+		_tag: Schema.Literal('PermanentFailure'),
+		error: Schema.Unknown,
+	}),
+	Schema.Struct({ _tag: Schema.Literal('FatalFailure'), cause: Schema.String }),
+	Schema.Struct({ _tag: Schema.Literal('Cancelled') }),
+	Schema.Struct({ _tag: Schema.Literal('LeaseLost') }),
+]);
+
+export const decode = <A, E>(
+	schema: Schema.Schema<A>,
+	value: unknown,
+	error: (cause: unknown) => E,
+): Effect.Effect<A, E> =>
+	Schema.decodeUnknownEffect(schema)(value).pipe(
+		Effect.mapError(error),
+	) as Effect.Effect<A, E>;
+
+export const expectOne = <A, E>(
+	rows: ReadonlyArray<A>,
+	error: () => E,
+): Effect.Effect<A, E> => {
+	const row = rows.at(0);
+	return rows.length === 1 && row !== undefined
+		? Effect.succeed(row)
+		: Effect.fail(error());
+};
+
+export const safeInteger = <E>(
+	value: string | number,
+	error: () => E,
+): Effect.Effect<number, E> => {
+	const decoded = typeof value === 'number' ? value : Number(value);
+	return Number.isSafeInteger(decoded)
+		? Effect.succeed(decoded)
+		: Effect.fail(error());
+};
+
+export const timestamp = <E>(
+	value: unknown,
+	error: () => E,
+): Effect.Effect<number, E> => {
+	const decoded =
+		value instanceof Date
+			? value.getTime()
+			: typeof value === 'string' || typeof value === 'number'
+				? new Date(value).getTime()
+				: Number.NaN;
+	return Number.isFinite(decoded)
+		? Effect.succeed(decoded)
+		: Effect.fail(error());
+};
+
+export const safeCause = (
+	cause: unknown,
+): Readonly<Record<string, unknown>> => {
+	if (typeof cause === 'object' && cause !== null) {
+		const candidate = cause as {
+			readonly name?: unknown;
+			readonly code?: unknown;
+		};
+		return Object.freeze({
+			...(typeof candidate.name === 'string' ? { name: candidate.name } : {}),
+			...(typeof candidate.code === 'string' ? { code: candidate.code } : {}),
+		});
+	}
+	return Object.freeze({});
+};
