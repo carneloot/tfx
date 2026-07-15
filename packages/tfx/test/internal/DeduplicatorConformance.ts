@@ -7,7 +7,7 @@ import { UpdateDeduplicator } from '../../src/UpdateDeduplicator.js';
 import type { Capabilities } from './ConversationStorageConformance.js';
 export const deduplicatorConformance = (
 	name: string,
-	dedupLayer: () => Layer.Layer<UpdateDeduplicator>,
+	dedupLayer: () => Layer.Layer<UpdateDeduplicator, unknown, never>,
 	capabilities: Capabilities = {},
 ) =>
 	describe(`${name} UpdateDeduplicator conformance`, () => {
