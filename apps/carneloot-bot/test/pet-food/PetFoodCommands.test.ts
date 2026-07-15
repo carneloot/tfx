@@ -120,19 +120,22 @@ const provide = <A, E, R>(
 	food: PetFoodRepositoryService,
 	pets = [pet],
 ) =>
-	effect.pipe(
-		Effect.provideService(CurrentUser, current),
-		Effect.provideService(MessageContext, messageContext),
-		Effect.provideService(Telegram, {} as never),
-		Effect.provideService(PetRepository, {
-			findById: () => Effect.die('unused'),
-			addOwned: () => Effect.die('unused'),
-			listOwned: () => Effect.succeed(pets),
-		}),
-		Effect.provideService(PetFoodRepository, food),
-		Effect.provide(identity),
-		Effect.provide(scheduler),
-		Effect.provide(sql),
+	Effect.provide(
+		effect,
+		Layer.mergeAll(
+			Layer.succeed(CurrentUser, current),
+			Layer.succeed(MessageContext, messageContext),
+			Layer.succeed(Telegram, {} as never),
+			Layer.succeed(PetRepository, {
+				findById: () => Effect.die('unused'),
+				addOwned: () => Effect.die('unused'),
+				listOwned: () => Effect.succeed(pets),
+			}),
+			Layer.succeed(PetFoodRepository, food),
+			identity,
+			scheduler,
+			sql,
+		),
 	) as Effect.Effect<A, E>;
 const repository = (
 	summary: { totalMg: number; latestFedAt: number | null },

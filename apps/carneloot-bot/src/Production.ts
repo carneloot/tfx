@@ -2,10 +2,14 @@ import * as BunHttpClient from '@effect/platform-bun/BunHttpClient';
 import * as PgClient from '@effect/sql-pg/PgClient';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
+import type { BotRuntime } from 'tfx/BotRuntime';
 import * as Polling from 'tfx/Polling';
 import * as Telegram from 'tfx/Telegram';
+import type { UpdateDeduplicator } from 'tfx/UpdateDeduplicator';
 
 import { AppConfig, type AppConfigService } from './Config.js';
+import * as AppConfigLive from './Config.js';
+import type { JobWorker } from './JobWorker.js';
 import * as Layers from './Layers.js';
 
 export const pollingOptions = (config: AppConfigService) => ({
@@ -54,4 +58,9 @@ export const fromConfig = (config: AppConfigService) => {
 		botUsername: config.botUsername,
 	});
 };
-export const layer = Layer.unwrap(Effect.map(AppConfig, fromConfig));
+const configuredLayer = Layer.unwrap(Effect.map(AppConfig, fromConfig));
+export const appLayer: Layer.Layer<
+	BotRuntime | JobWorker | UpdateDeduplicator,
+	unknown,
+	never
+> = Layer.provide(configuredLayer, AppConfigLive.layer);

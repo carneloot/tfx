@@ -14,7 +14,7 @@ export const registerCurrent = Effect.gen(function* () {
 		yield* context.reply('Não foi possível identificar o usuário.');
 		return;
 	}
-	const decode = <A>(schema: Schema.Schema<A>, value: unknown) =>
+	const decode = <S extends Schema.Schema<any>>(schema: S, value: unknown) =>
 		Schema.decodeUnknownEffect(schema)(value).pipe(
 			Effect.mapError(
 				(cause) =>

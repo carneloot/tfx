@@ -1,9 +1,10 @@
-import { Bot, BotGroup, Command, Middleware } from 'tfx';
+import { Bot, BotGroup, Command, MessageContext, Middleware } from 'tfx';
 
 import { CurrentUser } from './CurrentUser.js';
 
 export const RegisteredUser = Middleware.make('registered-user', {
 	scope: 'global',
+	requires: [MessageContext.MessageContext],
 	provides: CurrentUser,
 	error: undefined as unknown,
 });

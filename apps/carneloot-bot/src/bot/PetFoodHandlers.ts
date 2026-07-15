@@ -42,7 +42,7 @@ const start = (
 				new ConversationScopeUnavailable('Missing conversation scope'),
 			);
 		const conversations = yield* Conversations.Conversations;
-		yield* conversations.start(built as never, input(current, pets), {
+		yield* conversations.start(built, input(current, pets), {
 			scope: { botId, chatId: update.chatId, userId: update.userId },
 			conflict: 'replace',
 		});
