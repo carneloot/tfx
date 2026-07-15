@@ -197,15 +197,16 @@ export const execute = (
 						);
 				} else {
 					const disposition = classifyTelegramError(sent.failure);
-					if (disposition._tag === 'Unknown')
-						yield* notifications
+					if (disposition._tag === 'Unknown') {
+						const finalized = yield* notifications
 							.finalizeUnknown(claim.token, disposition.error, completedAt)
 							.pipe(Effect.mapError(persistenceRetry));
-					else {
+						if (!finalized) return yield* Effect.fail(persistenceRetry());
+					} else {
 						const retryable =
 							disposition._tag === 'Retryable' &&
 							claim.delivery.attemptCount < 8;
-						yield* notifications
+						const finalized = yield* notifications
 							.finalizeFailed(
 								claim.token,
 								disposition.error,
@@ -214,6 +215,7 @@ export const execute = (
 								completedAt,
 							)
 							.pipe(Effect.mapError(persistenceRetry));
+						if (!finalized) return yield* Effect.fail(persistenceRetry());
 					}
 				}
 				yield* loop;
