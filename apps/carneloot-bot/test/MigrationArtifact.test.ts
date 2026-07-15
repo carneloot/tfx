@@ -18,6 +18,10 @@ import {
 	migration0004Checksum,
 	migration0004Sql,
 } from '../src/postgres/Migration0004Sql.js';
+import {
+	migration0005Checksum,
+	migration0005Sql,
+} from '../src/postgres/Migration0005Sql.js';
 describe('application migration artifacts', () => {
 	it.each([
 		['0001_identity_pets.sql', migration0001Sql, migration0001Checksum],
@@ -28,6 +32,11 @@ describe('application migration artifacts', () => {
 			migration0003Checksum,
 		],
 		['0004_notifications.sql', migration0004Sql, migration0004Checksum],
+		[
+			'0005_unreachable_notification_deliveries.sql',
+			migration0005Sql,
+			migration0005Checksum,
+		],
 	] as const)(
 		'matches committed %s bytes and SHA-256',
 		(file, sql, checksum) => {

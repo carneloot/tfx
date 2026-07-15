@@ -38,13 +38,21 @@ export interface EventInput {
 	readonly dedupeKey: string;
 	readonly now: number;
 }
-export interface RecipientInput {
+interface RecipientBase {
 	readonly id: DeliveryId;
 	readonly recipientUserId: UserId;
-	readonly recipientChatId: TelegramChatId;
 	readonly recipientRole: RecipientRole;
 	readonly channel: typeof DeliveryChannel.Type;
 }
+export type RecipientInput =
+	| (RecipientBase & {
+			readonly _tag: 'Reachable';
+			readonly recipientChatId: TelegramChatId;
+	  })
+	| (RecipientBase & {
+			readonly _tag: 'Unreachable';
+			readonly error: SafeError;
+	  });
 export interface DeliveryToken {
 	readonly id: DeliveryId;
 	readonly generation: number;
@@ -64,6 +72,7 @@ export interface EventSummary {
 	readonly terminal: number;
 	readonly completed: boolean;
 	readonly earliestRetryAt: number | null;
+	readonly earliestSendingLeaseExpiry: number | null;
 }
 export interface NotificationRepositoryService {
 	readonly createEvent: (
@@ -105,6 +114,7 @@ export interface NotificationRepositoryService {
 		NotificationRepositoryError
 	>;
 	readonly recoverExpired: (
+		eventId: EventId,
 		now: number,
 	) => Effect.Effect<number, NotificationRepositoryError>;
 	readonly claimNext: (

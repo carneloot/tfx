@@ -32,7 +32,7 @@ export const NotificationDelivery = Schema.Struct({
 	id: DeliveryId,
 	eventId: EventId,
 	recipientUserId: UserId,
-	recipientChatId: TelegramChatId,
+	recipientChatId: Schema.NullOr(TelegramChatId),
 	recipientRole: RecipientRole,
 	channel: DeliveryChannel,
 	status: DeliveryStatus,

@@ -90,6 +90,7 @@ else
 					}),
 				);
 				const recipient = {
+					_tag: 'Reachable' as const,
 					id: deliveryId(),
 					recipientUserId: owner.user.id,
 					recipientChatId: owner.profile.privateChatId,
@@ -104,6 +105,23 @@ else
 				const b = yield* repository.materializeRecipients(
 					first.id,
 					[{ ...recipient, id: deliveryId() }],
+					1_001,
+				);
+				const unreachable = yield* repository.materializeRecipients(
+					first.id,
+					[
+						{
+							_tag: 'Unreachable',
+							id: deliveryId(),
+							recipientUserId: owner.user.id,
+							recipientRole: RecipientRole.subscriber,
+							channel: 'telegram-unreachable',
+							error: {
+								code: 'MissingTelegramIdentity',
+								message: 'No identity',
+							},
+						},
+					],
 					1_001,
 				);
 				const attached = yield* repository.attachJob(
@@ -136,6 +154,7 @@ else
 					conflicting,
 					a,
 					b,
+					unreachable,
 					attached,
 					attachedTwice,
 					cancelled,
@@ -147,6 +166,12 @@ else
 			const result = await Effect.runPromise(Effect.provide(program, layer));
 			expect(result.repeated.id).toBe(result.first.id);
 			expect(result.a[0]?.id).toBe(result.b[0]?.id);
+			expect(result.unreachable[0]).toMatchObject({
+				status: 'failed',
+				recipientChatId: null,
+				retryable: false,
+				safeError: { code: 'MissingTelegramIdentity' },
+			});
 			expect(result.conflicting).toMatchObject({
 				_tag: 'Failure',
 				failure: { reason: 'Conflict' },
@@ -176,6 +201,7 @@ else
 					event.id,
 					[
 						{
+							_tag: 'Reachable' as const,
 							id: deliveryId(),
 							recipientUserId: owner.user.id,
 							recipientChatId: owner.profile.privateChatId,
@@ -258,6 +284,7 @@ else
 					recoveryEvent.id,
 					[
 						{
+							_tag: 'Reachable' as const,
 							id: deliveryId(),
 							recipientUserId: owner.user.id,
 							recipientChatId: owner.profile.privateChatId,
@@ -268,9 +295,9 @@ else
 					4_000,
 				);
 				yield* repository.claimNext(recoveryEvent.id, 4_000, 10);
-				expect(yield* repository.recoverExpired(4_011)).toBeGreaterThanOrEqual(
-					1,
-				);
+				expect(
+					yield* repository.recoverExpired(recoveryEvent.id, 4_011),
+				).toBeGreaterThanOrEqual(1);
 				expect(
 					yield* repository.claimNext(recoveryEvent.id, 5_000, 10),
 				).toBeUndefined();
@@ -294,6 +321,7 @@ else
 					event.id,
 					[
 						{
+							_tag: 'Reachable' as const,
 							id: deliveryId(),
 							recipientUserId: a.user.id,
 							recipientChatId: a.profile.privateChatId,
@@ -301,6 +329,7 @@ else
 							channel: 'telegram',
 						},
 						{
+							_tag: 'Reachable' as const,
 							id: deliveryId(),
 							recipientUserId: b.user.id,
 							recipientChatId: b.profile.privateChatId,
@@ -374,6 +403,7 @@ else
 					event.id,
 					[
 						{
+							_tag: 'Reachable' as const,
 							id: deliveryId(),
 							recipientUserId: owner.user.id,
 							recipientChatId: owner.profile.privateChatId,
@@ -387,6 +417,7 @@ else
 					secondEvent.id,
 					[
 						{
+							_tag: 'Reachable' as const,
 							id: deliveryId(),
 							recipientUserId: owner.user.id,
 							recipientChatId: owner.profile.privateChatId,

@@ -47,7 +47,7 @@ const DeliveryRow = Schema.Struct({
 	id: DeliveryId,
 	event_id: EventId,
 	recipient_user_id: UserId,
-	recipient_chat_id: integer,
+	recipient_chat_id: nullableInteger,
 	recipient_role: RecipientRole,
 	channel: DeliveryChannel,
 	status: DeliveryStatus,
@@ -109,9 +109,12 @@ const decodeDeliverySync = (raw: unknown): NotificationDelivery => {
 		id: row.id,
 		eventId: row.event_id,
 		recipientUserId: row.recipient_user_id,
-		recipientChatId: Schema.decodeUnknownSync(TelegramChatId)(
-			safeInteger(row.recipient_chat_id),
-		),
+		recipientChatId:
+			row.recipient_chat_id === null
+				? null
+				: Schema.decodeUnknownSync(TelegramChatId)(
+						safeInteger(row.recipient_chat_id),
+					),
 		recipientRole: row.recipient_role,
 		channel: row.channel,
 		status: row.status,
@@ -282,19 +285,23 @@ export const layer: Layer.Layer<
 									);
 								return yield* Effect.forEach(recipients, (recipient) =>
 									Effect.flatMap(
-										sql<
-											Record<string, unknown>
-										>`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,${recipient.recipientChatId},${recipient.recipientRole},${recipient.channel},'pending',0,0,false,${new Date(now)},${new Date(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`,
+										recipient._tag === 'Reachable'
+											? sql<
+													Record<string, unknown>
+												>`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,${recipient.recipientChatId},${recipient.recipientRole},${recipient.channel},'pending',0,0,false,${new Date(now)},${new Date(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`
+											: sql<
+													Record<string, unknown>
+												>`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,safe_error_json,failed_at,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,NULL,${recipient.recipientRole},${recipient.channel},'failed',0,0,false,${sql.json(recipient.error)},${new Date(now)},${new Date(now)},${new Date(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`,
 										oneDelivery,
 									),
 								);
 							}),
 						),
 					),
-				recoverExpired: (now) =>
+				recoverExpired: (eventId, now) =>
 					protect(
 						Effect.map(
-							sql`UPDATE carneloot.notification_deliveries SET status='unknown',sending_lease_expires_at=NULL,retryable=false,retry_at=NULL,safe_error_json=${sql.json({ code: 'SendingLeaseExpired', message: 'Sending lease expired' })},unknown_at=${new Date(now)},updated_at=${new Date(now)} WHERE status='sending' AND sending_lease_expires_at<=${new Date(now)} RETURNING id`,
+							sql`UPDATE carneloot.notification_deliveries SET status='unknown',sending_lease_expires_at=NULL,retryable=false,retry_at=NULL,safe_error_json=${sql.json({ code: 'SendingLeaseExpired', message: 'Sending lease expired' })},unknown_at=${new Date(now)},updated_at=${new Date(now)} WHERE event_id=${eventId}::uuid AND status='sending' AND sending_lease_expires_at<=${new Date(now)} RETURNING id`,
 							(rows) => rows.length,
 						),
 					),
@@ -370,7 +377,8 @@ export const layer: Layer.Layer<
 									retryable_failed: number;
 									terminal: number;
 									earliest_retry_at: Date | null;
-								}>`SELECT count(*) FILTER (WHERE status='pending')::int pending,count(*) FILTER (WHERE status='sending')::int sending,count(*) FILTER (WHERE status='failed' AND retryable=true)::int retryable_failed,count(*) FILTER (WHERE status='sent' OR status='unknown' OR (status='failed' AND retryable=false))::int terminal,min(retry_at) FILTER (WHERE status='failed' AND retryable=true) earliest_retry_at FROM carneloot.notification_deliveries WHERE event_id=${eventId}::uuid`;
+									earliest_sending_lease_expiry: Date | null;
+								}>`SELECT count(*) FILTER (WHERE status='pending')::int pending,count(*) FILTER (WHERE status='sending')::int sending,count(*) FILTER (WHERE status='failed' AND retryable=true)::int retryable_failed,count(*) FILTER (WHERE status='sent' OR status='unknown' OR (status='failed' AND retryable=false))::int terminal,min(retry_at) FILTER (WHERE status='failed' AND retryable=true) earliest_retry_at,min(sending_lease_expires_at) FILTER (WHERE status='sending') earliest_sending_lease_expiry FROM carneloot.notification_deliveries WHERE event_id=${eventId}::uuid`;
 								const row = rows[0]!;
 								const completed =
 									row.pending === 0 &&
@@ -385,6 +393,9 @@ export const layer: Layer.Layer<
 									terminal: row.terminal,
 									completed,
 									earliestRetryAt: timestamp(row.earliest_retry_at),
+									earliestSendingLeaseExpiry: timestamp(
+										row.earliest_sending_lease_expiry,
+									),
 								};
 							}),
 						),
