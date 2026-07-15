@@ -21,6 +21,9 @@ describe("ConversationChoice", () => {
     const codec = CallbackData.make("choice", Schema.String)
     const choice = ConversationChoice.make([{ label: "A", value: "same" }, { label: "B", value: "same" }], { callbackData: codec })
     await expect(Effect.runPromise(ConversationPrompt.choice(choice) as Effect.Effect<unknown, unknown>)).rejects.toMatchObject({ reason: "DuplicateValue" })
+    let acknowledged = false
+    await expect(Effect.runPromise(ConversationPrompt.resolve(choice, "choice:same", { acknowledge: Effect.sync(() => { acknowledged = true }) }) as Effect.Effect<unknown, unknown>)).resolves.toEqual({ _tag: "Selected", value: "same" })
+    expect(acknowledged).toBe(true)
   })
   it("exposes reply keyboard removal", () => expect(ConversationPrompt.removeReplyKeyboard).toEqual({ remove_keyboard: true }))
 })

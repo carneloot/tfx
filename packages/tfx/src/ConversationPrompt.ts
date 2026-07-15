@@ -8,13 +8,14 @@ export const choice = <A, R>(declaration: ConversationChoice.Choice<A, R>) =>
     ? ReplyKeyboard.rows(ConversationChoice.rows(declaration, values).map((row) => row.map((item) => item.label)), { oneTime: true, resize: true })
     : InlineKeyboard.rows(ConversationChoice.rows(declaration, values).map((row) => row.map((item) => InlineKeyboard.callback(item.label, item.value)))))
 
-export const resolve = <A, R>(declaration: ConversationChoice.Choice<A, R>, response: string): Effect.Effect<ConversationChoice.ChoiceResult<A>, ConversationChoice.ConversationChoiceError | unknown, R> => {
-  if (response === declaration.cancelLabel) return Effect.succeed(ConversationChoice.cancelled)
+export const resolve = <A, R, AE = never, AR = never>(declaration: ConversationChoice.Choice<A, R>, response: string, options: { readonly acknowledge?: Effect.Effect<void, AE, AR> } = {}): Effect.Effect<ConversationChoice.ChoiceResult<A>, ConversationChoice.ConversationChoiceError | unknown | AE, R | AR> => {
+  if (response === declaration.cancelLabel) return Effect.as(options.acknowledge ?? Effect.void, ConversationChoice.cancelled) as never
   if (declaration.callbackData === undefined) {
     const option = declaration.options.find((item) => item.label === response)
     return option === undefined ? Effect.fail(new ConversationChoice.ConversationChoiceError("InvalidResponse", "Unknown choice response")) : Effect.succeed(ConversationChoice.selected(option.value))
   }
-  return Effect.map(declaration.callbackData.decode(response), ConversationChoice.selected) as never
+  return Effect.flatMap(declaration.callbackData.decode(response), (value) =>
+    Effect.as(options.acknowledge ?? Effect.void, ConversationChoice.selected(value))) as never
 }
 
 export const removeReplyKeyboard = Object.freeze({ remove_keyboard: true as const })
