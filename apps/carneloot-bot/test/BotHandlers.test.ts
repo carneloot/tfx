@@ -3,6 +3,8 @@ import { MessageContext, type MessageContextService } from 'tfx/MessageContext';
 import { describe, expect, it } from 'vitest';
 
 import { registerCurrent } from '../src/bot/AccountHandlers.js';
+import * as RegisteredUserMiddleware from '../src/bot/RegisteredUser.js';
+import { UserNotRegistered } from '../src/domain/DomainError.js';
 import { UserId } from '../src/domain/Ids.js';
 import type { RegisteredUser } from '../src/domain/User.js';
 import { UserRepository } from '../src/ports/UserRepository.js';
@@ -61,5 +63,26 @@ describe('account handler', () => {
 			username: 'ana',
 		});
 		expect(replies).toEqual(['Usuário cadastrado com sucesso!']);
+	});
+	it('replies with exact unregistered guidance and typed rejection', async () => {
+		replies.length = 0;
+		const missing = Layer.succeed(UserRepository, {
+			registerTelegramProfile: () => Effect.die('unused'),
+			findByTelegram: () =>
+				Effect.fail(new UserNotRegistered({ message: 'missing' })),
+		});
+		const effect = Effect.provideService(
+			Effect.provide(RegisteredUserMiddleware.live.effect, missing),
+			MessageContext,
+			context({ from: { id: 77, first_name: 'No' } }),
+		) as Effect.Effect<unknown, unknown>;
+		const result = await Effect.runPromise(Effect.result(effect));
+		expect(result).toMatchObject({
+			_tag: 'Failure',
+			failure: { _tag: 'UserNotRegistered' },
+		});
+		expect(replies).toEqual([
+			'Por favor cadastre-se primeiro utilizando /cadastrar',
+		]);
 	});
 });

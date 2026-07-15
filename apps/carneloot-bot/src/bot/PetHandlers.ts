@@ -15,9 +15,17 @@ export const startAddPet = Effect.gen(function* () {
 			new ConversationScopeUnavailable('Missing conversation scope'),
 		);
 	const conversations = yield* Conversations.Conversations;
-	yield* conversations.start(AddPetConversation.built, current.user.id, {
-		scope: { botId, chatId: update.chatId, userId: update.userId },
-	});
+	yield* conversations.start(
+		AddPetConversation.built,
+		{
+			ownerId: current.user.id,
+			botId: current.profile.botId,
+			telegramUserId: current.profile.telegramUserId,
+		},
+		{
+			scope: { botId, chatId: update.chatId, userId: update.userId },
+		},
+	);
 });
 export const listPets = Effect.gen(function* () {
 	const current = yield* CurrentUser;

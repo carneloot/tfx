@@ -62,7 +62,11 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 			);
 			yield* (yield* Conversations).start(
 				AddPetConversation.built,
-				owner.user.id,
+				{
+					ownerId: owner.user.id,
+					botId: owner.profile.botId,
+					telegramUserId: owner.profile.telegramUserId,
+				},
 				{ scope },
 			);
 			return owner.user.id;

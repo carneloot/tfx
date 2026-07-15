@@ -1,17 +1,42 @@
 import { Effect, Layer, Schema } from 'effect';
 import { Conversations } from 'tfx/Conversations';
 import * as ConversationsLive from 'tfx/Conversations';
+import { ConversationStorage } from 'tfx/ConversationStorage';
 import * as MemoryConversationStorage from 'tfx/MemoryConversationStorage';
 import { MessageContext, type MessageContextService } from 'tfx/MessageContext';
 import { describe, expect, it } from 'vitest';
 
 import * as AddPetConversation from '../src/bot/AddPetConversation.js';
 import { PetNameAlreadyExists } from '../src/domain/DomainError.js';
-import { UserId } from '../src/domain/Ids.js';
+import {
+	BotId,
+	TelegramChatId,
+	TelegramUserId,
+	UserId,
+} from '../src/domain/Ids.js';
 import { PetRepository } from '../src/ports/PetRepository.js';
+import { UserRepository } from '../src/ports/UserRepository.js';
 const ownerId = Schema.decodeUnknownSync(UserId)(
 	'00000000-0000-4000-8000-000000000001',
 );
+const botId = Schema.decodeUnknownSync(BotId)('carneloot');
+const telegramUserId = Schema.decodeUnknownSync(TelegramUserId)(2);
+const identity = { ownerId, botId, telegramUserId };
+const userLayer = Layer.succeed(UserRepository, {
+	registerTelegramProfile: () => Effect.die('unused'),
+	findByTelegram: () =>
+		Effect.succeed({
+			user: { id: ownerId, createdAt: 0, updatedAt: 0 },
+			profile: {
+				botId,
+				telegramUserId,
+				username: null,
+				firstName: 'Ana',
+				lastName: null,
+				privateChatId: Schema.decodeUnknownSync(TelegramChatId)(2),
+			},
+		}),
+});
 const replies: Array<string> = [];
 const message = {
 	message: {} as never,
@@ -48,7 +73,7 @@ describe('AddPetConversation', () => {
 		const program = Effect.gen(function* () {
 			const conversations = yield* Conversations;
 			const scope = { botId: 'carneloot', chatId: 1, userId: 2 };
-			yield* conversations.start(AddPetConversation.built, ownerId, { scope });
+			yield* conversations.start(AddPetConversation.built, identity, { scope });
 			const invalid = yield* conversations.resume(
 				AddPetConversation.built,
 				'Rex\u0000',
@@ -66,8 +91,9 @@ describe('AddPetConversation', () => {
 			);
 			return { invalid, first, duplicate };
 		});
-		const dependencies = Layer.merge(
+		const dependencies = Layer.mergeAll(
 			petLayer,
+			userLayer,
 			Layer.succeed(MessageContext, message),
 		);
 		const executable = Effect.provide(
@@ -106,7 +132,7 @@ describe('AddPetConversation', () => {
 		const scope = { botId: 'carneloot', chatId: 5, userId: 6 };
 		const program = Effect.gen(function* () {
 			const conversations = yield* Conversations;
-			yield* conversations.start(AddPetConversation.built, ownerId, { scope });
+			yield* conversations.start(AddPetConversation.built, identity, { scope });
 			return yield* conversations.resume(AddPetConversation.built, 'Rex', {
 				scope,
 				updateId: 20,
@@ -116,7 +142,11 @@ describe('AddPetConversation', () => {
 			Effect.provide(program, ConversationsLive.layer),
 			Layer.merge(
 				MemoryConversationStorage.layer,
-				Layer.merge(petLayer, Layer.succeed(MessageContext, message)),
+				Layer.mergeAll(
+					petLayer,
+					userLayer,
+					Layer.succeed(MessageContext, message),
+				),
 			),
 		) as Effect.Effect<
 			{ readonly _tag: string; readonly row?: unknown },
@@ -131,5 +161,49 @@ describe('AddPetConversation', () => {
 			'Já existe um pet com esse nome.',
 			'Qual o nome do seu pet?',
 		]);
+	});
+	it('rejects corrupt persisted identity state before mutation', async () => {
+		let inserts = 0;
+		const petLayer = Layer.succeed(PetRepository, {
+			addOwned: () => {
+				inserts++;
+				return Effect.die('must not run');
+			},
+			listOwned: () => Effect.succeed([]),
+		});
+		const scope = { botId: 'carneloot', chatId: 7, userId: 8 };
+		const program = Effect.gen(function* () {
+			const storage = yield* ConversationStorage;
+			yield* storage.create(
+				{
+					scope,
+					conversationId: AddPetConversation.declaration.id,
+					version: 1,
+					step: 'name',
+					state: { ownerId },
+					lastUpdateId: undefined,
+					expiresAt: undefined,
+				},
+				'fail',
+			);
+			return yield* Effect.result(
+				(yield* Conversations).resume(AddPetConversation.built, 'Rex', {
+					scope,
+					updateId: 30,
+				}),
+			);
+		});
+		const executable = Effect.provide(
+			Effect.provide(program, ConversationsLive.layer),
+			Layer.mergeAll(
+				MemoryConversationStorage.layer,
+				petLayer,
+				userLayer,
+				Layer.succeed(MessageContext, message),
+			),
+		) as unknown as Effect.Effect<{ readonly _tag: string }, never>;
+		const result = await Effect.runPromise(executable);
+		expect(result._tag).toBe('Failure');
+		expect(inserts).toBe(0);
 	});
 });

@@ -8,16 +8,21 @@ import {
 } from 'tfx';
 
 import * as AddPet from '../application/AddPet.js';
-import { UserId } from '../domain/Ids.js';
+import { BotId, TelegramUserId, UserId } from '../domain/Ids.js';
 import { PetName } from '../domain/Pet.js';
 import { PetRepository } from '../ports/PetRepository.js';
+import { UserRepository } from '../ports/UserRepository.js';
 
-const State = Schema.Struct({ ownerId: UserId });
+const State = Schema.Struct({
+	ownerId: UserId,
+	botId: BotId,
+	telegramUserId: TelegramUserId,
+});
 export const declaration = Conversation.make('add-owned-pet', {
 	version: 1,
-	startup: UserId,
+	startup: State,
 	initialStep: 'name',
-	initialize: (ownerId) => ({ ownerId }),
+	initialize: (identity) => identity,
 	steps: {
 		name: Conversation.step('name', {
 			state: State,
@@ -32,13 +37,14 @@ export const built = ConversationBuilder.done(
 		enter: () =>
 			Effect.gen(function* () {
 				yield* PetRepository;
+				yield* UserRepository;
 				const context = yield* MessageContext.MessageContext;
 				yield* context.reply('Qual o nome do seu pet?');
 			}).pipe(Effect.mapError((error): unknown => error)),
 		onInput: (state, name) =>
 			Effect.gen(function* () {
 				const context = yield* MessageContext.MessageContext;
-				return yield* AddPet.execute(state.ownerId, name).pipe(
+				return yield* AddPet.execute({ ...state, name }).pipe(
 					Effect.as(
 						ConversationBuilder.complete({
 							afterCommit: context.reply('Pet cadastrado com sucesso!'),

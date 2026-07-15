@@ -1,0 +1,66 @@
+import { Effect, Layer, Schema } from 'effect';
+import { MessageContext, type MessageContextService } from 'tfx/MessageContext';
+import { describe, expect, it } from 'vitest';
+
+import { CurrentUser } from '../src/bot/CurrentUser.js';
+import { listPets } from '../src/bot/PetHandlers.js';
+import {
+	BotId,
+	PetId,
+	TelegramChatId,
+	TelegramUserId,
+	UserId,
+} from '../src/domain/Ids.js';
+import { PetName } from '../src/domain/Pet.js';
+import { PetRepository } from '../src/ports/PetRepository.js';
+const ownerId = Schema.decodeUnknownSync(UserId)(
+	'00000000-0000-4000-8000-000000000001',
+);
+const profile = {
+	botId: Schema.decodeUnknownSync(BotId)('carneloot'),
+	telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(42),
+	username: null,
+	firstName: 'Ana',
+	lastName: null,
+	privateChatId: Schema.decodeUnknownSync(TelegramChatId)(42),
+};
+const current = { user: { id: ownerId, createdAt: 0, updatedAt: 0 }, profile };
+const run = async (names: ReadonlyArray<string>) => {
+	const replies: Array<string> = [];
+	const pets = names.map((name, index) => ({
+		id: Schema.decodeUnknownSync(PetId)(
+			`00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+		),
+		ownerId,
+		name: Schema.decodeUnknownSync(PetName)(name),
+		createdAt: 0,
+		updatedAt: 0,
+	}));
+	const context = {
+		reply: (text: string) =>
+			Effect.sync(() => {
+				replies.push(text);
+				return {} as never;
+			}),
+	} as unknown as MessageContextService;
+	const effect = listPets.pipe(
+		Effect.provideService(CurrentUser, current),
+		Effect.provideService(MessageContext, context),
+		Effect.provide(
+			Layer.succeed(PetRepository, {
+				addOwned: () => Effect.die('unused'),
+				listOwned: () => Effect.succeed(pets),
+			}),
+		),
+	) as Effect.Effect<void, unknown>;
+	await Effect.runPromise(effect);
+	return replies;
+};
+describe('pet list handler', () => {
+	it('uses exact empty text', async () => {
+		expect(await run([])).toEqual(['Você não tem pets']);
+	});
+	it('renders deterministic numbered output', async () => {
+		expect(await run(['Bidu', 'Rex'])).toEqual(['1. Bidu\n2. Rex']);
+	});
+});
