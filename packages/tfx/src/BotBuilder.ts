@@ -20,6 +20,9 @@ type InputRequirements<C> = C extends Command.Command<any, infer Input, any, any
 type DeclaredError<C> = C extends Command.Command<any, any, infer Error, any> ? Error : never
 type MiddlewareProvided<C> = C extends Command.Command<any, any, any, infer M> ? Middleware.ProvidedBy<M> : never
 type HandlerRequirements<C, R> = Exclude<R, UpdateContext | MessageContext | MiddlewareProvided<C>>
+type GroupMiddlewareRequirement<G> = [CommandsOf<G>[keyof CommandsOf<G>] extends infer C
+  ? C extends Command.Command<any, any, any, infer M> ? M[number] : never
+  : never] extends [never] ? never : Middleware.MiddlewareRegistry
 
 export interface Handlers<G extends BotGroup.BotGroup<any, any>, Remaining extends keyof CommandsOf<G>, Requirements> {
   /** Phantom state tracks implementations still required. */
@@ -43,7 +46,14 @@ const handlers = <G extends BotGroup.BotGroup<any, any>, Remaining extends keyof
   _entries: entries,
   handle(id, handler) {
     if (entries.some((entry) => entry.commandId === id)) throw new Error(`Duplicate implementation '${String(id)}' in group '${groupId}'`)
-    return handlers(groupId, commands, [...entries, { groupId, commandId: String(id), handler, middleware: commands[String(id)]!.middleware }])
+    const middlewareIds = Object.freeze(commands[String(id)]!.middleware.map((item: Middleware.AnyMiddleware) => item.id))
+    return handlers(groupId, commands, [...entries, {
+      groupId,
+      commandId: String(id),
+      middlewareIds,
+      handler,
+      invoke: (registry, input) => registry.run(middlewareIds, handler(input))
+    }])
   }
 })
 
@@ -57,8 +67,8 @@ export const group = <
   implement: (
     handlers: Handlers<GroupAt<B, Id>, keyof CommandsOf<GroupAt<B, Id>>, never>
   ) => Handlers<GroupAt<B, Id>, never, R>
-): Layer.Layer<HandlerRegistry, never, R> => {
+): Layer.Layer<HandlerRegistry, never, R | GroupMiddlewareRequirement<GroupAt<B, Id>>> => {
   const declaration = bot.groups[id] as GroupAt<B, Id>
   const completed = implement(handlers(String(declaration.id), declaration.commands, []))
-  return Layer.succeed(HandlerRegistry, Object.freeze([...completed._entries])) as Layer.Layer<HandlerRegistry, never, R>
+  return Layer.succeed(HandlerRegistry, Object.freeze([...completed._entries])) as Layer.Layer<HandlerRegistry, never, R | GroupMiddlewareRequirement<GroupAt<B, Id>>>
 }

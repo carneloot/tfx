@@ -24,7 +24,7 @@ const live = BotBuilder.group(app, "pets", (handlers) => handlers
     return Effect.all([Infra, UpdateContext.UpdateContext, MessageContext.MessageContext, CurrentUser, CurrentAdmin]).pipe(Effect.as(_inferred))
   })
   .handle("listPets", (_input) => Effect.void))
-const _requirements: Layer.Layer<any, never, Infra> = live
+const _requirements: Layer.Layer<any, never, Infra | Middleware.MiddlewareRegistry> = live
 
 // @ts-expect-error unknown group
 BotBuilder.group(app, "missing", (handlers) => handlers)

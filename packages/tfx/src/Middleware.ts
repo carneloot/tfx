@@ -1,5 +1,6 @@
-import type * as Context from "effect/Context"
+import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
 
 export type Scope = "global" | "group" | "command" | "conversation" | "handler"
 
@@ -75,7 +76,7 @@ export const implement = <D extends AnyMiddleware, E extends DeclaredError<D>, R
   _infrastructure: undefined as Exclude<R, Required<D>>
 })
 
-type AnyApplication = Application<AnyMiddleware, any, any>
+export type AnyApplication = Application<AnyMiddleware, any, any>
 type AppRequired<A> = A extends Application<infer D, any, any> ? Required<D> : never
 type AppProvided<A> = A extends Application<infer D, any, any> ? Provided<D> : never
 type AppInfrastructure<A> = A extends Application<any, infer R, any> ? R : never
@@ -119,3 +120,43 @@ const build = <Available, Infrastructure, Error>(applications: ReadonlyArray<Any
 
 /** Empty immutable request pipeline. Applications execute in declaration order. */
 export const empty: Pipeline<never, never, never> = build([])
+
+type ApplicationsInfrastructure<A extends ReadonlyArray<AnyApplication>> = AppInfrastructure<A[number]>
+export type ApplicationsError<A extends ReadonlyArray<AnyApplication>> = AppError<A[number]>
+
+export interface MiddlewareRegistryService {
+  readonly applications: Readonly<Record<string, AnyApplication>>
+  /** Execute selected applications in declaration order around a request effect. */
+  readonly run: <A, E, R>(ids: ReadonlyArray<string>, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | unknown, R>
+}
+
+export class MiddlewareRegistry extends Context.Service<MiddlewareRegistry, MiddlewareRegistryService>()("tfx/MiddlewareRegistry") {}
+
+const registry = (applications: ReadonlyArray<AnyApplication>, infrastructure: Context.Context<never>): MiddlewareRegistryService => {
+  const byId: Record<string, AnyApplication> = Object.create(null)
+  for (const application of applications) {
+    const id = application.declaration.id
+    if (byId[id] !== undefined) throw new Error(`Duplicate middleware implementation '${id}'`)
+    byId[id] = application
+  }
+  const run: MiddlewareRegistryService["run"] = (ids, effect) => {
+    const selected = ids.map((id) => {
+      const application = byId[id]
+      if (application === undefined) throw new Error(`Missing middleware implementation '${id}'`)
+      return application
+    })
+    const execute = (index: number): Effect.Effect<any, any, any> => {
+      if (index === selected.length) return effect
+      const application = selected[index]!
+      return Effect.flatMap(Effect.provide(application.effect, infrastructure), (service) =>
+        Effect.provideService(execute(index + 1), application.declaration.provides, service))
+    }
+    return execute(0)
+  }
+  return Object.freeze({ applications: Object.freeze(byId), run })
+}
+
+/** Capture implementation infrastructure once; middleware effects still execute once per request. */
+export const layer = <const A extends ReadonlyArray<AnyApplication>>(...applications: A): Layer.Layer<MiddlewareRegistry, ApplicationsError<A>, ApplicationsInfrastructure<A>> =>
+  Layer.effect(MiddlewareRegistry, Effect.map(Effect.context<ApplicationsInfrastructure<A>>(), (context) =>
+    registry(applications, context as Context.Context<never>)))

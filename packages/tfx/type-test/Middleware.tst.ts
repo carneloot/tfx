@@ -34,8 +34,10 @@ Middleware.empty.use(adminLive)
 const effect = ordered.run(Effect.map(CurrentAdmin, (admin) => ({ id: admin.id })))
 const _infrastructure: Effect.Effect<{ readonly id: number }, Unauthorized, UserRepository> = effect
 
-const layer = Layer.effect(Result, effect)
-const _layerRequirement: Layer.Layer<Result, Unauthorized, UserRepository> = layer
+const resultLayer = Layer.effect(Result, effect)
+const _layerRequirement: Layer.Layer<Result, Unauthorized, UserRepository> = resultLayer
+const registryLayer: Layer.Layer<Middleware.MiddlewareRegistry, Unauthorized, UserRepository> = Middleware.layer(registeredLive, adminLive)
+void registryLayer
 
 Middleware.implement(RegisteredUser,
   // @ts-expect-error middleware processing error was not declared
