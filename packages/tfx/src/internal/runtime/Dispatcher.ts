@@ -19,6 +19,9 @@ export const make = (options: {
 	readonly capacity: number;
 	readonly deduplicator: UpdateDeduplicatorService;
 	readonly router: Router;
+	readonly leaseDuration?: number;
+	readonly waitTimeout?: number;
+	readonly retention?: number;
 }): Effect.Effect<Dispatcher, never, Scope.Scope> =>
 	Effect.map(KeyedExecutor.make(options), (executor) => ({
 		dispatch: (update) => {
@@ -29,6 +32,17 @@ export const make = (options: {
 					options.deduplicator,
 					update,
 					options.router.route(update),
+					{
+						...(options.leaseDuration === undefined
+							? {}
+							: { leaseDuration: options.leaseDuration }),
+						...(options.waitTimeout === undefined
+							? {}
+							: { waitTimeout: options.waitTimeout }),
+						...(options.retention === undefined
+							? {}
+							: { retention: options.retention }),
+					},
 				),
 			);
 		},

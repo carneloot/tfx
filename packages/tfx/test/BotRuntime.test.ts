@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect';
+import { Deferred, Effect, Layer, Ref } from 'effect';
 import {
 	Bot,
 	BotRuntime,
@@ -8,30 +8,104 @@ import {
 } from 'tfx';
 import { describe, expect, it } from 'vitest';
 
-import type { Update } from '../src/internal/telegram/generated/TelegramApi.types.js';
-import { UpdateSource } from '../src/internal/update-source/UpdateSource.js';
-describe('BotRuntime', () => {
-	it('installs one delivery and requires explicit deduplication', async () => {
-		const delivery = UpdateDelivery.make({
-			id: 'test',
-			layer: Layer.succeed(UpdateSource, { run: () => Effect.void }),
-		});
-		const runtime = BotRuntime.layer(Bot.make('bot'), {
+const update = (id: number) => ({ update_id: id }) as never;
+const runtime = (delivery: UpdateDelivery.UpdateDelivery<any, any, never>) =>
+	Layer.provide(
+		BotRuntime.layer(Bot.make('bot'), {
 			delivery,
 			concurrency: 1,
-			capacity: 1,
-		});
-		const program = Effect.flatMap(BotRuntime.BotRuntime, (service) =>
-			service.dispatch({ update_id: 1 } as Update),
-		);
+			capacity: 4,
+		}),
+		UpdateDeduplicator.layerNoop,
+	);
+
+describe('BotRuntime', () => {
+	it('supports public manual delivery and direct dispatch', async () => {
 		const outcome = await Effect.runPromise(
-			Effect.provide(
-				program,
-				Layer.provide(runtime, UpdateDeduplicator.layerNoop),
+			Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(runtime(UpdateDelivery.manual));
+					return yield* Effect.provide(
+						Effect.flatMap(BotRuntime.BotRuntime, (service) =>
+							service.dispatch(update(1)),
+						),
+						context,
+					);
+				}),
 			),
 		);
 		expect(outcome).toEqual({ _tag: 'Handled' });
 	});
+
+	it('observes immediate and delayed source failures', async () => {
+		for (const delayed of [false, true]) {
+			const gate = Deferred.makeUnsafe<void>();
+			const delivery = UpdateDelivery.fromSource('failure', () =>
+				Effect.andThen(
+					delayed ? Deferred.await(gate) : Effect.void,
+					Effect.fail('source failed'),
+				),
+			);
+			const result = await Effect.runPromise(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const context = yield* Layer.build(runtime(delivery));
+						if (delayed) yield* Deferred.succeed(gate, undefined);
+						return yield* Effect.provide(
+							Effect.flatMap(BotRuntime.BotRuntime, (service) =>
+								Effect.result(service.await),
+							),
+							context,
+						);
+					}),
+				),
+			);
+			expect(result).toMatchObject({
+				_tag: 'Failure',
+				failure: 'source failed',
+			});
+		}
+	});
+
+	it('interrupts source and runs its finalizer on scope shutdown', async () => {
+		const finalized = Ref.makeUnsafe(false);
+		const started = Deferred.makeUnsafe<void>();
+		const delivery = UpdateDelivery.fromSource('scoped', () =>
+			Effect.andThen(Deferred.succeed(started, undefined), Effect.never).pipe(
+				Effect.ensuring(Ref.set(finalized, true)),
+			),
+		);
+		await Effect.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					yield* Layer.build(runtime(delivery));
+					yield* Deferred.await(started);
+				}),
+			),
+		);
+		expect(Ref.getUnsafe(finalized)).toBe(true);
+	});
+
+	it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+		'rejects invalid dedup duration %s',
+		async (leaseDuration) => {
+			const exit = await Effect.runPromiseExit(
+				Effect.scoped(
+					Layer.build(
+						Layer.provide(
+							BotRuntime.layer(Bot.make('bot'), {
+								delivery: UpdateDelivery.manual,
+								leaseDuration,
+							}),
+							UpdateDeduplicator.layerNoop,
+						),
+					),
+				),
+			);
+			expect(exit._tag).toBe('Failure');
+		},
+	);
+
 	it('acknowledges only closed completed outcomes and marks fatal terminal', () => {
 		expect(DispatchOutcome.isAcknowledgeable(DispatchOutcome.handled)).toBe(
 			true,
