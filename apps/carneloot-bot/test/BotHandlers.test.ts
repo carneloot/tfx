@@ -1,0 +1,65 @@
+import { Effect, Layer, Schema } from 'effect';
+import { MessageContext, type MessageContextService } from 'tfx/MessageContext';
+import { describe, expect, it } from 'vitest';
+
+import { registerCurrent } from '../src/bot/AccountHandlers.js';
+import { UserId } from '../src/domain/Ids.js';
+import type { RegisteredUser } from '../src/domain/User.js';
+import { UserRepository } from '../src/ports/UserRepository.js';
+const userId = Schema.decodeUnknownSync(UserId)(
+	'00000000-0000-4000-8000-000000000001',
+);
+const replies: Array<string> = [];
+const context = (message: unknown) =>
+	({
+		message: message as never,
+		chatId: 1,
+		messageId: 1,
+		messageThreadId: undefined,
+		businessConnectionId: undefined,
+		reply: (text: string) =>
+			Effect.sync(() => {
+				replies.push(text);
+				return {} as never;
+			}),
+		replyToCurrent: () => Effect.succeed({} as never),
+		react: () => Effect.succeed(true),
+		editText: () => Effect.succeed({} as never),
+		delete: () => Effect.succeed(true),
+		sendChatAction: () => Effect.succeed(true),
+	}) as unknown as MessageContextService;
+const repository = Layer.succeed(UserRepository, {
+	registerTelegramProfile: (profile) =>
+		Effect.succeed({
+			user: { id: userId, createdAt: 0, updatedAt: 0 },
+			profile,
+		}),
+	findByTelegram: () => Effect.die('unused'),
+});
+describe('account handler', () => {
+	it('rejects updates without sender using exact text', async () => {
+		replies.length = 0;
+		const executable = Effect.provideService(
+			Effect.provide(registerCurrent, repository),
+			MessageContext,
+			context({}),
+		) as Effect.Effect<RegisteredUser | undefined, unknown>;
+		await Effect.runPromise(executable);
+		expect(replies).toEqual(['Não foi possível identificar o usuário.']);
+	});
+	it('registers sender and replies in invoking chat', async () => {
+		replies.length = 0;
+		const executable = Effect.provideService(
+			Effect.provide(registerCurrent, repository),
+			MessageContext,
+			context({ from: { id: 42, first_name: 'Ana', username: 'ana' } }),
+		) as Effect.Effect<RegisteredUser | undefined, unknown>;
+		const result = await Effect.runPromise(executable);
+		expect(result?.profile).toMatchObject({
+			telegramUserId: 42,
+			privateChatId: 42,
+			username: 'ana',
+		});
+		expect(replies).toEqual(['Usuário cadastrado com sucesso!']);
+	});
+});
