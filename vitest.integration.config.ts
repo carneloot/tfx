@@ -36,6 +36,7 @@ if (process.env.TFX_REQUIRE_POSTGRES_INTEGRATION_SUITES === '1') {
 
 export default defineConfig({
 	test: {
+		fileParallelism: false,
 		include: [
 			'packages/postgres/test/integration-config.test.ts',
 			...postgresIntegrationSuites,

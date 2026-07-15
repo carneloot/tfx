@@ -23,6 +23,16 @@ mise exec -- pnpm test:unit
 mise exec -- pnpm test:integration
 ```
 
+Run Carneloot locally after configuring PostgreSQL 17 and Telegram:
+
+```sh
+cp apps/carneloot-bot/.env.example apps/carneloot-bot/.env
+# export values from the file, then:
+mise exec -- pnpm --filter carneloot-bot demo
+```
+
+See the [Carneloot application guide](apps/carneloot-bot/README.md) for exact environment keys, commands, migrations, test database gates, delivery semantics, and deterministic fake-Telegram demo.
+
 Slice 1 release validation uses `pnpm pack` dry runs only. Changesets version and publish public packages in later release work; the private application is excluded.
 
 ## Telegram API generation provenance

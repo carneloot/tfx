@@ -69,6 +69,9 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.0-beta.98
         version: 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1)
+      '@testcontainers/postgresql':
+        specifier: 11.10.0
+        version: 11.10.0
 
   packages/postgres:
     dependencies:

@@ -1,5 +1,6 @@
 export const packageName = 'carneloot-bot' as const;
 export * as Config from './Config.js';
+export * as DemoSummary from './DemoSummary.js';
 export * as JobWorker from './JobWorker.js';
 export * as Layers from './Layers.js';
 export * as Program from './Program.js';

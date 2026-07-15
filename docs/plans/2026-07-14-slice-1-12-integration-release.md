@@ -22,27 +22,27 @@
 
 ### Task 1: Observable runtime lifecycle, configuration, and scoped composition
 
-- [ ] **Step 1: Add the public BotRuntime lifecycle contract**
+- [x] **Step 1: Add the public BotRuntime lifecycle contract**
 
 Write failing tfx tests where a controlled UpdateSource fails after Layer acquisition and where scope shutdown interrupts a running source. Extend `BotRuntimeService` with `readonly await: Effect.Effect<void, unknown>`; the Layer retains the scoped source fiber and `await` joins it, preserving authentication/conflict/fatal polling failure instead of hiding it. Keep `dispatch` unchanged. Top-level application code must run/await this effect; scope shutdown interrupts source, dispatcher children, and job worker.
 
-- [ ] **Step 2: Write config failures**
+- [x] **Step 2: Write config failures**
 
 Require only consumed fields: redacted bot token/database URL, bot ID, polling timeout seconds, polling retry-delay milliseconds, dispatcher capacity/concurrency, job idle-backoff milliseconds, job/dedup lease/heartbeat milliseconds, and tfx-only `TFX_POSTGRES_SCHEMA`/`TFX_POSTGRES_TABLE_PREFIX`. Decode numeric environment values once into the exact numeric units expected by Polling/worker APIs. Carneloot tables remain fixed in explicitly qualified `carneloot`. Reject heartbeat ≥ lease, unsafe/non-integer bot/update identity configuration, and non-durable production mode before polling. Do not retain an HTTP-timeout or transport-margin field until an actual platform HttpClient configuration consumes it.
 
-- [ ] **Step 3: Implement application Layer graph**
+- [x] **Step 3: Implement application Layer graph**
 
 Declare app runtime dependencies explicitly: runtime dependencies `@effect/platform-bun`, `@effect/sql-pg`, `effect`, `tfx`, and `@tfx/postgres`; dev dependency `@effect/platform-node` for portable smoke composition. Provide `PgClient.layer` exactly once. `TfxPostgres.layer` performs its own coordinated tfx migration once; app migrator uses the same client, with no manual duplicate tfx migration. Compose repositories, handlers, FeedingReminder JobRuntime, JobWorker, Telegram facade, Bun HttpClient, and `BotRuntime.layer(Carneloot, { delivery: Polling.make({ timeout: config.pollingTimeoutSeconds, retryDelay: config.pollingRetryDelayMillis }), capacity: config.dispatchCapacity, concurrency: config.dispatchConcurrency, router })`. The router must wire its reserved `/cancelar` `cancel` hook directly to `CancelConversation.cancelCurrent`; do not declare `/cancelar` as a command because tfx routes cancellation before command matching. Layer dependencies—not handwritten acquisition order—express migration-before-repository/runtime construction. Assert dedup diagnostics `mode === "durable"`.
 
-- [ ] **Step 4: Implement scoped JobWorker and Bun program**
+- [x] **Step 4: Implement scoped JobWorker and Bun program**
 
 Add a global `NotificationRepository.recoverAllExpired(now)` startup operation and invoke/await it once after migrations but before starting the job loop; event-specific recovery remains in each reminder handler. Startup and operational diagnostics must explicitly surface failed/quarantined jobs rather than silently leaving them in storage; expose their count/identity through the program lifecycle diagnostics and fail the release smoke check when unexpected quarantined jobs exist. Create a `JobWorker` service/Layer because `JobRuntime.layer` only exposes `runOne`. Its scoped loop calls `runOne({ leaseDuration })`, immediately continues after a claimed job, and sleeps the configured bounded idle backoff only when no job is due; validate positive finite durations, prevent zero-delay spin, preserve worker defects/store failures through an `await` lifecycle effect, and let interruption leave leases for recovery. Bun main runs one scoped Layer graph and awaits both `BotRuntime.await` and `JobWorker.await` (race/fail-fast supervision); signals interrupt the shared scope, whose finalizers stop polling/dispatcher/jobs. Tests use TestClock for idle backoff and interruption/recovery.
 
-- [ ] **Step 5: Add Node smoke composition**
+- [x] **Step 5: Add Node smoke composition**
 
 Test same portable packages/program factory with `@effect/platform-node` HttpClient; no tfx platform wrappers.
 
-- [ ] **Step 6: Run and commit**
+- [x] **Step 6: Run and commit**
 
 Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot check && pnpm --filter carneloot-bot test -- Config && pnpm --filter tfx test -- BotRuntime`
 Expected: config/composition tests PASS.
@@ -54,7 +54,7 @@ git commit -m "feat(carneloot): compose Slice 1 runtime"
 
 ### Task 2: Complete owned-pet E2E transcript
 
-- [ ] **Step 1: Add golden update sequence**
+- [x] **Step 1: Add golden update sequence**
 
 Drive public runtime with fake Telegram and real PostgreSQL:
 
@@ -72,16 +72,16 @@ Drive public runtime with fake Telegram and real PostgreSQL:
 
 Assert exact Portuguese requests—including the declared action-selection prompts `Início do dia não configurado. Envie Alterar.` and `Notificações desativadas. Envie Definir.`—profile refresh, one pet, midnight settings, 50,000mg row, reminder event/job, and status line.
 
-- [ ] **Step 2: Add failure/correction scenarios**
+- [x] **Step 2: Add failure/correction scenarios**
 
 Unregistered guard; missing sender; no pets; invalid pet/timezone/duration/food; duplicate feeding/update; no delay; backdated food; scheduler rollback; Telegram output failure after commit; `/cancelar` cleanup.
 
-- [ ] **Step 3: Run E2E**
+- [x] **Step 3: Run E2E**
 
 Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- OwnedPetFoodLoop.e2e.test.ts`
 Expected: PASS with real PostgreSQL and no external Telegram.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/carneloot-bot/test/e2e/OwnedPetFoodLoop.e2e.test.ts
@@ -90,19 +90,19 @@ git commit -m "test(carneloot): cover owned-pet food loop"
 
 ### Task 3: Restart, dedup, reminder, and concurrency proof
 
-- [ ] **Step 1: Add restart test**
+- [x] **Step 1: Add restart test**
 
 Stop scope mid-conversation, recreate scope with same database, finish conversation. Restart before due reminder, advance TestClock/run worker, assert one owner send and sent delivery. Restart after committed sending without finalization, expire lease, assert unknown and no resend.
 
-- [ ] **Step 2: Add job migration/lease proof**
+- [x] **Step 2: Add job migration/lease proof**
 
 Seed v1/current and invalid/newer payloads. Assert migration claim does not increment attempts, promotion does, invalid/newer quarantine, execution takeover consumes next attempt, and stale completion fails.
 
-- [ ] **Step 3: Add update concurrency proof**
+- [x] **Step 3: Add update concurrency proof**
 
 Duplicate update across two runtime clients executes one mutation. Same-chat updates run FIFO; unrelated chats overlap. Retryable update blocks contiguous polling offset while later completed update is skipped on repeated batch. Every update/chat/user ID fixture stays within JS safe-integer range and ingress rejection of an unsafe number is covered; arbitrary bigint/string Telegram IDs remain deferred to a future tfx model change.
 
-- [ ] **Step 4: Run and commit**
+- [x] **Step 4: Run and commit**
 
 Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- RestartRecovery.e2e.test.ts Concurrency.e2e.test.ts`
 Expected: PASS.
@@ -114,19 +114,19 @@ git commit -m "test(carneloot): prove durable restart semantics"
 
 ### Task 4: Documentation and runnable demo
 
-- [ ] **Step 1: Document local operation**
+- [x] **Step 1: Document local operation**
 
 Include `mise install`, `pnpm install`, PostgreSQL startup, migrations, env fields, Bun polling command, graceful stop, test commands, and explicit Slice 1 command list. State reminders-at-least-once with per-recipient unknown safeguard.
 
-- [ ] **Step 2: Add safe demo command**
+- [x] **Step 2: Add safe demo command**
 
 `pnpm --filter carneloot-bot demo` starts against configured PostgreSQL/Telegram only when required env is present; `demo:test` runs fake Telegram transcript and prints persisted summary without secrets.
 
-- [ ] **Step 3: Add Changeset**
+- [x] **Step 3: Add Changeset**
 
 Minor changesets for `tfx` and `@tfx/postgres`; describe generated Telegram facade, declarations/runtime, conversations/jobs/dedup, PostgreSQL adapters. Do not publish.
 
-- [ ] **Step 4: Validate and commit docs**
+- [x] **Step 4: Validate and commit docs**
 
 Run: `pnpm format && pnpm lint`
 Expected: PASS before staging documentation/package changes.
