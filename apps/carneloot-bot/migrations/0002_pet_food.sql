@@ -28,4 +28,4 @@ CREATE TABLE carneloot.pet_food_entries (
   CONSTRAINT pet_food_entries_amount_range CHECK (amount_mg BETWEEN 1 AND 100000000),
   CONSTRAINT pet_food_entries_source_key UNIQUE (source_bot_id, source_update_id, pet_id)
 );
-CREATE INDEX pet_food_entries_latest_idx ON carneloot.pet_food_entries (pet_id, fed_at DESC, id DESC);
+CREATE INDEX pet_food_entries_latest_idx ON carneloot.pet_food_entries (pet_id, fed_at DESC, created_at DESC, id DESC);
