@@ -612,7 +612,8 @@ A job declaration contains:
 
 - literal job name;
 - a `VersionedSchema` payload history whose final node supplies current version and payload schema;
-- retry policy;
+- typed error schema;
+- explicit retry classifier and schedule;
 - handler requirements.
 
 Declare payload evolution through named version nodes and a linear history:
@@ -636,6 +637,14 @@ const FeedingReminder = Job.make("feeding-reminder", {
 On claim, current-version payload decodes and executes. Older payload walks contiguous migrations, then persists migrated payload/version in same transaction before first execution attempt. Migration does not increment normal attempt count. Missing migration, invalid stored payload, or unknown job declaration moves row to recoverable `quarantined` status with structured reason; normal retry schedule does not repeat deterministic migration failure. A stored version newer than running declaration is quarantined as `UnsupportedNewerVersion`, never executed or deleted by older code. Compatible deployment or operator action may release quarantined work.
 
 Job statuses are `scheduled`, `running`, `completed`, `failed`, `quarantined`, and `cancelled`. Quarantine records reason, stored/current versions, schema issue when available, and timestamp. Job claim fencing prevents an old lease holder from completing work after takeover.
+
+Handler completion maps through closed `JobOutcome`: `Succeeded`, `RetryableFailure`, `PermanentFailure`, `FatalFailure`, `Cancelled`, or `LeaseLost`. Job declaration's error classifier maps typed errors explicitly; unclassified typed errors default to permanent failure, while defects become fatal failure with sanitized Cause reporting. Fatal failure terminates that job but does not stop independent workers unless worker infrastructure itself is unhealthy.
+
+Attempt increments atomically when claim enters `running`, together with lease generation. Payload migration does not consume attempt; process crash after claim, expired-lease takeover, and each handler execution do consume attempts because runtime cannot prove no external effect began. On retryable failure below `maxAttempts`, persist safe error summary, clear lease, set `scheduled`, and compute next run time from error-specific delay such as Telegram `retryAfter` or declaration's Effect schedule. Retryable failure at limit becomes `failed` with `AttemptsExhausted`; permanent failure becomes `failed` immediately.
+
+Lease loss interrupts local handler and produces `LeaseLost`; stale token performs no completion, reschedule, failure, or cancellation update. Scheduled cancellation becomes `cancelled` immediately. Running cancellation sets `cancellation_requested`; current owner observes it during heartbeat, interrupts handler, and marks cancelled with matching fence. External side effects already started cannot be undone.
+
+Administrative `releaseFailed(jobId, { resetAttempts })` accepts only failed or quarantined jobs, records release reason, validates current declaration/payload, and reschedules. Attempt reset is explicit; no failed job re-enters automatic loop by itself. Job persistence records attempts/max, next run, lease generation/expiry, cancellation request, safe last-error tag/summary, and completion/failure timestamps; sensitive details remain telemetry-only.
 
 Scheduling can use a stable conflict key. Carneloot uses one `feeding-reminder:<petId>` key per pet, so a newer latest feeding atomically replaces the prior schedule.
 
@@ -861,7 +870,7 @@ Unit and integration tests cover:
 - food parsing and timezone boundaries;
 - reminder scheduling;
 - deduplication leases;
-- job claims and retries;
+- job retryable/permanent/fatal outcomes, error-specific delay, attempt exhaustion/accounting, crash/lease takeover, stale fencing, cancellation, and administrative release;
 - one-step and multi-step job payload migration, persisted migration, missing/invalid/newer-version quarantine, unknown declaration, and quarantine release;
 - transactional food, reminder-job, and immediate delivery-job changes;
 - notification event/pending-delivery creation before sends, independent recipient outcomes, unknown send/history window, partial HTTP responses, exact owner-event reply correlation, and chat-scoped message identity;
@@ -985,7 +994,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Node.js and Bun support; Bun production application.
 - PostgreSQL for domain data, conversations, scheduled and immediate delivery jobs, and deduplication.
 - Carneloot owns notification event/delivery persistence and exact reply correlation; these tables and services are not tfx infrastructure.
-- Durable job payloads use named `VersionedSchema` nodes, linear migrations, and recoverable quarantine for incompatible stored work.
+- Durable job payloads use named `VersionedSchema` nodes, linear migrations, recoverable quarantine, closed failure outcomes, fenced attempt accounting, explicit cancellation, and administrative release.
 - One active bot instance initially.
 - Core tfx contains polling and webhook delivery descriptors backed by internal Layers; `BotRuntime.layer` requires exactly one descriptor and applications never provide `UpdateSource` directly.
 - Long polling publishes command menus before its first `getUpdates`, then uses one in-flight request, inferred allowed-update types, batch settlement before contiguous acknowledgement, typed retries, and scoped cancellation.
