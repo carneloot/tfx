@@ -9,6 +9,7 @@ import {
 import { migration0001Checksum, migration0001Sql } from './Migration0001Sql.js';
 import { migration0002Checksum, migration0002Sql } from './Migration0002Sql.js';
 import { migration0003Checksum, migration0003Sql } from './Migration0003Sql.js';
+import { migration0004Checksum, migration0004Sql } from './Migration0004Sql.js';
 
 interface Migration extends MigrationIdentity {
 	readonly version: number;
@@ -34,6 +35,12 @@ const migrations: ReadonlyArray<Migration> = Object.freeze([
 		name: 'pet-food-source-constraints',
 		checksum: migration0003Checksum,
 		sql: migration0003Sql,
+	},
+	{
+		version: 4,
+		name: 'notifications',
+		checksum: migration0004Checksum,
+		sql: migration0004Sql,
 	},
 ]);
 const persistence = (cause: unknown) =>
