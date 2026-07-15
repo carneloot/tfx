@@ -25,6 +25,10 @@ const live = BotBuilder.group(app, "pets", (handlers) => handlers
   })
   .handle("listPets", (_input) => Effect.void))
 const _requirements: Layer.Layer<any, never, Infra | Middleware.MiddlewareRegistry> = live
+const plainGroup = BotGroup.make("plain").add(Command.make("ping", { name: "ping" }))
+const plainBot = Bot.make("Plain").add(plainGroup)
+const plainLive: Layer.Layer<any, never, never> = BotBuilder.group(plainBot, "plain", (handlers) => handlers.handle("ping", () => Effect.void))
+void plainLive
 
 // @ts-expect-error unknown group
 BotBuilder.group(app, "missing", (handlers) => handlers)
