@@ -8,7 +8,7 @@ export interface Capabilities {
 }
 export const conversationStorageConformance = (
 	name: string,
-	storageLayer: () => Layer.Layer<ConversationStorage>,
+	storageLayer: () => Layer.Layer<ConversationStorage, unknown, never>,
 	capabilities: Capabilities = {},
 ) =>
 	describe(`${name} ConversationStorage conformance`, () => {
