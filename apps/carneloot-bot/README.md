@@ -7,12 +7,13 @@ Private Bun application for owned-pet registration, food tracking, and durable f
 ```sh
 mise install
 mise exec -- pnpm install --frozen-lockfile
+export FNOX_AGE_KEY_FILE="$HOME/.config/fnox/age.txt"
 docker run --rm --name carneloot-postgres -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=carneloot -p 5432:5432 postgres:17-alpine
 cp apps/carneloot-bot/.env.example apps/carneloot-bot/.env
 ```
 
-Export values from `.env` through your shell or preferred environment loader. Required secrets are `BOT_TOKEN` and `DATABASE_URL`. Never commit either value.
+`.env` contains only non-secret configuration and still needs to be exported through your shell or preferred environment loader. `BOT_TOKEN` and `DATABASE_URL` come from `apps/carneloot-bot/fnox.toml` through `fnox exec`.
 
 ## Configuration
 
@@ -39,7 +40,19 @@ Startup applies checksummed tfx and Carneloot migrations under PostgreSQL adviso
 mise exec -- pnpm --filter carneloot-bot demo
 ```
 
-`demo` and `start` run the same validated production Bun graph. Missing or invalid environment fails before polling/network startup. `SIGINT` and `SIGTERM` interrupt the shared Effect scope; polling, dispatcher, and job worker finalizers are awaited.
+`demo` and `start` run the same validated production Bun graph through `fnox exec`. Missing or invalid environment fails before polling/network startup. `SIGINT` and `SIGTERM` interrupt the shared Effect scope; polling, dispatcher, and job worker finalizers are awaited.
+
+## Secret key operations
+
+The age private key at `~/.config/fnox/age.txt` must be backed up securely and never committed. Update encrypted values from the app directory without placing plaintext in files or shell history:
+
+```sh
+cd apps/carneloot-bot
+fnox set BOT_TOKEN --provider age
+fnox set DATABASE_URL --provider age
+```
+
+Production must provide `FNOX_AGE_KEY_FILE` pointing to a securely delivered private key, or migrate the fnox entries to a remote provider. Never copy the private key into a container image.
 
 ## Commands
 
