@@ -7,7 +7,7 @@
     "pnpm": "10.17.1"
   },
   "scripts": {
-    "build": "tsc -b tsconfig.packages.json",
+    "build": "tsc -b tsconfig.packages.json && node packages/tfx/scripts/copy-telegram-runtime.ts",
     "check": "tsc -b tsconfig.json --pretty false",
     "test": "vitest run",
     "test:unit": "vitest run --exclude '**/*.integration.test.ts' --exclude '**/*.e2e.test.ts'",

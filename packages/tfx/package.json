@@ -33,6 +33,7 @@
   "scripts": {
     "telegram:generate": "node scripts/generate-telegram.ts",
     "telegram:check": "node scripts/check-generated.ts",
+    "build": "tsc -b ../../tsconfig.packages.json && node scripts/copy-telegram-runtime.ts",
     "check": "tsc -b ../../tsconfig.json --pretty false",
     "test": "vitest run --root ../.."
   }

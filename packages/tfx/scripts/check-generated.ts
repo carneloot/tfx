@@ -9,8 +9,12 @@ const directory = mkdtempSync(join(tmpdir(), "tfx-telegram-"))
 const candidate = join(directory, "TelegramApi.ts")
 try {
   execFileSync("node", [resolve(root, "packages/tfx/scripts/generate-telegram.ts"), candidate], { cwd: root, stdio: "inherit" })
-  if (!readFileSync(committed).equals(readFileSync(candidate))) {
-    throw new Error("generated TelegramApi.ts differs; run pnpm --filter tfx telegram:generate")
+  for (const name of ["TelegramApi.ts", "TelegramApi.types.ts", "TelegramApi.runtime.js", "TelegramApi.runtime.d.ts"]) {
+    const expected = resolve(root, "packages/tfx/src/internal/telegram/generated", name)
+    const actual = join(directory, name)
+    if (!readFileSync(expected).equals(readFileSync(actual))) {
+      throw new Error(`${name} differs; run pnpm --filter tfx telegram:generate`)
+    }
   }
 } finally {
   rmSync(directory, { recursive: true, force: true })

@@ -72,6 +72,10 @@ export class TelegramError extends Schema.ErrorClass<TelegramError>("TelegramErr
   reason: TelegramErrorReason
 }) {
   readonly _tag = "TelegramError" as const
+  get cause(): TelegramErrorReason { return this.reason }
+  get message(): string {
+    return "description" in this.reason ? this.reason.description : this.reason.message
+  }
   get isRetryable(): boolean { return this.reason.isRetryable }
   get retryAfter(): Duration.Duration | undefined { return this.reason.retryAfter }
 }
