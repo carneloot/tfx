@@ -6,6 +6,7 @@ import { MessageContext, type MessageContextService } from 'tfx/MessageContext';
 import { describe, expect, it } from 'vitest';
 
 import * as AddPetConversation from '../src/bot/AddPetConversation.js';
+import { PetNameAlreadyExists } from '../src/domain/DomainError.js';
 import { UserId } from '../src/domain/Ids.js';
 import { PetRepository } from '../src/ports/PetRepository.js';
 const ownerId = Schema.decodeUnknownSync(UserId)(
@@ -90,6 +91,45 @@ describe('AddPetConversation', () => {
 			'Nome de pet inválido.',
 			'Qual o nome do seu pet?',
 			'Pet cadastrado com sucesso!',
+		]);
+	});
+	it('re-prompts duplicate names and retains the conversation', async () => {
+		replies.length = 0;
+		let inserts = 0;
+		const petLayer = Layer.succeed(PetRepository, {
+			addOwned: () => {
+				inserts++;
+				return Effect.fail(new PetNameAlreadyExists({ message: 'duplicate' }));
+			},
+			listOwned: () => Effect.succeed([]),
+		});
+		const scope = { botId: 'carneloot', chatId: 5, userId: 6 };
+		const program = Effect.gen(function* () {
+			const conversations = yield* Conversations;
+			yield* conversations.start(AddPetConversation.built, ownerId, { scope });
+			return yield* conversations.resume(AddPetConversation.built, 'Rex', {
+				scope,
+				updateId: 20,
+			});
+		});
+		const executable = Effect.provide(
+			Effect.provide(program, ConversationsLive.layer),
+			Layer.merge(
+				MemoryConversationStorage.layer,
+				Layer.merge(petLayer, Layer.succeed(MessageContext, message)),
+			),
+		) as Effect.Effect<
+			{ readonly _tag: string; readonly row?: unknown },
+			unknown
+		>;
+		const result = await Effect.runPromise(executable);
+		expect(result._tag).toBe('Applied');
+		expect(result.row).toBeDefined();
+		expect(inserts).toBe(1);
+		expect(replies).toEqual([
+			'Qual o nome do seu pet?',
+			'Já existe um pet com esse nome.',
+			'Qual o nome do seu pet?',
 		]);
 	});
 });

@@ -12,5 +12,6 @@ export * as Declaration from './bot/Declaration.js';
 export * as AccountHandlers from './bot/AccountHandlers.js';
 export * as PetHandlers from './bot/PetHandlers.js';
 export * as AddPetConversation from './bot/AddPetConversation.js';
+export * as CancelConversation from './bot/CancelConversation.js';
 export * as RegisteredUser from './bot/RegisteredUser.js';
 export * as CurrentUser from './bot/CurrentUser.js';

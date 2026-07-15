@@ -1,0 +1,27 @@
+import { Layer } from 'effect';
+import { BotBuilder, Middleware } from 'tfx';
+import { describe, expect, it } from 'vitest';
+
+import * as AccountHandlers from '../src/bot/AccountHandlers.js';
+import { built } from '../src/bot/AddPetConversation.js';
+import { Carneloot } from '../src/bot/Declaration.js';
+import * as PetHandlers from '../src/bot/PetHandlers.js';
+import * as RegisteredUser from '../src/bot/RegisteredUser.js';
+
+describe('public bot Layer construction', () => {
+	it('composes declarations, middleware, handlers, and conversation without private imports', () => {
+		const account = BotBuilder.group(Carneloot, 'account', (handlers) =>
+			handlers.handle('register', () => AccountHandlers.registerCurrent),
+		);
+		const pets = BotBuilder.group(Carneloot, 'pets', (handlers) =>
+			handlers
+				.handle('addPet', () => PetHandlers.startAddPet)
+				.handle('listPets', () => PetHandlers.listPets),
+		);
+		const middleware = Middleware.layer(RegisteredUser.live);
+		const integrated = Layer.provide(Layer.merge(account, pets), middleware);
+		expect(integrated).toBeDefined();
+		expect(built.declaration.id).toBe('add-owned-pet');
+		expect(Object.keys(Carneloot.groups)).toEqual(['account', 'pets']);
+	});
+});
