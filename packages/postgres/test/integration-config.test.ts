@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  assertPostgresIntegrationSuiteSetWhenPresent,
   assertPostgresIntegrationSuites,
   postgresIntegrationSuites
 } from "../../../vitest.integration.config.js"
@@ -25,7 +26,25 @@ describe("PostgreSQL integration collection", () => {
     ).toThrow(`Missing required PostgreSQL integration suites:\n${missing}`)
   })
 
-  it("accepts activation when every required suite exists", () => {
-    expect(() => assertPostgresIntegrationSuites(() => true)).not.toThrow()
+  it("does not require future suites before Plan 08 starts", () => {
+    expect(() =>
+      assertPostgresIntegrationSuiteSetWhenPresent(() => false)
+    ).not.toThrow()
+  })
+
+  it("automatically requires the complete set once any suite exists", () => {
+    const firstSuite = expectedSuites[0]
+
+    expect(() =>
+      assertPostgresIntegrationSuiteSetWhenPresent(
+        (path) => path === firstSuite
+      )
+    ).toThrow("Missing required PostgreSQL integration suites:")
+  })
+
+  it("accepts the complete required suite set", () => {
+    expect(() =>
+      assertPostgresIntegrationSuiteSetWhenPresent(() => true)
+    ).not.toThrow()
   })
 })

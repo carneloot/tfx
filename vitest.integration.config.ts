@@ -20,8 +20,18 @@ export const assertPostgresIntegrationSuites = (
   }
 }
 
+export const assertPostgresIntegrationSuiteSetWhenPresent = (
+  exists: (path: string) => boolean = existsSync
+): void => {
+  if (postgresIntegrationSuites.some(exists)) {
+    assertPostgresIntegrationSuites(exists)
+  }
+}
+
 if (process.env.TFX_REQUIRE_POSTGRES_INTEGRATION_SUITES === "1") {
   assertPostgresIntegrationSuites()
+} else {
+  assertPostgresIntegrationSuiteSetWhenPresent()
 }
 
 export default defineConfig({
