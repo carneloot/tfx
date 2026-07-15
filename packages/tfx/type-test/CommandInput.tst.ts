@@ -1,5 +1,5 @@
 import type * as Schema from "effect/Schema"
-import * as CommandInput from "../../src/CommandInput.js"
+import * as CommandInput from "../src/CommandInput.js"
 
 interface DecodeService { readonly decode: "DecodeService" }
 interface EncodeService { readonly encode: "EncodeService" }

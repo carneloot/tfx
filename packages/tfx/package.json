@@ -17,7 +17,14 @@
     "./BotGroup": "./src/BotGroup.ts",
     "./Command": "./src/Command.ts",
     "./CommandInput": "./src/CommandInput.ts",
-    "./BotBuilder": "./src/BotBuilder.ts"
+    "./BotBuilder": "./src/BotBuilder.ts",
+    "./Middleware": "./src/Middleware.ts",
+    "./UpdateContext": "./src/UpdateContext.ts",
+    "./MessageContext": "./src/MessageContext.ts",
+    "./CallbackQueryContext": "./src/CallbackQueryContext.ts",
+    "./InlineKeyboard": "./src/InlineKeyboard.ts",
+    "./ReplyKeyboard": "./src/ReplyKeyboard.ts",
+    "./CallbackData": "./src/CallbackData.ts"
   },
   "files": [
     "dist",
@@ -34,7 +41,14 @@
       "./BotGroup": "./dist/BotGroup.js",
       "./Command": "./dist/Command.js",
       "./CommandInput": "./dist/CommandInput.js",
-      "./BotBuilder": "./dist/BotBuilder.js"
+      "./BotBuilder": "./dist/BotBuilder.js",
+      "./Middleware": "./dist/Middleware.js",
+      "./UpdateContext": "./dist/UpdateContext.js",
+      "./MessageContext": "./dist/MessageContext.js",
+      "./CallbackQueryContext": "./dist/CallbackQueryContext.js",
+      "./InlineKeyboard": "./dist/InlineKeyboard.js",
+      "./ReplyKeyboard": "./dist/ReplyKeyboard.js",
+      "./CallbackData": "./dist/CallbackData.js"
     }
   },
   "peerDependencies": {
