@@ -16,55 +16,64 @@ export const dispatch = (
 		readonly retention?: number;
 	} = {},
 ): Effect.Effect<DispatchOutcome.DispatchOutcome, never> =>
-	Effect.gen(function* () {
-		const leaseDuration = options.leaseDuration ?? 30_000;
-		const claim = yield* dedup.claim(update.update_id, {
-			leaseDuration,
-			...(options.waitTimeout === undefined
-				? {}
-				: { waitTimeout: options.waitTimeout }),
-		});
-		if (claim._tag === 'Completed') return claim.outcome;
-		if (claim._tag === 'InProgress') {
-			const observed = yield* claim.await;
-			return observed._tag === 'Completed'
-				? observed.outcome
-				: DispatchOutcome.retryableFailure(
-						observed._tag === 'Released'
-							? 'Concurrent dispatch released'
-							: 'Concurrent dispatch still in progress',
-					);
-		}
-		const monitor: Effect.Effect<never, ClaimLost> = Effect.suspend(() =>
-			Effect.flatMap(
-				Effect.sleep(Math.max(1, Math.floor(leaseDuration / 3))),
-				() =>
-					Effect.flatMap(dedup.heartbeat(claim.token, leaseDuration), (alive) =>
-						alive ? monitor : Effect.fail(new ClaimLost()),
-					),
-			),
-		);
-		const outcome = yield* Effect.raceFirst(behavior, monitor).pipe(
-			Effect.catchTag('ClaimLost', () =>
-				Effect.as(
-					dedup.release(claim.token),
-					DispatchOutcome.retryableFailure('Update claim lease lost'),
-				),
-			),
-			Effect.onInterrupt(() => Effect.asVoid(dedup.release(claim.token))),
-		);
-		if (DispatchOutcome.isAcknowledgeable(outcome)) {
-			const completed = yield* dedup.complete(
-				claim.token,
-				outcome,
-				options.retention,
+	Effect.uninterruptibleMask((restore) =>
+		Effect.gen(function* () {
+			const leaseDuration = options.leaseDuration ?? 30_000;
+			const claim = yield* restore(
+				dedup.claim(update.update_id, {
+					leaseDuration,
+					...(options.waitTimeout === undefined
+						? {}
+						: { waitTimeout: options.waitTimeout }),
+				}),
 			);
-			return completed
-				? outcome
-				: DispatchOutcome.retryableFailure(
-						'Update claim completion fence lost',
+			if (claim._tag === 'Completed') return claim.outcome;
+			if (claim._tag === 'InProgress') {
+				const observed = yield* restore(claim.await);
+				return observed._tag === 'Completed'
+					? observed.outcome
+					: DispatchOutcome.retryableFailure(
+							observed._tag === 'Released'
+								? 'Concurrent dispatch released'
+								: 'Concurrent dispatch still in progress',
+						);
+			}
+			const monitor: Effect.Effect<never, ClaimLost> = Effect.suspend(() =>
+				Effect.flatMap(
+					Effect.sleep(Math.max(1, Math.floor(leaseDuration / 3))),
+					() =>
+						Effect.flatMap(
+							dedup.heartbeat(claim.token, leaseDuration),
+							(alive) => (alive ? monitor : Effect.fail(new ClaimLost())),
+						),
+				),
+			);
+			return yield* Effect.gen(function* () {
+				const outcome = yield* restore(
+					Effect.raceFirst(behavior, monitor).pipe(
+						Effect.catchTag('ClaimLost', () =>
+							Effect.succeed(
+								DispatchOutcome.retryableFailure('Update claim lease lost'),
+							),
+						),
+					),
+				);
+				if (DispatchOutcome.isAcknowledgeable(outcome)) {
+					const completed = yield* dedup.complete(
+						claim.token,
+						outcome,
+						options.retention,
 					);
-		}
-		yield* dedup.release(claim.token);
-		return outcome;
-	});
+					return completed
+						? outcome
+						: DispatchOutcome.retryableFailure(
+								'Update claim completion fence lost',
+							);
+				}
+				return outcome;
+			}).pipe(
+				// Release is fenced; after completion this is a harmless stale release.
+				Effect.ensuring(Effect.asVoid(dedup.release(claim.token))),
+			);
+		}),
+	);

@@ -1,5 +1,6 @@
 import * as Deferred from 'effect/Deferred';
 import * as Effect from 'effect/Effect';
+import * as Fiber from 'effect/Fiber';
 import * as Queue from 'effect/Queue';
 import type * as Scope from 'effect/Scope';
 import * as Semaphore from 'effect/Semaphore';
@@ -13,9 +14,9 @@ interface Task<A, E> {
 	readonly cancelled: Deferred.Deferred<void>;
 	readonly settled: Deferred.Deferred<void>;
 }
-interface Partition {
-	readonly semaphore: Semaphore.Semaphore;
-	users: number;
+interface PreparedTask<A, E> extends Task<A, E> {
+	readonly predecessor: Deferred.Deferred<void> | undefined;
+	readonly successor: Deferred.Deferred<void>;
 }
 export interface KeyedExecutor {
 	readonly submit: <A, E, R>(
@@ -35,87 +36,94 @@ export const make = (options: {
 		const queue = yield* Queue.bounded<Task<any, any>>(options.capacity);
 		const admission = yield* Semaphore.make(options.capacity);
 		const global = yield* Semaphore.make(options.concurrency);
-		const registry = yield* Semaphore.make(1);
-		const partitions = new Map<PartitionKey, Partition>();
-		const acquirePartition = (key: PartitionKey) =>
-			registry.withPermit(
-				Effect.gen(function* () {
-					const existing = partitions.get(key);
-					if (existing !== undefined) {
-						existing.users++;
-						return existing;
-					}
-					const created: Partition = {
-						semaphore: yield* Semaphore.make(1),
-						users: 1,
-					};
-					partitions.set(key, created);
-					return created;
-				}),
-			);
-		const releasePartition = (key: PartitionKey, partition: Partition) =>
-			registry.withPermit(
-				Effect.sync(() => {
-					partition.users--;
-					if (partition.users === 0 && partitions.get(key) === partition)
-						partitions.delete(key);
-				}),
-			);
-		const run = (task: Task<any, any>) =>
-			Effect.gen(function* () {
-				const partition = yield* acquirePartition(task.key);
-				const exit = yield* Effect.exit(
-					partition.semaphore.withPermit(
-						global.withPermit(
-							Effect.raceFirst(
-								task.effect,
-								Effect.andThen(
-									Deferred.await(task.cancelled),
-									Effect.interrupt,
-								),
-							),
-						),
+		const tails = new Map<PartitionKey, Deferred.Deferred<void>>();
+		const tasks = new Set<Task<any, any>>();
+		const run = (task: PreparedTask<any, any>) => {
+			const awaitTurn =
+				task.predecessor === undefined
+					? Effect.void
+					: Deferred.await(task.predecessor);
+			const work = Effect.andThen(awaitTurn, global.withPermit(task.effect));
+			return Effect.gen(function* () {
+				const execution = yield* Effect.forkChild(work);
+				const exit = yield* Effect.raceFirst(
+					Fiber.await(execution),
+					Effect.andThen(
+						Deferred.await(task.cancelled),
+						Effect.andThen(Fiber.interrupt(execution), Fiber.await(execution)),
 					),
 				);
 				yield* Deferred.done(task.result, exit);
-				yield* releasePartition(task.key, partition);
-				yield* Deferred.succeed(task.settled, undefined);
 			}).pipe(
 				Effect.ensuring(
-					Deferred.succeed(task.settled, undefined).pipe(Effect.ignore),
+					Effect.gen(function* () {
+						yield* Deferred.interrupt(task.result);
+						yield* Deferred.succeed(task.successor, undefined);
+						yield* Effect.sync(() => {
+							if (tails.get(task.key) === task.successor)
+								tails.delete(task.key);
+						});
+						yield* admission.release(1);
+						yield* Effect.sync(() => tasks.delete(task));
+						yield* Deferred.succeed(task.settled, undefined);
+					}),
 				),
 			);
+		};
 		const intake = Stream.runForEach(Stream.fromQueue(queue), (task) =>
-			Effect.asVoid(Effect.forkScoped(run(task))),
+			Effect.gen(function* () {
+				const successor = Deferred.makeUnsafe<void>();
+				const prepared: PreparedTask<any, any> = {
+					...task,
+					predecessor: tails.get(task.key),
+					successor,
+				};
+				tails.set(task.key, successor);
+				yield* Effect.forkScoped(run(prepared));
+			}),
 		);
 		yield* Effect.forkScoped(intake);
+		yield* Effect.addFinalizer(() =>
+			Effect.gen(function* () {
+				const pending = [...tasks];
+				yield* Effect.forEach(pending, (task) =>
+					Deferred.succeed(task.cancelled, undefined),
+				);
+				yield* Effect.forEach(pending, (task) => Deferred.await(task.settled));
+			}),
+		);
 		return {
 			submit: (key, effect) =>
-				Effect.acquireUseRelease(
-					admission.take(1),
-					() =>
-						Effect.gen(function* () {
-							const context = yield* Effect.context<any>();
-							const result = yield* Deferred.make<any, any>();
-							const cancelled = yield* Deferred.make<void>();
-							const settled = yield* Deferred.make<void>();
-							yield* Queue.offer(queue, {
-								key,
-								effect: Effect.provide(effect, context),
-								result,
-								cancelled,
-								settled,
-							});
-							return yield* Deferred.await(result).pipe(
-								Effect.onInterrupt(() =>
-									Effect.andThen(
-										Deferred.succeed(cancelled, undefined),
-										Deferred.await(settled),
-									).pipe(Effect.ignore),
-								),
-							);
-						}),
-					() => Effect.asVoid(admission.release(1)),
+				Effect.uninterruptibleMask((restore) =>
+					Effect.gen(function* () {
+						yield* restore(admission.take(1));
+						const context = yield* Effect.context<any>();
+						const result = yield* Deferred.make<any, any>();
+						const cancelled = yield* Deferred.make<void>();
+						const settled = yield* Deferred.make<void>();
+						const task: Task<any, any> = {
+							key,
+							effect: Effect.provide(effect, context),
+							result,
+							cancelled,
+							settled,
+						};
+						tasks.add(task);
+						yield* restore(Queue.offer(queue, task)).pipe(
+							Effect.onInterrupt(() =>
+								Effect.gen(function* () {
+									tasks.delete(task);
+									yield* admission.release(1);
+									yield* Deferred.succeed(settled, undefined);
+								}),
+							),
+						);
+						return yield* restore(Deferred.await(result)).pipe(
+							Effect.onInterrupt(() =>
+								Effect.asVoid(Deferred.succeed(cancelled, undefined)),
+							),
+						);
+					}),
 				) as never,
 		};
 	});

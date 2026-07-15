@@ -45,6 +45,77 @@ describe('Dispatcher', () => {
 		);
 		await Effect.runPromise(program);
 	});
+	it('relays a cancelled same-key slot without breaking FIFO', async () => {
+		const program = Effect.scoped(
+			Effect.gen(function* () {
+				const executor = yield* KeyedExecutor.make({
+					concurrency: 2,
+					capacity: 2,
+				});
+				const firstStarted = yield* Deferred.make<void>();
+				const releaseFirst = yield* Deferred.make<void>();
+				const secondStarted = yield* Deferred.make<void>();
+				const thirdStarted = yield* Deferred.make<void>();
+				const first = yield* Effect.forkChild(
+					executor.submit(
+						'same',
+						Effect.andThen(
+							Deferred.succeed(firstStarted, undefined),
+							Deferred.await(releaseFirst),
+						),
+					),
+				);
+				yield* Deferred.await(firstStarted);
+				const second = yield* Effect.forkChild(
+					executor.submit('same', Deferred.succeed(secondStarted, undefined)),
+				);
+				yield* Effect.yieldNow;
+				yield* Fiber.interrupt(second);
+				expect(yield* Deferred.isDone(secondStarted)).toBe(false);
+				expect(yield* Deferred.isDone(firstStarted)).toBe(true);
+				const third = yield* Effect.forkChild(
+					executor.submit('same', Deferred.succeed(thirdStarted, undefined)),
+				);
+				yield* Effect.yieldNow;
+				expect(yield* Deferred.isDone(thirdStarted)).toBe(false);
+				yield* Deferred.succeed(releaseFirst, undefined);
+				yield* Fiber.join(first);
+				yield* Fiber.join(third);
+				expect(yield* Deferred.isDone(thirdStarted)).toBe(true);
+			}),
+		);
+		await Effect.runPromise(program);
+	});
+
+	it('preserves submission order under repeated same-key contention', async () => {
+		const order = await Effect.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					const executor = yield* KeyedExecutor.make({
+						concurrency: 8,
+						capacity: 32,
+					});
+					const observed: Array<number> = [];
+					const fibers: Array<Fiber.Fiber<void>> = [];
+					for (let index = 0; index < 32; index++) {
+						fibers.push(
+							yield* Effect.forkChild(
+								executor.submit(
+									'same',
+									Effect.sync(() => observed.push(index)).pipe(Effect.asVoid),
+								),
+							),
+						);
+						yield* Effect.yieldNow;
+					}
+					yield* Effect.forEach(fibers, Fiber.join);
+					return observed;
+				}),
+			),
+		);
+		expect(order).toEqual(Array.from({ length: 32 }, (_, index) => index));
+	});
+
 	it('bounds admitted work and restores capacity after interruption', async () => {
 		const program = Effect.scoped(
 			Effect.gen(function* () {
@@ -77,6 +148,33 @@ describe('Dispatcher', () => {
 			}),
 		);
 		await Effect.runPromise(program);
+	});
+
+	it('interrupts admitted work during scope shutdown', async () => {
+		const finalized = Deferred.makeUnsafe<void>();
+		await Effect.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					const executor = yield* KeyedExecutor.make({
+						concurrency: 1,
+						capacity: 1,
+					});
+					const started = yield* Deferred.make<void>();
+					yield* Effect.forkScoped(
+						executor.submit(
+							'one',
+							Effect.andThen(
+								Deferred.succeed(started, undefined),
+								Effect.never,
+							).pipe(Effect.ensuring(Deferred.succeed(finalized, undefined))),
+						),
+					);
+					yield* Deferred.await(started);
+				}),
+			),
+		);
+		await Effect.runPromise(Effect.sleep('10 millis'));
+		expect(await Effect.runPromise(Deferred.isDone(finalized))).toBe(true);
 	});
 
 	it('routes lifecycle, cancel, conversation, command, callback, message, fallback in priority order', async () => {

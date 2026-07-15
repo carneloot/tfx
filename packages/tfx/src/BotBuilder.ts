@@ -127,12 +127,15 @@ const handlers = <
 					registry: Middleware.MiddlewareRegistryService,
 					input: Decoded<CommandAt<G, typeof id>>,
 				) =>
-					registry.run<
-						any,
-						any,
-						any,
-						MiddlewareErrors<CommandAt<G, typeof id>>
-					>(middlewareIds, handler(input)),
+					registry.run<any, any, any>(
+						middlewareIds,
+						handler(input),
+					) as Effect.Effect<
+						Effect.Success<ReturnType<typeof handler>>,
+						| Effect.Error<ReturnType<typeof handler>>
+						| MiddlewareErrors<CommandAt<G, typeof id>>,
+						Effect.Services<ReturnType<typeof handler>>
+					>,
 			},
 		] as unknown as readonly [...Entries, AnyHandlerEntry]);
 	},

@@ -66,6 +66,12 @@ const registryLayer: Layer.Layer<
 > = Middleware.layer(registeredLive, adminLive);
 void registryLayer;
 
+declare const directRegistry: Middleware.MiddlewareRegistryService;
+const directRun = directRegistry.run([], Effect.succeed(1));
+// @ts-expect-error direct registry use cannot erase unknown middleware failures
+const _cannotEraseRegistryError: Effect.Effect<number, never> = directRun;
+void _cannotEraseRegistryError;
+
 Middleware.implement(
 	RegisteredUser,
 	// @ts-expect-error middleware processing error was not declared

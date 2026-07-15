@@ -203,10 +203,10 @@ export class MiddlewareRegistryError extends Error {
 export interface MiddlewareRegistryService {
 	readonly applications: Readonly<Record<string, AnyApplication>>;
 	/** Execute selected applications in declaration order around a request effect. */
-	readonly run: <A, E, R, MiddlewareError = never>(
+	readonly run: <A, E, R>(
 		ids: ReadonlyArray<string>,
 		effect: Effect.Effect<A, E, R>,
-	) => Effect.Effect<A, E | MiddlewareError | MiddlewareRegistryError, R>;
+	) => Effect.Effect<A, E | unknown, R>;
 }
 
 export class MiddlewareRegistry extends Context.Service<

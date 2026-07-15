@@ -1,4 +1,4 @@
-import { Effect, Fiber } from 'effect';
+import { Deferred, Effect, Fiber } from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
@@ -104,6 +104,43 @@ describe('UpdateDeduplicator', () => {
 				),
 			),
 		).resolves.toMatchObject({ _tag: 'RetryableFailure' });
+	});
+
+	it('settles an acquired claim before preserving interruption', async () => {
+		const completeStarted = Deferred.makeUnsafe<void>();
+		const allowComplete = Deferred.makeUnsafe<void>();
+		let released = 0;
+		const service: UpdateDeduplicatorModule.UpdateDeduplicatorService = {
+			diagnostics: { mode: 'memory', backend: 'test' },
+			claim: () =>
+				Effect.succeed({
+					_tag: 'Acquired',
+					token: { updateId: 1, generation: 1 },
+				}),
+			heartbeat: () => Effect.succeed(true),
+			complete: () =>
+				Effect.andThen(
+					Deferred.succeed(completeStarted, undefined),
+					Effect.as(Deferred.await(allowComplete), true),
+				),
+			release: () => Effect.sync(() => (++released, true)),
+		};
+		const fiber = Effect.runFork(
+			DeduplicatedDispatch.dispatch(
+				service,
+				{ update_id: 1 } as Update,
+				Effect.succeed(DispatchOutcome.handled),
+			),
+		);
+		await Effect.runPromise(Deferred.await(completeStarted));
+		const interrupted = Effect.runPromise(Fiber.interrupt(fiber));
+		await Promise.resolve();
+		expect(released).toBe(0);
+		await Effect.runPromise(Deferred.succeed(allowComplete, undefined));
+		await interrupted;
+		const exit = await Effect.runPromise(Fiber.await(fiber));
+		expect(exit._tag).toBe('Failure');
+		expect(released).toBe(1);
 	});
 
 	it('releases its fence and preserves external interruption', async () => {
