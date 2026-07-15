@@ -8,19 +8,18 @@ Private Bun application for owned-pet registration, food tracking, and durable f
 mise install
 mise exec -- pnpm install --frozen-lockfile
 export FNOX_AGE_KEY_FILE="$HOME/.config/fnox/age.txt"
-docker run --rm --name carneloot-postgres -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=carneloot -p 5432:5432 postgres:17-alpine
+docker compose -f apps/carneloot-bot/compose.yaml up -d --wait
 cp apps/carneloot-bot/.env.example apps/carneloot-bot/.env
 ```
 
-`.env` contains only non-secret configuration and still needs to be exported through your shell or preferred environment loader. `BOT_TOKEN` and `DATABASE_URL` come from `apps/carneloot-bot/fnox.toml` through `fnox exec`.
+`.env` contains only non-secret configuration and still needs to be exported through your shell or preferred environment loader. `BOT_TOKEN` comes from the age-encrypted entry in `apps/carneloot-bot/fnox.toml`. For local development, fnox defaults `DATABASE_URL` to the PostgreSQL service exposed by `compose.yaml` at `localhost:5432`.
 
 ## Configuration
 
 | Key                                                 | Unit / example                                                 |
 | --------------------------------------------------- | -------------------------------------------------------------- |
 | `BOT_TOKEN`                                         | redacted Telegram token                                        |
-| `DATABASE_URL`                                      | redacted PostgreSQL URL                                        |
+| `DATABASE_URL`                                      | local Compose default; override in production                  |
 | `BOT_ID`                                            | must be `carneloot`                                            |
 | `BOT_USERNAME`                                      | Telegram username without `@`                                  |
 | `POLLING_TIMEOUT_SECONDS`                           | seconds, `30`                                                  |
@@ -44,15 +43,14 @@ mise exec -- pnpm --filter carneloot-bot demo
 
 ## Secret key operations
 
-The age private key at `~/.config/fnox/age.txt` must be backed up securely and never committed. Update encrypted values from the app directory without placing plaintext in files or shell history:
+The age private key at `~/.config/fnox/age.txt` must be backed up securely and never committed. Update the encrypted Telegram token from the app directory without placing plaintext in files or shell history:
 
 ```sh
 cd apps/carneloot-bot
-fnox set BOT_TOKEN --provider age
-fnox set DATABASE_URL --provider age
+mise exec -- fnox set BOT_TOKEN --provider age
 ```
 
-Production must provide `FNOX_AGE_KEY_FILE` pointing to a securely delivered private key, or migrate the fnox entries to a remote provider. Never copy the private key into a container image.
+Production must provide `FNOX_AGE_KEY_FILE`, `FNOX_PROFILE=production`, and `DATABASE_URL` through its deployment environment. The production profile removes the localhost fallback and fails when `DATABASE_URL` is absent. A fnox remote provider can replace this bootstrap model later. Never copy the private key into a container image.
 
 ## Commands
 

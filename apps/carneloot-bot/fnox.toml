@@ -1,0 +1,12 @@
+env = "exec"
+
+[providers.age]
+type = "age"
+recipients = ["age1g2udjp9yyh2z8k4rf7jvc2lsk3fxm4nwp02f8025v2etel8dw3fscjqxay"]
+
+[secrets]
+BOT_TOKEN = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBHc0gyVGYvcTVzaVB0QlJBWUNWaGhYcFJEYkcyMjVHa3NnNmthSFdPU0ZFCkFqNFhVQ3NJNTRmVjQyQ3RnV0liSjZrYXFXdDRoYnFRSTNLOUZRUUk3NHcKLT4gOVstZ3JlYXNlID5eNyJ0IFQ4cCdwT00gLXg2Uy0zXGggfDYKOUliWkhRUUJqa0YzZ2lOTTFweWhDb3J6Ci0tLSA5d1FobFBHbk1RUjdPNUdMSHdiZ1haOWZuVmdBTjd0ZTFKQVc2M2JPSGdNCr6l5/cyNIlUSIz9XTDc3Z0wJNqh4LNXFM3BK8K3iEbgoWM9nmha2IFKnE8EjZqL1Hh9ub8o3YTEEm0SBPR/DUu3BcWlkoNW4SF0l3x60w==" }
+DATABASE_URL = { default = "postgres://postgres:postgres@localhost:5432/carneloot" }
+
+[profiles.production.secrets]
+DATABASE_URL = { if_missing = "error" }
