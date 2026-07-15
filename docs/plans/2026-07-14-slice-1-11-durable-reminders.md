@@ -10,13 +10,13 @@
 
 ## File map
 
-- Create: `apps/carneloot-bot/migrations/0004_notifications.sql` and `0005_unreachable_notification_deliveries.sql` (version 5 permits null recipient chat only for audited permanent unreachable failures)
+- Create: `apps/carneloot-bot/migrations/{0004_notifications.sql,0005_unreachable_notification_deliveries.sql}` and generated immutable artifacts `apps/carneloot-bot/src/postgres/{Migration0004Sql.ts,Migration0005Sql.ts}`. Migration 5 permits null recipient chat only for audited permanent unreachable failures.
 - Create: `apps/carneloot-bot/src/domain/notifications/{NotificationEvent.ts,NotificationDelivery.ts,RecipientRole.ts,DeliveryOutcome.ts}`
 - Create: `apps/carneloot-bot/src/ports/{NotificationRepository.ts,NotificationRecipients.ts}`
 - Create: `apps/carneloot-bot/src/postgres/NotificationRepositoryLive.ts`
 - Create: `apps/carneloot-bot/src/application/{ScheduleFeedingReminder.ts,DispatchNotificationDelivery.ts,RecoverStaleDeliveries.ts}`
 - Create: `apps/carneloot-bot/src/jobs/FeedingReminderJob.ts`
-- Create: `apps/carneloot-bot/test/notifications/{NotificationRepository.integration.test.ts,FeedingReminder.integration.test.ts,FeedingReminder.e2e.test.ts}`
+- Create: `apps/carneloot-bot/test/notifications/{NotificationRepository.integration.test.ts,FeedingReminderScheduling.integration.test.ts,DispatchNotificationDelivery.test.ts,FeedingReminderJob.test.ts,FeedingReminder.e2e.integration.test.ts}`
 - Modify: `apps/carneloot-bot/src/application/{ConfigureReminderDelay.ts,AddFood.ts}`
 
 ### Task 1: Event/delivery schema and extensible roles
@@ -30,9 +30,11 @@ Test unique event dedupe, unique recipient/channel, valid status transitions, fr
 Migration uses fixed qualified application schema established in Plan 9:
 
 ```text
-carneloot.notification_events(id uuid primary key, kind text not null, owner_user_id uuid not null references carneloot.users, pet_id uuid null references carneloot.pets, food_entry_id uuid null references carneloot.pet_food_entries, scheduled_for timestamptz null, status text not null, dedupe_key text not null unique, created_at timestamptz not null, updated_at timestamptz not null, completed_at timestamptz null, cancelled_at timestamptz null)
-carneloot.notification_deliveries(id uuid primary key, event_id uuid not null references carneloot.notification_events, recipient_user_id uuid not null references carneloot.users, recipient_chat_id bigint not null, recipient_role text not null, channel text not null, status text not null, attempt_generation bigint not null default 0, attempt_count int not null default 0, sending_started_at timestamptz null, sending_lease_expires_at timestamptz null, retry_at timestamptz null, retryable boolean not null default false, telegram_bot_id text null, telegram_message_id bigint null, safe_error_json jsonb null, sent_at timestamptz null, failed_at timestamptz null, unknown_at timestamptz null, unique(event_id,recipient_user_id,channel))
+carneloot.notification_events(id uuid primary key, bot_id text not null, kind text not null, owner_user_id uuid not null references carneloot.users, pet_id uuid null references carneloot.pets, food_entry_id uuid null references carneloot.pet_food_entries, scheduled_for timestamptz null, status text not null, dedupe_key text not null unique, job_id uuid null, created_at timestamptz not null, updated_at timestamptz not null, completed_at timestamptz null, cancelled_at timestamptz null)
+carneloot.notification_deliveries(id uuid primary key, event_id uuid not null references carneloot.notification_events, recipient_user_id uuid not null references carneloot.users, recipient_chat_id bigint null, recipient_role text not null, channel text not null, status text not null, attempt_generation bigint not null default 0, attempt_count int not null default 0, sending_started_at timestamptz null, sending_lease_expires_at timestamptz null, retry_at timestamptz null, retryable boolean not null default false, telegram_bot_id text null, telegram_message_id bigint null, safe_error_json jsonb null, sent_at timestamptz null, failed_at timestamptz null, unknown_at timestamptz null, unique(event_id,recipient_user_id,channel))
 ```
+
+Migration 5 permits `recipient_chat_id IS NULL` only when status is permanent `failed`, retryable is false, and sanitized unreachable-recipient audit error is present.
 
 Partial unique index enforces `(telegram_bot_id,recipient_chat_id,telegram_message_id)` when sent identity exists. Status checks allow `pending|sending|sent|failed|unknown`; event allows `scheduled|dispatching|completed|cancelled`.
 
@@ -80,28 +82,28 @@ Event completion is exact: mark completed only when no `pending`, no `sending`, 
 
 - [ ] **Step 1: Write transaction/latest tests**
 
-Newest food with delay atomically inserts food, creates scheduled event, and schedules job conflict key `feeding-reminder:<petId>`. Next newest food cancels prior event/job and replaces both. Backdated food changes neither. Deleting delay cancels current event/job. Forced event/job failure rolls back food/setting transaction.
+Newest food with delay atomically inserts food, creates scheduled event, and schedules job conflict key `feeding-reminder:<botId>:<petId>`. Next newest food cancels prior event/job and replaces both. Backdated food changes neither. Deleting delay cancels current event/job. Forced event/job failure rolls back food/setting transaction.
 
 - [ ] **Step 2: Declare versioned payload**
 
 ```ts
-const FeedingReminderV1 = Schema.Struct({ eventId: EventId, petId: PetId, foodEntryId: FoodEntryId })
+const FeedingReminderV1 = Schema.Struct({ eventId: EventId, botId: BotId, petId: PetId, foodEntryId: FoodEntryId })
 const FeedingReminderPayload = VersionedSchema.history(VersionedSchema.version(1, FeedingReminderV1))
 ```
 
 - [ ] **Step 3: Implement `ReminderScheduler` with JobStore**
 
-Create event dedupe `feeding-reminder:<petId>:<foodEntryId>` and schedule at food time + delay through injected public `JobRuntime.schedule(FeedingReminderJob, payload, { runAt, conflictKey })`. This choice is valid because JobRuntime delegates to injected JobStore and PostgresJobStore uses the same fiber-local, externally supplied PgClient transaction; nested `withTransaction` participates and creates no pool. Add a forced JobStore failure rollback test proving food/event/job all disappear together, plus a service-identity/type composition test proving one external PgClient. Payload encoding/version/maxAttempts remain owned by the Job declaration, not duplicated in app SQL.
+Create event dedupe `feeding-reminder:<botId>:<petId>:<foodEntryId>:<runAt>` and schedule at food time + delay through injected public `JobRuntime.schedule(FeedingReminderJob, payload, { runAt, conflictKey })`. This choice is valid because JobRuntime delegates to injected JobStore and PostgresJobStore uses the same fiber-local, externally supplied PgClient transaction; nested `withTransaction` participates and creates no pool. Add a forced JobStore failure rollback test proving food/event/job all disappear together, plus a service-identity/type composition test proving one external PgClient. Payload encoding/version/maxAttempts remain owned by the Job declaration, not duplicated in app SQL.
 
 - [ ] **Step 4: Replace recording scheduler and run tests**
 
-Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- FeedingReminder.integration.test.ts PetFood.integration.test.ts`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- FeedingReminderScheduling.integration.test.ts PetFood.integration.test.ts`
 Expected: atomic/newest/backdated/delete/failure cases PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/carneloot-bot/src/application/ScheduleFeedingReminder.ts apps/carneloot-bot/src/jobs/FeedingReminderJob.ts apps/carneloot-bot/src/application/AddFood.ts apps/carneloot-bot/src/application/ConfigureReminderDelay.ts apps/carneloot-bot/test/notifications/FeedingReminder.integration.test.ts
+git add apps/carneloot-bot/src/postgres/ReminderSchedulerLive.ts apps/carneloot-bot/src/jobs/FeedingReminderJob.ts apps/carneloot-bot/src/application/AddFood.ts apps/carneloot-bot/src/application/ConfigureReminderDelay.ts apps/carneloot-bot/test/notifications/FeedingReminderScheduling.integration.test.ts
 git commit -m "feat(carneloot): schedule durable feeding reminders"
 ```
 
@@ -109,11 +111,11 @@ git commit -m "feat(carneloot): schedule durable feeding reminders"
 
 - [ ] **Step 1: Write Telegram outcome tests**
 
-Definitive success→sent with message identity. 429/explicit retry-after→failed retryable with `delivery.retry_at = now + retryAfter`; only failed recipients whose retry_at is due are claimable on that run. After processing all currently due recipients, any remaining retryable failed delivery—including runs where none is currently claimable—returns `JobOutcome.retryableFailure(error, max(0, earliestRetryAt - now))`. Multiple recipient delays aggregate to the earliest `retry_at`; success is returned only when the exact event terminal-state rule is satisfied. Permanent 400/403→failed permanent. Network timeout, interruption, malformed response, or post-send persistence uncertainty→unknown. Materialization remains idempotent; sent/unknown/permanent-failed recipients skip on job retry, future retryable failures keep the event open but are not claimed early, and mixed-recipient tests cover success plus due/future retryable outcomes.
+Definitive success→sent with message identity. 429/explicit retry-after→failed retryable with `delivery.retry_at = now + retryAfter`; only failed recipients whose retry_at is due are claimable on that run. After processing all currently due recipients, any remaining retryable failed delivery—including runs where none is currently claimable—fails with typed `FeedingReminderRetryError` carrying the earliest delay. `JobRuntime` alone translates handler success/failure into `JobOutcome` and persists rescheduling. Multiple recipient delays aggregate to the earliest `retry_at`; success is returned only when the exact event terminal-state rule is satisfied. Permanent 400/403→failed permanent. Network timeout, interruption, malformed response, or post-send persistence uncertainty→unknown. Materialization remains idempotent; sent/unknown/permanent-failed recipients skip on job retry, future retryable failures keep the event open but are not claimed early, and mixed-recipient tests cover success plus due/future retryable outcomes.
 
 - [ ] **Step 2: Implement recipient resolution/materialization**
 
-At dispatch, verify event still active and food entry still latest. Resolve current owner identity/chat and later-extensible recipients; insert owner pending delivery. Removed/unreachable identities become permanent failed without Telegram call.
+At dispatch, verify event still active and payload bot/pet/food identity matches, then re-read latest food immediately before recipient materialization/claim. Scheduler advisory locking establishes the latest schedule, while this claim-time reread closes replacement races; mismatch cancels the stale event without Telegram. Resolve current owner identity/chat and later-extensible recipients; insert owner pending delivery. Removed/unreachable identities become permanent failed without Telegram call.
 
 - [ ] **Step 3: Build reminder text at send time**
 
@@ -126,11 +128,11 @@ Compute current pet-day total:
 
 - [ ] **Step 4: Implement fenced send**
 
-Claim transaction commits before Telegram call. Call Telegram. Finalize matching generation. Map Telegram results by certainty: a definitive API response (including 429 retry-after and permanent 400/403) is safe to classify; ambiguous transport timeout/disconnect, malformed response after possible send, persistence uncertainty, or fiber interruption after the sending fence becomes `unknown`. Job-worker interruption before a definitive delivery outcome leaves job/delivery leases for recovery and is never converted to permanent/fatal notification outcome. Complete the event only under the exact terminal-state rule above; otherwise schedule the job at the earliest remaining retryable `retry_at`.
+Recover expired sending leases for the event before each dispatch, then commit claim transaction before Telegram call. Plan 12 adds one global expired-delivery recovery sweep before its worker loop. Call Telegram. Finalize matching generation. Map Telegram results by certainty: a definitive API response (including 429 retry-after and permanent 400/403) is safe to classify; ambiguous transport timeout/disconnect, malformed response after possible send, persistence uncertainty, or fiber interruption after the sending fence becomes `unknown`. Job-worker interruption before a definitive delivery outcome leaves job/delivery leases for recovery and is never converted to permanent/fatal notification outcome. Complete the event only under the exact terminal-state rule above; otherwise fail with `FeedingReminderRetryError` at the earliest remaining `retry_at` or sending lease. Retryable delivery outcomes become permanent at attempt 8, matching the job's finite `maxAttempts: 8`; `JobRuntime` creates the persisted `JobOutcome`.
 
 - [ ] **Step 5: Run and commit**
 
-Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- FeedingReminder.integration.test.ts FeedingReminder.e2e.test.ts`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- DispatchNotificationDelivery.test.ts FeedingReminder.e2e.integration.test.ts`
 Expected: definitive/ambiguous/interruption taxonomy, mixed recipients, retry_at/job retry coordination, crash recovery, and fencing PASS.
 
 ```bash

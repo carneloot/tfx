@@ -79,8 +79,14 @@ export const execute = (
 	options: { readonly leaseDuration?: number } = {},
 ) =>
 	Effect.gen(function* () {
-		const now = yield* Clock.currentTimeMillis;
 		const leaseDuration = options.leaseDuration ?? 30_000;
+		if (!Number.isFinite(leaseDuration) || leaseDuration <= 0)
+			return yield* Effect.fail(
+				new FeedingReminderPermanentError({
+					message: 'Delivery lease duration must be finite and positive',
+				}),
+			);
+		const now = yield* Clock.currentTimeMillis;
 		const notifications = yield* NotificationRepository;
 		const event = yield* notifications.getDispatchContext(payload.eventId);
 		if (
@@ -92,12 +98,14 @@ export const execute = (
 			event.botId !== payload.botId ||
 			event.petId !== payload.petId ||
 			event.foodEntryId !== payload.foodEntryId
-		)
+		) {
+			yield* notifications.cancelEvent(event.id, now);
 			return yield* Effect.fail(
 				new FeedingReminderPermanentError({
 					message: 'Reminder payload does not match persisted event',
 				}),
 			);
+		}
 		const food = yield* PetFoodRepository;
 		const latest = yield* food.latestEntry(payload.petId);
 		if (latest?.id !== payload.foodEntryId) {
@@ -228,7 +236,7 @@ export const execute = (
 		const target =
 			summary.earliestRetryAt ??
 			summary.earliestSendingLeaseExpiry ??
-			(summary.pending > 0 ? summaryNow + 1_000 : summaryNow + 1_000);
+			summaryNow + 1_000;
 		return yield* Effect.fail(
 			new FeedingReminderRetryError({
 				message: 'Notification event still has active deliveries',

@@ -115,6 +115,7 @@ interface HarnessOptions {
 	readonly eventStatus?: 'scheduled' | 'completed' | 'cancelled';
 	readonly initialState?: 'pending' | 'sending' | 'failed' | 'sent' | 'unknown';
 	readonly finalize?: 'success' | 'false' | 'error';
+	readonly mismatchedEvent?: boolean;
 }
 const harness = (
 	send: Effect.Effect<{ readonly message_id: number }, TelegramError>,
@@ -131,6 +132,7 @@ const harness = (
 	let lastError: unknown;
 	let lastRetryAt: number | null = null;
 	let cancelled = false;
+	let materializations = 0;
 	const repository: NotificationRepositoryService = {
 		createEvent: () => Effect.die('unused'),
 		cancelActiveForPet: () => Effect.die('unused'),
@@ -144,7 +146,9 @@ const harness = (
 		getDispatchContext: () =>
 			Effect.succeed({
 				id: eventId,
-				botId,
+				botId: options.mismatchedEvent
+					? Schema.decodeUnknownSync(BotId)('another-bot')
+					: botId,
 				kind: 'feeding-reminder',
 				ownerUserId: ownerId,
 				petId,
@@ -160,6 +164,7 @@ const harness = (
 			}),
 		materializeRecipients: (_eventId, recipients) =>
 			Effect.sync(() => {
+				materializations++;
 				if (recipients[0]?._tag === 'Unreachable') state = 'permanent';
 				return [];
 			}),
@@ -328,10 +333,46 @@ const harness = (
 		lastError: () => lastError,
 		lastRetryAt: () => lastRetryAt,
 		cancelled: () => cancelled,
+		materializations: () => materializations,
 	};
 };
 
 describe('delivery dispatcher', () => {
+	it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+		'rejects invalid lease %s before recipient side effects',
+		async (leaseDuration) => {
+			const h = harness(Effect.succeed({ message_id: 7 }));
+			const result = await Effect.runPromise(
+				Effect.provide(
+					Effect.result(Dispatch.execute(payload, { leaseDuration })),
+					h.layer,
+				),
+			);
+			expect(result).toMatchObject({
+				_tag: 'Failure',
+				failure: { _tag: 'FeedingReminderPermanentError' },
+			});
+			expect(h.materializations()).toBe(0);
+			expect(h.calls()).toBe(0);
+		},
+	);
+
+	it('cancels a mismatched persisted event before permanent failure', async () => {
+		const h = harness(Effect.succeed({ message_id: 7 }), {
+			mismatchedEvent: true,
+		});
+		const result = await Effect.runPromise(
+			Effect.provide(Effect.result(Dispatch.execute(payload)), h.layer),
+		);
+		expect(result).toMatchObject({
+			_tag: 'Failure',
+			failure: { _tag: 'FeedingReminderPermanentError' },
+		});
+		expect(h.cancelled()).toBe(true);
+		expect(h.materializations()).toBe(0);
+		expect(h.calls()).toBe(0);
+	});
+
 	it('sends and finalizes success', async () => {
 		const h = harness(Effect.succeed({ message_id: 7 }));
 		await Effect.runPromise(Effect.provide(Dispatch.execute(payload), h.layer));
