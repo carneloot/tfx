@@ -12,6 +12,7 @@ import type { AppConfigService } from '../src/Config.js';
 import { JobWorker } from '../src/JobWorker.js';
 import * as Layers from '../src/Layers.js';
 import { NotificationRepository } from '../src/ports/NotificationRepository.js';
+import * as Production from '../src/Production.js';
 import * as Router from '../src/Router.js';
 
 const config: AppConfigService = {
@@ -84,5 +85,21 @@ describe('portable Node composition', () => {
 		expect(Router.petHandlers.entries).toHaveLength(2);
 		expect(Router.petFoodHandlers.entries).toHaveLength(4);
 		expect(Router.conversations).toHaveLength(4);
+		const polling = Production.pollingOptions(config);
+		expect(polling.commands.map(({ command }) => command)).toEqual([
+			'cadastrar',
+			'adicionar_pet',
+			'listar_pets',
+			'configurar_inicio_dia',
+			'configurar_atraso_notificacao',
+			'status_racao',
+			'colocar_racao',
+		]);
+		expect(polling.commands).toHaveLength(7);
+		expect(
+			polling.commands.some(({ command }) => String(command) === 'cancelar'),
+		).toBe(false);
+		expect(polling.allowedUpdates).toContain('callback_query');
+		expect(polling.allowedUpdates).toContain('message_reaction');
 	});
 });

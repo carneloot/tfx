@@ -155,6 +155,7 @@ export const make = <
 			>;
 		};
 		const router = InternalRouter.make({
+			cancelBotUsername: options.botUsername,
 			...(options.cancel === undefined
 				? {}
 				: {

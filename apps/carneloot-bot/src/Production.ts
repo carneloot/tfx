@@ -8,6 +8,39 @@ import * as Telegram from 'tfx/Telegram';
 import { AppConfig, type AppConfigService } from './Config.js';
 import * as Layers from './Layers.js';
 
+export const pollingOptions = (config: AppConfigService) => ({
+	timeout: config.pollingTimeoutSeconds,
+	retryDelay: config.pollingRetryDelayMillis,
+	allowedUpdates: [
+		'message',
+		'edited_message',
+		'channel_post',
+		'edited_channel_post',
+		'business_message',
+		'edited_business_message',
+		'message_reaction',
+		'callback_query',
+		'my_chat_member',
+		'chat_member',
+		'chat_join_request',
+	] as const,
+	commands: [
+		{ command: 'cadastrar', description: 'Cadastrar ou atualizar seu perfil' },
+		{ command: 'adicionar_pet', description: 'Adicionar um pet' },
+		{ command: 'listar_pets', description: 'Listar seus pets' },
+		{
+			command: 'configurar_inicio_dia',
+			description: 'Configurar início do dia do pet',
+		},
+		{
+			command: 'configurar_atraso_notificacao',
+			description: 'Configurar atraso das notificações',
+		},
+		{ command: 'status_racao', description: 'Consultar o status de ração' },
+		{ command: 'colocar_racao', description: 'Registrar ração para um pet' },
+	] as const,
+});
+
 export const fromConfig = (config: AppConfigService) => {
 	const pg = PgClient.layer({ url: config.databaseUrl });
 	const telegram = Layer.provide(
@@ -17,10 +50,7 @@ export const fromConfig = (config: AppConfigService) => {
 	return Layers.portable(config, {
 		pg,
 		telegram,
-		delivery: Polling.make({
-			timeout: config.pollingTimeoutSeconds,
-			retryDelay: config.pollingRetryDelayMillis,
-		}),
+		delivery: Polling.make(pollingOptions(config)),
 		botUsername: config.botUsername,
 	});
 };

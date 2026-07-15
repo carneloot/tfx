@@ -74,12 +74,6 @@ const telegram = Layer.succeed(Telegram, {
 	setMessageReaction: () => Effect.succeed(true),
 	answerCallbackQuery: () => Effect.succeed(true),
 } as never);
-const graph = Layers.portable(config, {
-	pg: postgres,
-	telegram,
-	delivery: UpdateDelivery.manual,
-	botUsername: config.botUsername,
-});
 const transcript = [
 	'/cadastrar',
 	'/adicionar_pet',
@@ -102,7 +96,14 @@ const program = Effect.scoped(
 		const sql = yield* PgClient.PgClient;
 		yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
 		yield* sql.unsafe('DROP SCHEMA IF EXISTS tfx_demo_test CASCADE');
-		const context = yield* Layer.build(Layer.merge(graph, postgres));
+		const suppliedPg = Layer.succeed(PgClient.PgClient, sql);
+		const graph = Layers.portable(config, {
+			pg: suppliedPg,
+			telegram,
+			delivery: UpdateDelivery.manual,
+			botUsername: config.botUsername,
+		});
+		const context = yield* Layer.build(graph);
 		for (const [index, text] of transcript.entries()) {
 			const outcome = yield* Effect.provide(
 				Effect.flatMap(BotRuntime, (runtime) =>
@@ -115,7 +116,7 @@ const program = Effect.scoped(
 					new Error(`demo transcript failed at ${text}: ${outcome._tag}`),
 				);
 		}
-		const db = yield* Effect.provide(PgClient.PgClient, context);
+		const db = sql;
 		// Parameterize scheduled reminder to due-now only after transcript commits.
 		yield* db`UPDATE tfx_demo_test.case_jobs SET run_at=now() WHERE declaration='feeding-reminder' AND status='scheduled'`;
 		const awaitReminder = (remaining: number): Effect.Effect<void, Error> =>

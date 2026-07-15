@@ -2,7 +2,7 @@ import * as Config from 'effect/Config';
 import * as Context from 'effect/Context';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
-import type * as Redacted from 'effect/Redacted';
+import * as Redacted from 'effect/Redacted';
 
 import { Carneloot } from './bot/Declaration.js';
 
@@ -64,7 +64,11 @@ export const load = Effect.flatMap(source, (value) =>
 					throw new AppConfigValidationError(
 						`${name} must be a positive integer`,
 					);
-			if (!/^[A-Za-z0-9_]{1,32}$/u.test(value.botUsername))
+			if (Redacted.value(value.botToken).trim().length === 0)
+				throw new AppConfigValidationError('BOT_TOKEN must be nonempty');
+			if (Redacted.value(value.databaseUrl).trim().length === 0)
+				throw new AppConfigValidationError('DATABASE_URL must be nonempty');
+			if (!/^[A-Za-z0-9_]{5,32}$/u.test(value.botUsername))
 				throw new AppConfigValidationError('BOT_USERNAME is invalid');
 			if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(value.tfxSchema))
 				throw new AppConfigValidationError(

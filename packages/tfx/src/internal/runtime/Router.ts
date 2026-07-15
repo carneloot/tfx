@@ -16,6 +16,8 @@ export interface Router {
 	) => Effect.Effect<DispatchOutcome.DispatchOutcome, never>;
 }
 export interface RouterOptions {
+	/** Optional username restricts /cancelar@mention to this bot. */
+	readonly cancelBotUsername?: string;
 	readonly lifecycle?: (
 		update: Update,
 	) => Effect.Effect<DispatchOutcome.DispatchOutcome, never>;
@@ -53,13 +55,21 @@ export const make = (options: RouterOptions = {}): Router => ({
 			return (
 				options.lifecycle?.(update) ?? Effect.succeed(DispatchOutcome.handled)
 			);
-		if (
-			typeof text(update) === 'string' &&
-			/^\/cancelar(?:@[^\s]+)?(?:\s|$)/u.test(text(update))
-		)
-			return (
-				options.cancel?.(update) ?? Effect.succeed(DispatchOutcome.handled)
-			);
+		if (typeof text(update) === 'string') {
+			const cancel = /^\/cancelar(?:@([^\s]+))?(?:\s|$)/u.exec(text(update));
+			const expected = options.cancelBotUsername
+				?.replace(/^@/u, '')
+				.toLocaleLowerCase('en-US');
+			if (
+				cancel !== null &&
+				(expected === undefined ||
+					cancel[1] === undefined ||
+					cancel[1].toLocaleLowerCase('en-US') === expected)
+			)
+				return (
+					options.cancel?.(update) ?? Effect.succeed(DispatchOutcome.handled)
+				);
+		}
 		return Effect.flatMap(
 			options.conversation?.(update) ?? Effect.succeed(undefined),
 			(conversation) => {

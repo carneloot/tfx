@@ -17,6 +17,9 @@ import {
 } from 'tfx';
 import { BotRuntime } from 'tfx/BotRuntime';
 import * as BotRuntimeLive from 'tfx/BotRuntime';
+import * as Polling from 'tfx/Polling';
+import { Telegram } from 'tfx/Telegram';
+import { AuthenticationError, TelegramError } from 'tfx/TelegramError';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
 import { describe, expect, it } from 'vitest';
 
@@ -164,6 +167,86 @@ else
 			expect(Ref.getUnsafe(count)).toBe(1);
 		});
 
+		it('advances polling offset contiguously and skips repeated completed updates', async () => {
+			await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(PgClient.PgClient, (sql) =>
+						sql.unsafe('DROP SCHEMA IF EXISTS tfx_concurrency_e2e CASCADE'),
+					),
+					postgres,
+				),
+			);
+			const offsets: Array<number | undefined> = [];
+			const counts = new Map<number, number>();
+			let batch = 0;
+			const batches = [
+				[update(1, 30), update(2, 30), update(3, 30)],
+				[update(2, 30), update(3, 30)],
+			] as const;
+			const telegram = Layer.succeed(Telegram, {
+				getMe: () => Effect.succeed({ id: 1, is_bot: true, first_name: 'Bot' }),
+				deleteWebhook: () => Effect.succeed(true),
+				setMyCommands: () => Effect.succeed(true),
+				getUpdates: (payload: { readonly offset?: number }) => {
+					offsets.push(payload.offset);
+					if (batch < batches.length) return Effect.succeed(batches[batch++]!);
+					return Effect.fail(
+						new TelegramError({
+							module: 'Telegram',
+							method: 'getUpdates',
+							reason: new AuthenticationError({
+								errorCode: 401,
+								description: 'terminal',
+							}),
+						}),
+					);
+				},
+			} as never);
+			const router: BotRouter.Router = {
+				route: (value) =>
+					Effect.sync(() => {
+						const id = value.update_id;
+						const count = (counts.get(id) ?? 0) + 1;
+						counts.set(id, count);
+						return id === 2 && count === 1
+							? DispatchOutcome.retryableFailure('once')
+							: DispatchOutcome.handled;
+					}),
+			};
+			const durable = Layer.provide(
+				TfxPostgres.layer({
+					schema: 'tfx_concurrency_e2e',
+					tablePrefix: 'case_',
+				}),
+				postgres,
+			);
+			const runtime = Layer.provide(
+				BotRuntimeLive.layer(declaration, {
+					delivery: Polling.make({ timeout: 1 }),
+					router,
+					concurrency: 4,
+					capacity: 8,
+				}),
+				Layer.merge(durable, telegram),
+			);
+			const result = await Effect.runPromise(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const context = yield* Layer.build(runtime);
+						return yield* Effect.provide(
+							Effect.flatMap(BotRuntime, (service) =>
+								Effect.result(service.await),
+							),
+							context,
+						);
+					}),
+				) as Effect.Effect<any, unknown, never>,
+			);
+			expect(result._tag).toBe('Failure');
+			expect(offsets).toEqual([undefined, 2, 4]);
+			expect(Object.fromEntries(counts)).toEqual({ 1: 1, 2: 2, 3: 1 });
+		});
+
 		it('keeps same-chat FIFO while unrelated chats overlap and rejects unsafe IDs', async () => {
 			const enteredFirst = Deferred.makeUnsafe<void>();
 			const releaseFirst = Deferred.makeUnsafe<void>();
@@ -246,6 +329,5 @@ else
 		});
 	});
 
-/* Polling contiguous-offset retry/skip behavior is exercised through the public
-Polling delivery facade in packages/tfx/test/Polling.test.ts; this suite adds the
-cross-replica durable claim and public BotRouter partitioning integration proof. */
+/* This suite exercises public Polling.make with PostgreSQL durable dedup across
+repeated batches, plus cross-replica claims and BotRouter partitioning. */

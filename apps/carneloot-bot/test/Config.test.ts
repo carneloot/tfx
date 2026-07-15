@@ -42,7 +42,10 @@ describe('AppConfig', () => {
 		{ ...valid, DEDUP_LEASE_MILLIS: '100', DEDUP_WAIT_MILLIS: '101' },
 		{ ...valid, JOB_HEARTBEAT_MILLIS: '30000' },
 		{ ...valid, DEDUP_HEARTBEAT_MILLIS: '30000' },
+		{ ...valid, BOT_TOKEN: '' },
+		{ ...valid, DATABASE_URL: '   ' },
 		{ ...valid, BOT_USERNAME: '' },
+		{ ...valid, BOT_USERNAME: 'a' },
 		{ ...valid, TFX_POSTGRES_SCHEMA: 'bad-name' },
 		{ ...valid, TFX_POSTGRES_TABLE_PREFIX: 'bad-name' },
 	])('rejects invalid configuration %#', async (values) => {

@@ -155,7 +155,19 @@ describe('public BotRouter', () => {
 		expect(cancelled).toBe(1);
 		expect(
 			await Effect.runPromise(
-				router.route(commandUpdate(2, '/start') as never),
+				router.route(commandUpdate(2, '/cancelar@MYBOT') as never),
+			),
+		).toEqual({ _tag: 'Handled' });
+		expect(cancelled).toBe(2);
+		expect(
+			await Effect.runPromise(
+				router.route(commandUpdate(3, '/cancelar@OtherBot') as never),
+			),
+		).toEqual({ _tag: 'Handled' });
+		expect(cancelled).toBe(2);
+		expect(
+			await Effect.runPromise(
+				router.route(commandUpdate(4, '/start') as never),
 			),
 		).toEqual({ _tag: 'RetryableFailure', error: 'safe-domain-error' });
 	});

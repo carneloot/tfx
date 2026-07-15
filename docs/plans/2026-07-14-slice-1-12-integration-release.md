@@ -100,7 +100,7 @@ Seed v1/current and invalid/newer payloads. Assert migration claim does not incr
 
 - [x] **Step 3: Add update concurrency proof**
 
-Duplicate update across two runtime clients executes one mutation. Same-chat updates run FIFO; unrelated chats overlap. Retryable update blocks contiguous polling offset while later completed update is skipped on repeated batch. Every update/chat/user ID fixture stays within JS safe-integer range and ingress rejection of an unsafe number is covered; arbitrary bigint/string Telegram IDs remain deferred to a future tfx model change.
+Duplicate update across two runtime clients executes one mutation. Same-chat updates run FIFO; unrelated chats overlap. `Concurrency.e2e.test.ts` drives public `Polling.make` through batches `[1,2,3]` then repeated `[2,3]`: retryable update 2 blocks the contiguous offset at 2, then successful update 2 advances to 4 while durable dedup skips already-completed update 3. Every update/chat/user ID fixture stays within JS safe-integer range and ingress rejection of an unsafe number is covered; arbitrary bigint/string Telegram IDs remain deferred to a future tfx model change.
 
 - [x] **Step 4: Run and commit**
 
