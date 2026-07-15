@@ -24,7 +24,16 @@
     "./CallbackQueryContext": "./src/CallbackQueryContext.ts",
     "./InlineKeyboard": "./src/InlineKeyboard.ts",
     "./ReplyKeyboard": "./src/ReplyKeyboard.ts",
-    "./CallbackData": "./src/CallbackData.ts"
+    "./CallbackData": "./src/CallbackData.ts",
+    "./VersionedSchema": "./src/VersionedSchema.ts",
+    "./Conversation": "./src/Conversation.ts",
+    "./ConversationBuilder": "./src/ConversationBuilder.ts",
+    "./ConversationInput": "./src/ConversationInput.ts",
+    "./ConversationChoice": "./src/ConversationChoice.ts",
+    "./ConversationPrompt": "./src/ConversationPrompt.ts",
+    "./ConversationStorage": "./src/ConversationStorage.ts",
+    "./Conversations": "./src/Conversations.ts",
+    "./MemoryConversationStorage": "./src/MemoryConversationStorage.ts"
   },
   "files": [
     "dist",
@@ -48,7 +57,16 @@
       "./CallbackQueryContext": "./dist/CallbackQueryContext.js",
       "./InlineKeyboard": "./dist/InlineKeyboard.js",
       "./ReplyKeyboard": "./dist/ReplyKeyboard.js",
-      "./CallbackData": "./dist/CallbackData.js"
+      "./CallbackData": "./dist/CallbackData.js",
+      "./VersionedSchema": "./dist/VersionedSchema.js",
+      "./Conversation": "./dist/Conversation.js",
+      "./ConversationBuilder": "./dist/ConversationBuilder.js",
+      "./ConversationInput": "./dist/ConversationInput.js",
+      "./ConversationChoice": "./dist/ConversationChoice.js",
+      "./ConversationPrompt": "./dist/ConversationPrompt.js",
+      "./ConversationStorage": "./dist/ConversationStorage.js",
+      "./Conversations": "./dist/Conversations.js",
+      "./MemoryConversationStorage": "./dist/MemoryConversationStorage.js"
     }
   },
   "peerDependencies": {
