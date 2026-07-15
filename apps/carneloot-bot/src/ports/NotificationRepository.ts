@@ -117,6 +117,9 @@ export interface NotificationRepositoryService {
 		eventId: EventId,
 		now: number,
 	) => Effect.Effect<number, NotificationRepositoryError>;
+	readonly recoverAllExpired: (
+		now: number,
+	) => Effect.Effect<number, NotificationRepositoryError>;
 	readonly claimNext: (
 		eventId: EventId,
 		now: number,

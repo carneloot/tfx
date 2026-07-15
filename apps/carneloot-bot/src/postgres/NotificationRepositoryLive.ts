@@ -305,6 +305,13 @@ export const layer: Layer.Layer<
 							(rows) => rows.length,
 						),
 					),
+				recoverAllExpired: (now) =>
+					protect(
+						Effect.map(
+							sql`UPDATE carneloot.notification_deliveries SET status='unknown',sending_lease_expires_at=NULL,retryable=false,retry_at=NULL,safe_error_json=${sql.json({ code: 'SendingLeaseExpired', message: 'Sending lease expired' })},unknown_at=${new Date(now)},updated_at=${new Date(now)} WHERE status='sending' AND sending_lease_expires_at<=${new Date(now)} RETURNING id`,
+							(rows) => rows.length,
+						),
+					),
 				claimNext: (eventId, now, leaseDuration) =>
 					protect(
 						sql.withTransaction(

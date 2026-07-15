@@ -217,6 +217,7 @@ else
 
 		it('rolls back an event when JobStore scheduling fails', async () => {
 			const failingJobs: JobRuntimeService = {
+				problems: Effect.succeed([]),
 				schedule: () =>
 					Effect.fail(
 						new JobStoreError('PersistenceFailure', 'forced store failure'),

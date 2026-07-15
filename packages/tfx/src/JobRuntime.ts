@@ -22,6 +22,7 @@ export interface JobRuntimeService {
 	readonly runOne: (options?: {
 		readonly leaseDuration?: number;
 	}) => Effect.Effect<JobRecord | undefined, unknown>;
+	readonly problems: Effect.Effect<ReadonlyArray<JobRecord>, JobStoreError>;
 	readonly cancel: (id: string) => Effect.Effect<boolean, JobStoreError>;
 	readonly releaseFailed: (
 		id: string,
@@ -53,6 +54,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 				implementations.map((i) => [i.declaration.name, i]),
 			);
 			const service: JobRuntimeService = {
+				problems: store.problems(),
 				schedule: (job, payload, options = {}) =>
 					Effect.gen(function* () {
 						const now = yield* Clock.currentTimeMillis;

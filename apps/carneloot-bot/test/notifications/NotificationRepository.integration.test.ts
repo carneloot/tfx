@@ -302,7 +302,7 @@ else
 				);
 				yield* repository.claimNext(recoveryEvent.id, 4_000, 10);
 				expect(
-					yield* repository.recoverExpired(recoveryEvent.id, 4_011),
+					yield* repository.recoverAllExpired(4_011),
 				).toBeGreaterThanOrEqual(1);
 				expect(
 					yield* repository.claimNext(recoveryEvent.id, 5_000, 10),

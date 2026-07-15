@@ -169,6 +169,7 @@ const harness = (
 				return [];
 			}),
 		recoverExpired: () => Effect.succeed(0),
+		recoverAllExpired: () => Effect.succeed(0),
 		claimNext: () =>
 			state === 'pending'
 				? Effect.sync(() => {

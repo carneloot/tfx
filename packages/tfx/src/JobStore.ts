@@ -66,6 +66,10 @@ export interface JobStoreService {
 	readonly get: (
 		id: string,
 	) => Effect.Effect<JobRecord | undefined, JobStoreError>;
+	readonly problems: () => Effect.Effect<
+		ReadonlyArray<JobRecord>,
+		JobStoreError
+	>;
 	readonly claimForMigration: (
 		now: number,
 		leaseDuration: number,

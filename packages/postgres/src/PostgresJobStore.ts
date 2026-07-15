@@ -235,6 +235,15 @@ export const layer = (
 							),
 						),
 					get: (id) => protect(read(id)),
+					problems: () =>
+						protect(
+							Effect.flatMap(
+								sql<
+									Record<string, unknown>
+								>`SELECT * FROM ${schema}.${jobs} WHERE status IN ('failed','quarantined') ORDER BY updated_at,id`,
+								(rows) => Effect.forEach(rows, decodeRow),
+							),
+						),
 					claimForMigration: (now, leaseDuration) =>
 						protect(
 							sql.withTransaction(

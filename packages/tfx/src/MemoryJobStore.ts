@@ -67,6 +67,19 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 				}),
 			),
 		get: (id) => locked(() => Effect.succeed(records.get(id))),
+		problems: () =>
+			locked(() =>
+				Effect.succeed(
+					[...records.values()]
+						.filter(
+							(record) =>
+								record.status === 'failed' || record.status === 'quarantined',
+						)
+						.sort(
+							(a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id),
+						),
+				),
+			),
 		claimForMigration: (now, leaseDuration) =>
 			locked(() =>
 				Effect.sync(() => {

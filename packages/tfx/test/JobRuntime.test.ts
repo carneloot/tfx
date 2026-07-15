@@ -203,6 +203,9 @@ describe('JobRuntime', () => {
 				status: 'quarantined',
 				attempts: 0,
 			});
+			expect(new Set((yield* runtime.problems).map((job) => job.id))).toEqual(
+				new Set([unknown.record.id, newer.record.id]),
+			);
 		});
 		await Effect.runPromise(
 			Effect.provide(provide(program, implementation), TestClock.layer()),
