@@ -10,7 +10,7 @@
 
 ## File map
 
-- Create: `apps/carneloot-bot/migrations/0003_notifications.sql`
+- Create: `apps/carneloot-bot/migrations/0004_notifications.sql` (application migration version 4; version 3 is `0003_pet_food_source_constraints.sql`)
 - Create: `apps/carneloot-bot/src/domain/notifications/{NotificationEvent.ts,NotificationDelivery.ts,RecipientRole.ts,DeliveryOutcome.ts}`
 - Create: `apps/carneloot-bot/src/ports/{NotificationRepository.ts,NotificationRecipients.ts}`
 - Create: `apps/carneloot-bot/src/postgres/NotificationRepositoryLive.ts`
@@ -46,7 +46,7 @@ Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- Notificati
 Expected: schema/role/constraint tests PASS.
 
 ```bash
-git add apps/carneloot-bot/migrations/0003_notifications.sql apps/carneloot-bot/src/domain/notifications apps/carneloot-bot/test/notifications/NotificationRepository.integration.test.ts
+git add apps/carneloot-bot/migrations/0004_notifications.sql apps/carneloot-bot/src/domain/notifications apps/carneloot-bot/test/notifications/NotificationRepository.integration.test.ts
 git commit -m "feat(carneloot): persist notification delivery state"
 ```
 
@@ -142,7 +142,7 @@ git commit -m "feat(carneloot): deliver fenced feeding reminders"
 
 - Slice 1 includes event/delivery persistence; no generic HTTP notification/reply routing yet.
 - Recipient role storage accepts owner/caregiver/subscriber without future schema redesign.
-- Food/event/job changes commit or roll back together.
+- Food/event/job changes commit or roll back together; integration tests prove the `ReminderScheduler` implementation performs only ambient-transaction SQL before commit and no external side effect.
 - Pending strictly means no Telegram attempt started.
 - Every send has committed sending fence; stale completion cannot overwrite newer generation.
 - Ambiguous/expired sends become unknown; sent/unknown never auto-retry.

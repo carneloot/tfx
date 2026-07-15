@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { migrate } from '../../src/postgres/AppMigrator.js';
 import { migration0001Checksum } from '../../src/postgres/Migration0001Sql.js';
 import { migration0002Checksum } from '../../src/postgres/Migration0002Sql.js';
+import { migration0003Checksum } from '../../src/postgres/Migration0003Sql.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -33,11 +34,20 @@ describe.skipIf(!enabled)('pet food migration', () => {
 		expect(result.ledger).toEqual([
 			{ version: 1, name: 'identity-pets', checksum: migration0001Checksum },
 			{ version: 2, name: 'pet-food', checksum: migration0002Checksum },
+			{
+				version: 3,
+				name: 'pet-food-source-constraints',
+				checksum: migration0003Checksum,
+			},
 		]);
 		expect(result.constraints.map((row) => row.constraint_name)).toEqual(
 			expect.arrayContaining([
 				'pet_food_entries_amount_range',
 				'pet_food_entries_source_key',
+				'pet_food_entries_source_bot_nonempty',
+				'pet_food_entries_source_update_safe',
+				'pet_food_entries_source_message_id_safe',
+				'pet_food_entries_source_chat_id_safe',
 				'pet_food_settings_day_start_timezone_pair',
 				'pet_food_settings_reminder_delay_range',
 			]),
@@ -118,6 +128,27 @@ describe.skipIf(!enabled)('pet food migration', () => {
 				const recorderFk = yield* Effect.result(
 					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${missingUserId}::uuid,1,now(),'constraint-test',5,now(),now())`,
 				);
+				const emptyBot = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'',6,now(),now())`,
+				);
+				const unsafeUpdate = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',9007199254740992,now(),now())`,
+				);
+				const negativeUpdate = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',-1,now(),now())`,
+				);
+				const zeroMessage = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',7,0,now(),now())`,
+				);
+				const unsafeMessage = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',7,9007199254740992,now(),now())`,
+				);
+				const zeroChat = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',8,0,now(),now())`,
+				);
+				const unsafeChat = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',8,-9007199254740992,now(),now())`,
+				);
 
 				yield* sql`DELETE FROM carneloot.pets WHERE id=${petId}::uuid`;
 				const children = yield* sql<{
@@ -136,6 +167,13 @@ describe.skipIf(!enabled)('pet food migration', () => {
 						excessiveAmount,
 						entryPetFk,
 						recorderFk,
+						emptyBot,
+						unsafeUpdate,
+						negativeUpdate,
+						zeroMessage,
+						unsafeMessage,
+						zeroChat,
+						unsafeChat,
 					],
 					children: children[0],
 				};
@@ -150,7 +188,7 @@ describe.skipIf(!enabled)('pet food migration', () => {
 		const result = await Effect.runPromise(
 			Effect.provide(program, PostgresTestLayer.layer),
 		);
-		expect(result.failures).toHaveLength(10);
+		expect(result.failures).toHaveLength(17);
 		expect(result.failures.every((exit) => exit._tag === 'Failure')).toBe(true);
 		expect(result.children).toEqual({ settings: 0, entries: 0 });
 	});
