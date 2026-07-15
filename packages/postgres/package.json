@@ -16,7 +16,6 @@
 		"./TfxPostgres": "./src/TfxPostgres.ts"
 	},
 	"publishConfig": {
-		"access": "public",
 		"exports": {
 			".": "./dist/index.js",
 			"./Options": "./dist/Options.js",
@@ -24,7 +23,8 @@
 			"./PostgresJobStore": "./dist/PostgresJobStore.js",
 			"./PostgresUpdateDeduplicator": "./dist/PostgresUpdateDeduplicator.js",
 			"./TfxPostgres": "./dist/TfxPostgres.js"
-		}
+		},
+		"access": "public"
 	},
 	"dependencies": {
 		"tfx": "workspace:^"

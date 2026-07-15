@@ -7,7 +7,8 @@
 	"trailingComma": "all",
 	"arrowParens": "always",
 	"printWidth": 80,
-	"experimentalSortImports": {
+	"sortPackageJson": true,
+	"sortImports": {
 		"order": "asc",
 		"ignoreCase": true,
 		"newlinesBetween": true,
@@ -15,7 +16,7 @@
 		"customGroups": [
 			{
 				"groupName": "convex",
-				"elementNamePattern": ["convex/"]
+				"elementNamePattern": ["convex/*"]
 			}
 		],
 		"groups": [

@@ -52,7 +52,6 @@
 		"./Partitioning": "./src/Partitioning.ts"
 	},
 	"publishConfig": {
-		"access": "public",
 		"exports": {
 			".": "./dist/index.js",
 			"./TaggedError": "./dist/TaggedError.js",
@@ -95,7 +94,8 @@
 			"./Polling": "./dist/Polling.js",
 			"./UpdateRoutingScope": "./dist/UpdateRoutingScope.js",
 			"./Partitioning": "./dist/Partitioning.js"
-		}
+		},
+		"access": "public"
 	},
 	"scripts": {
 		"telegram:generate": "node scripts/generate-telegram.ts",
