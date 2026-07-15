@@ -38,6 +38,7 @@ export const migrate = (options: Options = {}) =>
 		const ledger = sql(tables.migrations);
 		return sql.withTransaction(
 			Effect.gen(function* () {
+				yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tables.schema}:${options.tablePrefix ?? 'tfx_'}`}, 0))`;
 				yield* sql`CREATE SCHEMA IF NOT EXISTS ${schema}`;
 				yield* sql`CREATE TABLE IF NOT EXISTS ${schema}.${ledger} (
 					version integer PRIMARY KEY,
@@ -45,7 +46,6 @@ export const migrate = (options: Options = {}) =>
 					checksum text NOT NULL,
 					applied_at timestamptz NOT NULL DEFAULT now()
 				)`;
-				yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tables.schema}:${options.tablePrefix ?? 'tfx_'}`}, 0))`;
 				const applied = yield* sql<{
 					version: number;
 					name: string;
