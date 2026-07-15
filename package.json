@@ -1,33 +1,39 @@
 {
-  "private": true,
-  "type": "module",
-  "packageManager": "pnpm@10.17.1",
-  "engines": {
-    "node": ">=24 <25",
-    "pnpm": "10.17.1"
-  },
-  "scripts": {
-    "build": "tsc -b tsconfig.packages.json && node packages/tfx/scripts/copy-telegram-runtime.ts",
-    "check": "tsc -b tsconfig.json --pretty false",
-    "test": "vitest run",
-    "test:unit": "vitest run --exclude '**/*.integration.test.ts' --exclude '**/*.e2e.test.ts'",
-    "test:integration": "vitest run --config vitest.integration.config.ts --reporter verbose",
-    "test:tfx:bun": "corepack pnpm --filter tfx test:bun",
-    "check:tfx:package": "corepack pnpm --filter tfx build && corepack pnpm --filter tfx check:package",
-    "clean": "tsc -b tsconfig.json --clean",
-    "changeset": "changeset",
-    "release:version": "changeset version",
-    "release:publish": "changeset publish"
-  },
-  "devDependencies": {
-    "@changesets/cli": "2.31.0",
-    "@effect/openapi-generator": "4.0.0-beta.98",
-    "@effect/platform-bun": "4.0.0-beta.98",
-    "@effect/platform-node": "4.0.0-beta.98",
-    "@effect/sql-pg": "4.0.0-beta.98",
-    "@types/node": "^24.0.0",
-    "effect": "4.0.0-beta.98",
-    "typescript": "^7.0.0",
-    "vitest": "4.1.10"
-  }
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "tsc -b tsconfig.packages.json && node packages/tfx/scripts/copy-telegram-runtime.ts",
+		"check": "tsc -b tsconfig.json --pretty false",
+		"test": "vitest run",
+		"test:unit": "vitest run --exclude '**/*.integration.test.ts' --exclude '**/*.e2e.test.ts'",
+		"test:integration": "vitest run --config vitest.integration.config.ts --reporter verbose",
+		"test:tfx:bun": "corepack pnpm --filter tfx test:bun",
+		"check:tfx:package": "corepack pnpm --filter tfx build && corepack pnpm --filter tfx check:package",
+		"lint": "oxlint --disable-nested-config --ignore-pattern '.repos/**' .",
+		"lint:fix": "oxlint --disable-nested-config --ignore-pattern '.repos/**' --fix .",
+		"format": "oxfmt --check .",
+		"format:fix": "oxfmt .",
+		"clean": "tsc -b tsconfig.json --clean",
+		"changeset": "changeset",
+		"release:version": "changeset version",
+		"release:publish": "changeset publish"
+	},
+	"devDependencies": {
+		"@changesets/cli": "2.31.0",
+		"@effect/openapi-generator": "4.0.0-beta.98",
+		"@effect/platform-bun": "4.0.0-beta.98",
+		"@effect/platform-node": "4.0.0-beta.98",
+		"@effect/sql-pg": "4.0.0-beta.98",
+		"@types/node": "^24.0.0",
+		"effect": "4.0.0-beta.98",
+		"oxfmt": "^0.28.0",
+		"oxlint": "^1.74.0",
+		"typescript": "^7.0.0",
+		"vitest": "4.1.10"
+	},
+	"engines": {
+		"node": ">=24 <25",
+		"pnpm": "10.17.1"
+	},
+	"packageManager": "pnpm@10.17.1"
 }
