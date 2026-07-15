@@ -128,7 +128,7 @@ Consolidate production PostgreSQL implementations in `@tfx/postgres` rather than
 
 Individual Layers remain available so applications install only required capabilities without dynamic configuration that weakens Layer output types. Every adapter Layer requires an application-provided `PgClient.PgClient`; `@tfx/postgres` does not create a hidden second pool. This lets tfx adapters and application repositories share one Effect SQL client and transaction.
 
-The package owns one coordinated schema version for `tfx_conversations`, `tfx_jobs`, `tfx_job_attempts`, and `tfx_update_deduplication`, with configurable PostgreSQL schema and table prefix. It implements only tfx infrastructure contracts and never contains Carneloot users, pets, food, notification repositories, or other application persistence.
+The package owns one coordinated schema version for `tfx_conversations`, `tfx_jobs`, `tfx_job_attempts`, and `tfx_update_deduplication`, with configurable PostgreSQL schema and table prefix. Schema and prefix values use branded PostgreSQL identifiers validated against `^[a-z_][a-z0-9_]*$`; both configured and composed table identifiers must fit PostgreSQL's 63-byte limit. They are interpolated only through Effect SQL identifier-fragment APIs, never raw string concatenation or value parameters. The package implements only tfx infrastructure contracts and never contains Carneloot users, pets, food, notification repositories, or other application persistence.
 
 Keep `@tfx/testing-postgres` separate so Docker, Testcontainers, migration reset, and conformance-test dependencies do not enter production installations.
 
@@ -255,7 +255,7 @@ Initial combinators:
 
 Positional order is defined only by the arguments passed to `sequence`; JavaScript object-key order never defines command syntax. The result is an inferred readonly record keyed by declared argument names. Types and runtime construction reject duplicate output names, required positional input after optional input, input after `rest`, and more than one `rest` input.
 
-Every leaf schema must decode **from string**. Public constructors constrain schemas to `Schema.ConstraintCodec<any, string>` and use `Schema.decodeEffect`, so `Schema.String`, `Schema.NumberFromString`, and domain codecs such as `Codec<FoodAmount, string>` are accepted while `Schema.Number` is rejected at compile time. Schema decoding requirements propagate from `S["DecodingServices"]` through `CommandInput` into the resulting handler and Layer requirements.
+Every leaf schema must decode **from string**. Public constructors constrain schemas to `Schema.ConstraintCodec<any, string>` and use `Schema.decodeEffect`, so `Schema.String`, `Schema.NumberFromString`, and domain codecs such as `Codec<FoodAmount, string>` are accepted while `Schema.Number` is rejected at compile time. `CommandInput` only decodes command text, so `S["DecodingServices"]` propagates into the resulting handler and Layer requirements; unused encoding services do not become parser requirements.
 
 `Command.make` defaults omitted `input` to `CommandInput.none`, producing an empty readonly input record without requiring explicit boilerplate. `/colocar_racao` uses this default because food input arrives in a later conversation message. `/todos` declares ordered command input:
 
@@ -332,7 +332,7 @@ Helpers are deliberately thin: no hidden retry, persistence, deduplication, or d
 
 Provide pure, immutable `ReplyKeyboard`, `InlineKeyboard`, and `CallbackData` modules in `tfx`. Keyboard builders produce generated Telegram reply-markup values and work inside or outside conversations. Prefer Effect-style constructors and combinators over mutable fluent classes.
 
-`CallbackData.make(namespace, codec)` binds a stable callback namespace to a `Schema.ConstraintCodec<any, string>`. Encoding adds the namespace, returns a branded callback-data string, and enforces Telegram's 1–64 byte limit. Decoding verifies the namespace before applying the codec. Bot construction rejects duplicate callback namespaces where statically assembled declarations expose them; runtime dispatch still rejects ambiguous registrations.
+`CallbackData.make(namespace, codec)` binds a stable callback namespace to a `Schema.ConstraintCodec<any, string>`. Encoding adds the namespace, returns a branded callback-data string, and enforces Telegram's 1–64 byte limit. Decoding verifies the namespace before applying the codec. Because callback and choice declarations perform both operations, their Layer requirements include both `S["DecodingServices"]` and `S["EncodingServices"]`. Bot construction rejects duplicate callback namespaces where statically assembled declarations expose them; runtime dispatch still rejects ambiguous registrations.
 
 `InlineKeyboard` supports rows and generated Telegram button variants, including callback, URL, and Web App buttons. `ReplyKeyboard` supports text rows plus one-time, resize, selective, persistent, and placeholder options represented by Telegram's generated markup types.
 
@@ -355,7 +355,7 @@ Use explicit, serializable state machines rather than replayed functions. A conv
 - optional idle timeout;
 - explicit state migrations.
 
-The declaration derives a discriminated persisted-state union from its steps. Authors do not maintain a parallel union manually. Conversation text and callback-data input constructors apply the same `Schema.ConstraintCodec<any, string>` rule as `CommandInput`, because their raw payload is text; their schema decoding-service requirements also propagate into the conversation Layer.
+The declaration derives a discriminated persisted-state union from its steps. Authors do not maintain a parallel union manually. Conversation text and callback-data input constructors apply the same `Schema.ConstraintCodec<any, string>` rule as `CommandInput`, because their raw payload is text. Message-text input propagates decoding services; callback-data and rendered choice paths propagate both decoding and encoding services.
 
 ### 7.2 Implementation
 
@@ -502,11 +502,14 @@ The source Layer inside `Polling.make(options)` performs startup:
 1. initializes bot identity through the Telegram service;
 2. deletes any active webhook because Telegram does not permit webhook delivery and `getUpdates` for the same bot simultaneously;
 3. passes explicit `dropPendingUpdates` only to webhook deletion, defaulting to `false`;
-4. starts `getUpdates` with default 30-second long-poll timeout, optional batch limit, inferred or explicit allowed-update types, and current offset.
+4. publishes the command menu inferred from the bot declaration, including configured language metadata;
+5. starts `getUpdates` with default 30-second long-poll timeout, optional batch limit, inferred or explicit allowed-update types, and current offset.
+
+Command-menu publication is an idempotent required startup step. Rate limits honor `retryAfter`; transient network/internal failures use configured startup retry schedule; authentication or exhausted retry fails polling startup before first `getUpdates`.
 
 The HTTP transport timeout must exceed the Telegram long-poll timeout by a configured margin. The bot declaration supplies the default `allowed_updates` set from its commands, conversations, callbacks, and update handlers. An explicit override is validated against observed declaration requirements so required update kinds are not silently omitted. Send `allowed_updates` on the first request and omit it on later requests because Telegram retains the setting.
 
-For each batch, tfx schema-decodes updates, dispatches them through deduplication and partitioned concurrency, and waits for the batch to settle before issuing an offset that confirms it. Telegram acknowledges every update below the next requested offset, so tfx advances only through updates in an accepted terminal state: successfully handled, already completed by deduplication, or deliberately classified as a permanent invalid update. A retryable dispatch or infrastructure failure prevents confirmation past that update and causes batch redelivery. With PostgreSQL deduplication, already completed members of the repeated batch are skipped; without deduplication, applications accept possible duplicate handling.
+For each batch, tfx schema-decodes updates, dispatches them through deduplication and partitioned concurrency, and waits for the batch to settle before issuing an offset that confirms it. Telegram acknowledges every update below the next requested offset, so tfx advances only through acknowledgeable `DispatchOutcome` values or updates already completed by deduplication. `RetryableFailure` or `Fatal` prevents confirmation past that update and causes redelivery or runtime stop according to the outcome contract below. With PostgreSQL deduplication, already completed members of the repeated batch are skipped; without deduplication, applications accept possible duplicate handling.
 
 Polling differs deliberately from grammY's simple runner, which advances by last tried update. tfx does not confirm an update merely because handler execution started. It still provides at-least-once rather than exactly-once processing.
 
@@ -532,7 +535,7 @@ For each request, the endpoint:
 4. waits on an Effect completion signal while normal deduplication, partitioning, middleware, and dispatch run;
 5. maps the terminal outcome to HTTP response.
 
-Successfully handled and already-completed duplicate updates return `2xx`. Expected domain or command failures count as handled after their declared response policy runs. Queue saturation, processing deadline, and retryable infrastructure failures return `503` so Telegram retries. Authentication failure returns `401`; malformed non-Telegram payload returns `400` and is reported without logging private body content. The endpoint never acknowledges before enqueue and never silently drops an update.
+Already-completed duplicates and dispatch outcomes classified as acknowledgeable below return `2xx`. Queue saturation, processing deadline, and `RetryableFailure` return `503` so Telegram retries; `Fatal` returns `500` and marks runtime unhealthy. Secret authentication failure returns `401`; malformed non-Telegram payload returns `400` and is reported without logging private body content. The endpoint never acknowledges before enqueue and never silently drops an update.
 
 Concurrent webhook requests share the normal keyed runtime: updates for one partition execute sequentially in accepted arrival order, while unrelated partitions may execute concurrently. PostgreSQL deduplication prevents concurrent Telegram retries from executing the same `update_id` twice; without it, webhook applications accept at-least-once duplicate risk. Webhook transport provides no durable raw-update inbox in the initial design.
 
@@ -558,7 +561,7 @@ Before partitioning or conversation lookup, derive one normalized `UpdateRouting
 
 `Partitioning.byConversationScope` instead maps `ChatUser` to bot/chat/user, allowing unrelated users in one group to proceed concurrently at the cost of possible races in chat-shared handlers. Advanced applications may provide a total custom function from `UpdateRoutingScope` to a hashable partition key. Regardless of strategy, related conversation updates must resolve through the normalized routing scope, and chat-less inline callbacks are not eligible for a chat-scoped conversation.
 
-### 8.5 Optional update deduplication
+### 8.5 Update deduplication
 
 Core internal code always yields the required `UpdateDeduplicator.UpdateDeduplicator` `Context.Service`. It has no implicit or `Context.Reference` default, so `BotRuntime.layer` exposes an unresolved deduplicator requirement until application composition provides one. Core exports explicit `UpdateDeduplicator.layerNoop` for simple bots that intentionally accept duplicates; Carneloot never uses that Layer in production.
 
@@ -575,6 +578,20 @@ Each implementation reports diagnostic metadata such as `mode: "none" | "durable
 Polling acknowledgement follows the accepted-terminal-state and contiguous-offset rules above. If Telegram redelivers a batch, completed update IDs are skipped. Webhook success returns `2xx`; retryable failures permit Telegram retry.
 
 Delivery remains at least once. Critical Carneloot writes use update-derived idempotency keys.
+
+### 8.6 Dispatch outcomes
+
+Transport acknowledgement depends on a closed `DispatchOutcome`, not arbitrary handler error types:
+
+- `Handled` means declared behavior completed and transport may acknowledge;
+- `HandledWithOutputFailure` means state/domain processing completed but best-effort Telegram output failed, and transport still acknowledges while reporting failure;
+- `PermanentInvalid` means a decoded update cannot succeed through retry, is reported, and transport may acknowledge it;
+- `RetryableFailure` means infrastructure or declared transient failure, so polling does not advance past it and webhook returns `503`;
+- `Fatal` means runtime invariant, authentication, or unrecoverable defect, so polling stops without acknowledgement and webhook returns server failure while health becomes unhealthy.
+
+Middleware/handler error policies explicitly translate expected domain rejections into `Handled` or `PermanentInvalid`. Untranslated repository, database, transport, and timeout failures cannot be called handled merely because they appear in a declared error channel. Malformed requests that fail before Telegram `Update` decoding remain HTTP `400` and never enter dispatch outcome classification.
+
+Polling advances contiguous offset only through `Handled`, `HandledWithOutputFailure`, `PermanentInvalid`, or already-completed deduplication. Webhook returns `2xx` for those same dispatch outcomes, `503` for `RetryableFailure`, and `500` for `Fatal`.
 
 ## 9. Jobs and PostgreSQL delivery
 
@@ -791,7 +808,7 @@ Type tests cover:
 - unknown and missing group, command, and conversation handlers;
 - command input ordering, inferred records, and invalid composition constraints;
 - rejection of non-string-encoded command, conversation-text, and callback-data codecs;
-- propagation of schema decoding services;
+- propagation of decoding services for command/message input and both decoding/encoding services for callback/choice codecs;
 - conversation step state and transition inference;
 - middleware-provided and request-scoped middleware-required services, including invalid ordering;
 - middleware implementation Layer requirements propagating separately into the application Layer;
@@ -817,17 +834,19 @@ Unit and integration tests cover:
 - explicit polling-versus-webhook descriptor selection and dynamic Effect Config selection;
 - normalized routing-scope extraction across message, callback, reaction, channel, inline, and business updates;
 - `byChat`, `byConversationScope`, and custom partition strategies, including chat-less conversation rejection;
-- long-poll startup, webhook deletion, pending-update policy, allowed-update inference, offset advancement, batch redelivery, retry classification, and scoped stop;
+- long-poll startup, webhook deletion, pending-update policy, command-menu publication, allowed-update inference, offset advancement, batch redelivery, retry classification, and scoped stop;
 - webhook registration/control, secret-header validation, HttpApi mounting, bounded intake, completion acknowledgement, HTTP outcome mapping, concurrent duplicate claims, and scoped shutdown;
 - webhook set/info/delete CLI behavior, explicit destructive flag, command-menu publication, typed exit failure, and absence of HTTP management route;
 - bounded in-progress claim waiting, lease heartbeat, expired takeover generation, stale completion/release rejection, and local interruption after claim loss;
 - explicit no-op versus durable deduplicator composition and startup diagnostic metadata;
+- every closed `DispatchOutcome` mapping for polling/webhook acknowledgement, retry, stop, and health behavior;
 - empty and duplicate choice options, cancellation, invalid input, callback acknowledgement, and reply-keyboard removal;
 - conversation transitions, revision conflicts, duplicate last-applied update detection, timeout, and migration;
 - pre-CAS domain idempotency, post-CAS enter/afterCommit ordering, crash windows, and handled output failure;
 - explicit memory and PostgreSQL conversation- and job-store Layer selection;
 - shared storage semantics across memory and PostgreSQL implementations;
 - individual and aggregate `@tfx/postgres` Layer composition over one provided `PgClient`;
+- PostgreSQL schema/prefix identifier validation, composed-length limits, and safe identifier fragments;
 - coordinated tfx PostgreSQL migrations;
 - food parsing and timezone boundaries;
 - reminder scheduling;
@@ -959,7 +978,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - Durable job payloads use named `VersionedSchema` nodes, linear migrations, and recoverable quarantine for incompatible stored work.
 - One active bot instance initially.
 - Core tfx contains polling and webhook delivery descriptors backed by internal Layers; `BotRuntime.layer` requires exactly one descriptor and applications never provide `UpdateSource` directly.
-- Long polling uses one in-flight `getUpdates`, inferred allowed-update types, batch settlement before contiguous acknowledgement, typed retries, and scoped cancellation.
+- Long polling publishes command menus before its first `getUpdates`, then uses one in-flight request, inferred allowed-update types, batch settlement before contiguous acknowledgement, typed retries, and scoped cancellation.
 - Webhook delivery uses an explicitly mounted HttpApi route, Telegram secret header, CLI-only remote set/info/delete operations, bounded intake, post-dispatch acknowledgement, and Effect-scoped shutdown.
 - One active conversation per bot/chat/user.
 - Conversation durability covers versioned state and duplicate transition prevention; domain effects are idempotent before CAS and Telegram outputs are explicit best-effort post-commit effects. Effect Workflow is not the initial substrate.
@@ -976,6 +995,8 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - `Telegram.Telegram` is yieldable; public methods unwrap successful results.
 - `TelegramError` follows Effect `AiError` structure.
 - Update deduplication is a required service with an explicit no-op Layer for simple bots; Carneloot's production composition requires and verifies PostgreSQL durable mode.
+- Closed dispatch outcomes, not arbitrary handler errors, control transport acknowledgement and retry.
+- Configurable PostgreSQL schema/table identifiers are branded, strictly validated, length-limited, and safely interpolated.
 - Known Carneloot bugs and security issues are fixed.
 - mise-pinned Node.js, Bun, and pnpm; pnpm workspaces, TypeScript project references, and Changesets; Bun remains a runtime, and Turborepo is deferred until measured need.
 - Four product slices, each with one or more bounded implementation plans.
