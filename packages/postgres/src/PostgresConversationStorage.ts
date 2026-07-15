@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Clock from 'effect/Clock';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import {
@@ -43,11 +44,12 @@ const decode = (row: Row): ConversationRow => ({
 });
 export const layer = (
 	options: Options = {},
+	skipMigration = false,
 ): Layer.Layer<ConversationStorage, unknown, PgClient.PgClient> =>
 	Layer.effect(
 		ConversationStorage,
 		Effect.andThen(
-			migrate(options),
+			skipMigration ? Effect.void : migrate(options),
 			Effect.map(PgClient.PgClient, (sql) => {
 				const tables = make(options);
 				const schema = sql(tables.schema);
@@ -103,9 +105,10 @@ export const layer = (
 									return { _tag: 'Duplicate' as const, row: current };
 								if (current.revision !== expectedRevision)
 									return { _tag: 'Stale' as const, row: current };
+								const now = yield* Clock.currentTimeMillis;
 								if (
 									current.expiresAt !== undefined &&
-									current.expiresAt <= Date.now()
+									current.expiresAt <= now
 								) {
 									yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
 									return { _tag: 'Expired' as const };

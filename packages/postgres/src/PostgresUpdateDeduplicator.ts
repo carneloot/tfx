@@ -23,11 +23,12 @@ type Row = {
 };
 export const layer = (
 	options: Options = {},
+	skipMigration = false,
 ): Layer.Layer<UpdateDeduplicator, unknown, PgClient.PgClient> =>
 	Layer.effect(
 		UpdateDeduplicator,
 		Effect.andThen(
-			migrate(options),
+			skipMigration ? Effect.void : migrate(options),
 			Effect.map(PgClient.PgClient, (sql) => {
 				const tables = make(options);
 				const schema = sql(tables.schema);
@@ -63,7 +64,7 @@ export const layer = (
 									if (
 										current.status === 'completed' &&
 										current.completed_at !== null &&
-										new Date(current.completed_at).getTime() + 86_400_000 > now
+										new Date(current.lease_expires_at).getTime() > now
 									)
 										return {
 											_tag: 'Completed' as const,

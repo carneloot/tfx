@@ -61,11 +61,12 @@ const decode = (row: Row): JobRecord => ({
 });
 export const layer = (
 	options: Options = {},
+	skipMigration = false,
 ): Layer.Layer<JobStore, unknown, PgClient.PgClient> =>
 	Layer.effect(
 		JobStore,
 		Effect.andThen(
-			migrate(options),
+			skipMigration ? Effect.void : migrate(options),
 			Effect.map(PgClient.PgClient, (sql) => {
 				const tables = make(options);
 				const schema = sql(tables.schema);
@@ -83,6 +84,7 @@ export const layer = (
 							Effect.gen(function* () {
 								let replacedId: string | undefined;
 								if (request.conflictKey !== undefined) {
+									yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${request.name}:${request.conflictKey}`}, 0))`;
 									const active =
 										yield* sql<Row>`SELECT * FROM ${schema}.${jobs} WHERE declaration=${request.name} AND conflict_key=${request.conflictKey} AND status IN ('scheduled','running') FOR UPDATE`;
 									if (active[0] !== undefined) {

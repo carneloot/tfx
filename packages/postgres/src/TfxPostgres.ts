@@ -1,9 +1,11 @@
 import type * as PgClient from '@effect/sql-pg/PgClient';
+import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import { ConversationStorage } from 'tfx/ConversationStorage';
 import { JobStore } from 'tfx/JobStore';
 import { UpdateDeduplicator } from 'tfx/UpdateDeduplicator';
 
+import { migrate } from './internal/Migrator.js';
 import type { Options } from './Options.js';
 import * as PostgresConversationStorage from './PostgresConversationStorage.js';
 import * as PostgresJobStore from './PostgresJobStore.js';
@@ -15,8 +17,13 @@ export const layer = (
 	unknown,
 	PgClient.PgClient
 > =>
-	Layer.mergeAll(
-		PostgresConversationStorage.layer(options),
-		PostgresJobStore.layer(options),
-		PostgresUpdateDeduplicator.layer(options),
+	Layer.unwrap(
+		Effect.as(
+			migrate(options),
+			Layer.mergeAll(
+				PostgresConversationStorage.layer(options, true),
+				PostgresJobStore.layer(options, true),
+				PostgresUpdateDeduplicator.layer(options, true),
+			),
+		),
 	);
