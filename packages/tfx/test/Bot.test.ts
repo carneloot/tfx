@@ -14,6 +14,7 @@ describe("Bot declarations", () => {
     expect(Object.isFrozen(pets.commands)).toBe(true)
     expect(Object.keys(empty.commands)).toEqual([])
     expect(Object.keys(pets.commands)).toEqual(["add"])
+    expect("updateKinds" in pets.commands.add!).toBe(false)
   })
 
   it("rejects invalid Telegram command names with fragment context", () => {

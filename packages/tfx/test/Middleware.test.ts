@@ -44,13 +44,15 @@ describe("Middleware", () => {
     expect(order).toEqual(["global", "group:42", "handler:42"])
   })
 
-  it("builds a registry bridge that captures infrastructure and provides request services", async () => {
+  it("merges captured infrastructure with request services across a registry chain", async () => {
     const registeredLive = Middleware.implement(RegisteredUser,
       Effect.map(UserRepository, (repository) => ({ id: repository.find() })))
+    const adminLive = Middleware.implement(RequireAdmin,
+      Effect.map(CurrentUser, (user) => ({ id: user.id + 1 })))
     const program = Effect.flatMap(Middleware.MiddlewareRegistry, (registry) =>
-      registry.run([RegisteredUser.id], Effect.map(CurrentUser, (user) => user.id))) as Effect.Effect<number, unknown, Middleware.MiddlewareRegistry>
-    const withRegistry = Effect.provide(program, Middleware.layer(registeredLive))
-    await expect(Effect.runPromise(Effect.provideService(withRegistry, UserRepository, { find: () => 42 }))).resolves.toBe(42)
+      registry.run([RegisteredUser.id, RequireAdmin.id], Effect.map(CurrentAdmin, (admin) => admin.id))) as Effect.Effect<number, never, Middleware.MiddlewareRegistry>
+    const withRegistry = Effect.provide(program, Middleware.layer(registeredLive, adminLive))
+    await expect(Effect.runPromise(Effect.provideService(withRegistry, UserRepository, { find: () => 42 }))).resolves.toBe(43)
   })
 
   it("keeps pipelines immutable and rejects scope reversal", () => {

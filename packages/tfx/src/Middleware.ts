@@ -54,6 +54,7 @@ export type AnyMiddleware = Middleware<string, Scope, AnyKey, any, any>
 export type Provided<D> = D extends Middleware<any, any, infer K, any, any> ? Identifier<K> : never
 export type Required<D> = D extends Middleware<any, any, any, infer R, any> ? R : never
 export type ProvidedBy<Items extends ReadonlyArray<AnyMiddleware>> = Provided<Items[number]>
+export type DeclaredErrors<Items extends ReadonlyArray<AnyMiddleware>> = Items[number] extends infer D ? D extends Middleware<any, any, any, any, infer E> ? E : never : never
 export type ValidOrder<Items extends ReadonlyArray<AnyMiddleware>, Available = never> =
   Items extends readonly [infer Head extends AnyMiddleware, ...infer Tail extends readonly AnyMiddleware[]]
     ? [Required<Head>] extends [Available] ? ValidOrder<Tail, Available | Provided<Head>> : false
@@ -127,7 +128,7 @@ export type ApplicationsError<A extends ReadonlyArray<AnyApplication>> = AppErro
 export interface MiddlewareRegistryService {
   readonly applications: Readonly<Record<string, AnyApplication>>
   /** Execute selected applications in declaration order around a request effect. */
-  readonly run: <A, E, R>(ids: ReadonlyArray<string>, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | unknown, R>
+  readonly run: <A, E, R, MiddlewareError = never>(ids: ReadonlyArray<string>, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | MiddlewareError, R>
 }
 
 export class MiddlewareRegistry extends Context.Service<MiddlewareRegistry, MiddlewareRegistryService>()("tfx/MiddlewareRegistry") {}
@@ -148,8 +149,9 @@ const registry = (applications: ReadonlyArray<AnyApplication>, infrastructure: C
     const execute = (index: number): Effect.Effect<any, any, any> => {
       if (index === selected.length) return effect
       const application = selected[index]!
-      return Effect.flatMap(Effect.provide(application.effect, infrastructure), (service) =>
-        Effect.provideService(execute(index + 1), application.declaration.provides, service))
+      return Effect.flatMap(Effect.context<any>(), (current) =>
+        Effect.flatMap(Effect.provide(application.effect, Context.merge(infrastructure, current)), (service) =>
+          Effect.provideService(execute(index + 1), application.declaration.provides, service)))
     }
     return execute(0)
   }
