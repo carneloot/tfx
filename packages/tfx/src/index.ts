@@ -8,6 +8,7 @@ export * as BotGroup from './BotGroup.js';
 export * as Command from './Command.js';
 export * as CommandInput from './CommandInput.js';
 export * as BotBuilder from './BotBuilder.js';
+export * as BotRouter from './BotRouter.js';
 export * as Middleware from './Middleware.js';
 export * as UpdateContext from './UpdateContext.js';
 export * as MessageContext from './MessageContext.js';

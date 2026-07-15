@@ -141,6 +141,35 @@ const handlers = <
 	},
 });
 
+export interface BuiltGroup<R = never> {
+	readonly groupId: string;
+	readonly entries: ReadonlyArray<AnyHandlerEntry>;
+	readonly _requirements: R;
+}
+
+/** Build handlers as a composable value; BotRouter combines every group's entries. */
+export const buildGroup = <
+	B extends Bot.Bot<any, any>,
+	Id extends keyof GroupsOf<B> & string,
+	R,
+>(
+	bot: B,
+	id: Id,
+	implement: (
+		handlers: Handlers<GroupAt<B, Id>, keyof CommandsOf<GroupAt<B, Id>>, never>,
+	) => Handlers<GroupAt<B, Id>, never, R, ReadonlyArray<AnyHandlerEntry>>,
+): BuiltGroup<R> => {
+	const declaration = bot.groups[id] as GroupAt<B, Id>;
+	const completed = implement(
+		handlers(String(declaration.id), declaration.commands, []),
+	);
+	return Object.freeze({
+		groupId: String(declaration.id),
+		entries: Object.freeze([...completed._entries]),
+		_requirements: undefined as R,
+	});
+};
+
 export const group = <
 	B extends Bot.Bot<any, any>,
 	Id extends keyof GroupsOf<B> & string,
@@ -156,14 +185,8 @@ export const group = <
 	never,
 	R | GroupMiddlewareRequirement<GroupAt<B, Id>>
 > => {
-	const declaration = bot.groups[id] as GroupAt<B, Id>;
-	const completed = implement(
-		handlers(String(declaration.id), declaration.commands, []),
-	);
-	return Layer.succeed(
-		HandlerRegistry,
-		Object.freeze([...completed._entries]),
-	) as Layer.Layer<
+	const built = buildGroup(bot, id, implement);
+	return Layer.succeed(HandlerRegistry, built.entries) as Layer.Layer<
 		HandlerRegistry,
 		never,
 		R | GroupMiddlewareRequirement<GroupAt<B, Id>>

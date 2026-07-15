@@ -3,6 +3,7 @@ import {
 	Bot,
 	BotRuntime,
 	DispatchOutcome,
+	MemoryUpdateDeduplicator,
 	UpdateDeduplicator,
 	UpdateDelivery,
 } from 'tfx';
@@ -35,6 +36,45 @@ describe('BotRuntime', () => {
 			),
 		);
 		expect(outcome).toEqual({ _tag: 'Handled' });
+	});
+
+	it('deduplicates direct public dispatch with configured timings', async () => {
+		let calls = 0;
+		const outcome = await Effect.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(
+						Layer.provide(
+							BotRuntime.layer(Bot.make('bot'), {
+								delivery: UpdateDelivery.manual,
+								leaseDuration: 100,
+								waitTimeout: 100,
+								retention: 1_000,
+								router: {
+									route: () =>
+										Effect.sync(() => {
+											calls++;
+											return DispatchOutcome.handled;
+										}),
+								},
+							}),
+							MemoryUpdateDeduplicator.layerMemory,
+						),
+					);
+					return yield* Effect.provide(
+						Effect.gen(function* () {
+							const service = yield* BotRuntime.BotRuntime;
+							const first = yield* service.dispatch(update(50));
+							const second = yield* service.dispatch(update(50));
+							return [first, second];
+						}),
+						context,
+					);
+				}),
+			),
+		);
+		expect(outcome).toEqual([DispatchOutcome.handled, DispatchOutcome.handled]);
+		expect(calls).toBe(1);
 	});
 
 	it('observes immediate and delayed source failures', async () => {
