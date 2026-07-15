@@ -53,6 +53,10 @@ export interface DeliveryClaim {
 	readonly token: DeliveryToken;
 	readonly delivery: NotificationDelivery;
 }
+export interface CancelledActiveEvent {
+	readonly eventId: EventId;
+	readonly jobId: string | null;
+}
 export interface EventSummary {
 	readonly pending: number;
 	readonly sending: number;
@@ -65,6 +69,18 @@ export interface NotificationRepositoryService {
 	readonly createEvent: (
 		input: EventInput,
 	) => Effect.Effect<NotificationEvent, NotificationRepositoryError>;
+	readonly cancelActiveForPet: (
+		botId: BotId,
+		petId: PetId,
+		now: number,
+	) => Effect.Effect<
+		ReadonlyArray<CancelledActiveEvent>,
+		NotificationRepositoryError
+	>;
+	readonly reviveCancelledEvent: (
+		id: EventId,
+		now: number,
+	) => Effect.Effect<boolean, NotificationRepositoryError>;
 	readonly cancelEvent: (
 		id: EventId,
 		now: number,

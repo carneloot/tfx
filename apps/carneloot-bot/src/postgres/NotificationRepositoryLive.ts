@@ -194,11 +194,54 @@ export const layer: Layer.Layer<
 					protect(
 						sql.withTransaction(
 							Effect.gen(function* () {
-								const rows = yield* sql<
+								const inserted = yield* sql<
 									Record<string, unknown>
-								>`INSERT INTO carneloot.notification_events (id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,created_at,updated_at,completed_at,cancelled_at) VALUES (${input.id}::uuid,${input.botId},${input.kind},${input.ownerUserId}::uuid,${input.petId}::uuid,${input.foodEntryId}::uuid,${input.scheduledFor === null ? null : new Date(input.scheduledFor)},'scheduled',${input.dedupeKey},NULL,${new Date(input.now)},${new Date(input.now)},NULL,NULL) ON CONFLICT (dedupe_key) DO UPDATE SET dedupe_key=EXCLUDED.dedupe_key RETURNING *`;
-								return yield* oneEvent(rows);
+								>`INSERT INTO carneloot.notification_events (id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,created_at,updated_at,completed_at,cancelled_at) VALUES (${input.id}::uuid,${input.botId},${input.kind},${input.ownerUserId}::uuid,${input.petId}::uuid,${input.foodEntryId}::uuid,${input.scheduledFor === null ? null : new Date(input.scheduledFor)},'scheduled',${input.dedupeKey},NULL,${new Date(input.now)},${new Date(input.now)},NULL,NULL) ON CONFLICT (dedupe_key) DO NOTHING RETURNING *`;
+								if (inserted[0] !== undefined) return yield* oneEvent(inserted);
+								const existingRows = yield* sql<
+									Record<string, unknown>
+								>`SELECT * FROM carneloot.notification_events WHERE dedupe_key=${input.dedupeKey} FOR UPDATE`;
+								const existing = yield* oneEvent(existingRows);
+								if (
+									existing.botId !== input.botId ||
+									existing.kind !== input.kind ||
+									existing.ownerUserId !== input.ownerUserId ||
+									existing.petId !== input.petId ||
+									existing.foodEntryId !== input.foodEntryId ||
+									existing.scheduledFor !== input.scheduledFor
+								)
+									return yield* Effect.fail(
+										error(
+											'Conflict',
+											'Notification dedupe key has different immutable identity',
+										),
+									);
+								return existing;
 							}),
+						),
+					),
+				cancelActiveForPet: (botId, petId, now) =>
+					protect(
+						sql.withTransaction(
+							Effect.gen(function* () {
+								const rows = yield* sql<{
+									id: string;
+									job_id: string | null;
+								}>`SELECT id,job_id FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${petId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`;
+								if (rows.length > 0)
+									yield* sql`UPDATE carneloot.notification_events SET status='cancelled',cancelled_at=${new Date(now)},completed_at=NULL,updated_at=${new Date(now)} WHERE bot_id=${botId} AND pet_id=${petId}::uuid AND status IN ('scheduled','dispatching')`;
+								return rows.map((row) => ({
+									eventId: Schema.decodeUnknownSync(EventId)(row.id),
+									jobId: row.job_id,
+								}));
+							}),
+						),
+					),
+				reviveCancelledEvent: (id, now) =>
+					protect(
+						Effect.map(
+							sql`UPDATE carneloot.notification_events e SET status='scheduled',cancelled_at=NULL,completed_at=NULL,job_id=NULL,updated_at=${new Date(now)} WHERE e.id=${id}::uuid AND e.status='cancelled' AND NOT EXISTS (SELECT 1 FROM carneloot.notification_deliveries d WHERE d.event_id=e.id) RETURNING e.id`,
+							(rows) => rows.length > 0,
 						),
 					),
 				cancelEvent: (id, now) =>
@@ -230,14 +273,22 @@ export const layer: Layer.Layer<
 				materializeRecipients: (eventId, recipients, now) =>
 					protect(
 						sql.withTransaction(
-							Effect.forEach(recipients, (recipient) =>
-								Effect.flatMap(
-									sql<
-										Record<string, unknown>
-									>`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,${recipient.recipientChatId},${recipient.recipientRole},${recipient.channel},'pending',0,0,false,${new Date(now)},${new Date(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`,
-									oneDelivery,
-								),
-							),
+							Effect.gen(function* () {
+								const active =
+									yield* sql`SELECT id FROM carneloot.notification_events WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`;
+								if (active.length === 0)
+									return yield* Effect.fail(
+										error('Conflict', 'Notification event is not active'),
+									);
+								return yield* Effect.forEach(recipients, (recipient) =>
+									Effect.flatMap(
+										sql<
+											Record<string, unknown>
+										>`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,${recipient.recipientChatId},${recipient.recipientRole},${recipient.channel},'pending',0,0,false,${new Date(now)},${new Date(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`,
+										oneDelivery,
+									),
+								);
+							}),
 						),
 					),
 				recoverExpired: (now) =>
@@ -260,7 +311,7 @@ export const layer: Layer.Layer<
 									);
 								const rows = yield* sql<
 									Record<string, unknown>
-								>`WITH candidate AS (SELECT id FROM carneloot.notification_deliveries WHERE event_id=${eventId}::uuid AND (status='pending' OR (status='failed' AND retryable=true AND retry_at<=${new Date(now)})) ORDER BY retry_at NULLS FIRST,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE carneloot.notification_deliveries d SET status='sending',attempt_generation=d.attempt_generation+1,attempt_count=d.attempt_count+1,sending_started_at=${new Date(now)},sending_lease_expires_at=${new Date(now + leaseDuration)},retry_at=NULL,retryable=false,safe_error_json=NULL,failed_at=NULL,updated_at=${new Date(now)} FROM candidate WHERE d.id=candidate.id RETURNING d.*`;
+								>`WITH candidate AS (SELECT d.id FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE d.event_id=${eventId}::uuid AND e.status IN ('scheduled','dispatching') AND (d.status='pending' OR (d.status='failed' AND d.retryable=true AND d.retry_at<=${new Date(now)})) ORDER BY d.retry_at NULLS FIRST,d.created_at,d.id FOR UPDATE OF d SKIP LOCKED LIMIT 1) UPDATE carneloot.notification_deliveries d SET status='sending',attempt_generation=d.attempt_generation+1,attempt_count=d.attempt_count+1,sending_started_at=${new Date(now)},sending_lease_expires_at=${new Date(now + leaseDuration)},retry_at=NULL,retryable=false,safe_error_json=NULL,failed_at=NULL,updated_at=${new Date(now)} FROM candidate WHERE d.id=candidate.id RETURNING d.*`;
 								if (rows[0] === undefined) return undefined;
 								yield* sql`UPDATE carneloot.notification_events SET status='dispatching',updated_at=${new Date(now)} WHERE id=${eventId}::uuid AND status='scheduled'`;
 								const delivery = yield* decodeDelivery(rows[0]);

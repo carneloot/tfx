@@ -82,6 +82,13 @@ else
 					...input,
 					id: eventId(),
 				});
+				const conflicting = yield* Effect.result(
+					repository.createEvent({
+						...input,
+						id: eventId(),
+						kind: 'unrelated-kind',
+					}),
+				);
 				const recipient = {
 					id: deliveryId(),
 					recipientUserId: owner.user.id,
@@ -111,25 +118,49 @@ else
 				);
 				const cancelled = yield* repository.cancelEvent(first.id, 1_004);
 				const context = yield* repository.getDispatchContext(first.id);
+				const materializeCancelled = yield* Effect.result(
+					repository.materializeRecipients(
+						first.id,
+						[{ ...recipient, id: deliveryId(), channel: 'telegram-backup' }],
+						1_005,
+					),
+				);
+				const claimCancelled = yield* repository.claimNext(
+					first.id,
+					1_005,
+					100,
+				);
 				return {
 					first,
 					repeated,
+					conflicting,
 					a,
 					b,
 					attached,
 					attachedTwice,
 					cancelled,
 					context,
+					materializeCancelled,
+					claimCancelled,
 				};
 			});
 			const result = await Effect.runPromise(Effect.provide(program, layer));
 			expect(result.repeated.id).toBe(result.first.id);
 			expect(result.a[0]?.id).toBe(result.b[0]?.id);
+			expect(result.conflicting).toMatchObject({
+				_tag: 'Failure',
+				failure: { reason: 'Conflict' },
+			});
 			expect(result).toMatchObject({
 				attached: true,
 				attachedTwice: false,
 				cancelled: true,
 				context: { status: 'cancelled' },
+				materializeCancelled: {
+					_tag: 'Failure',
+					failure: { reason: 'Conflict' },
+				},
+				claimCancelled: undefined,
 			});
 		});
 
