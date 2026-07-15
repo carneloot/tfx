@@ -43,6 +43,8 @@ export const decode = <A, E>(
 	value: unknown,
 	error: (cause: unknown) => E,
 ): Effect.Effect<A, E> =>
+	// Schema's abstract service parameter is unknown; concrete row codecs above
+	// are service-free, so isolate that limitation at this runtime decode boundary.
 	Schema.decodeUnknownEffect(schema)(value).pipe(
 		Effect.mapError(error),
 	) as Effect.Effect<A, E>;
