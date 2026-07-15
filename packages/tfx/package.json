@@ -33,7 +33,15 @@
 		"./ConversationPrompt": "./src/ConversationPrompt.ts",
 		"./ConversationStorage": "./src/ConversationStorage.ts",
 		"./Conversations": "./src/Conversations.ts",
-		"./MemoryConversationStorage": "./src/MemoryConversationStorage.ts"
+		"./MemoryConversationStorage": "./src/MemoryConversationStorage.ts",
+		"./Job": "./src/Job.ts",
+		"./JobOutcome": "./src/JobOutcome.ts",
+		"./JobStore": "./src/JobStore.ts",
+		"./JobRuntime": "./src/JobRuntime.ts",
+		"./MemoryJobStore": "./src/MemoryJobStore.ts",
+		"./DispatchOutcome": "./src/DispatchOutcome.ts",
+		"./UpdateDeduplicator": "./src/UpdateDeduplicator.ts",
+		"./MemoryUpdateDeduplicator": "./src/MemoryUpdateDeduplicator.ts"
 	},
 	"publishConfig": {
 		"access": "public",
@@ -62,7 +70,15 @@
 			"./ConversationPrompt": "./dist/ConversationPrompt.js",
 			"./ConversationStorage": "./dist/ConversationStorage.js",
 			"./Conversations": "./dist/Conversations.js",
-			"./MemoryConversationStorage": "./dist/MemoryConversationStorage.js"
+			"./MemoryConversationStorage": "./dist/MemoryConversationStorage.js",
+			"./Job": "./dist/Job.js",
+			"./JobOutcome": "./dist/JobOutcome.js",
+			"./JobStore": "./dist/JobStore.js",
+			"./JobRuntime": "./dist/JobRuntime.js",
+			"./MemoryJobStore": "./dist/MemoryJobStore.js",
+			"./DispatchOutcome": "./dist/DispatchOutcome.js",
+			"./UpdateDeduplicator": "./dist/UpdateDeduplicator.js",
+			"./MemoryUpdateDeduplicator": "./dist/MemoryUpdateDeduplicator.js"
 		}
 	},
 	"scripts": {
