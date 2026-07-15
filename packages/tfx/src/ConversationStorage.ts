@@ -38,14 +38,17 @@ export type TransitionResult<A> =
 export class ConversationStorageError extends Error {
 	readonly _tag = 'ConversationStorageError';
 	constructor(
-		readonly reason: 'Conflict' | 'InvariantViolation',
+		readonly reason: 'Conflict' | 'InvariantViolation' | 'PersistenceFailure',
 		message: string,
+		readonly cause?: unknown,
 	) {
 		super(message);
 	}
 }
 export interface ConversationStorageService {
-	readonly load: (scope: Scope) => Effect.Effect<ConversationRow | undefined>;
+	readonly load: (
+		scope: Scope,
+	) => Effect.Effect<ConversationRow | undefined, ConversationStorageError>;
 	readonly create: (
 		row: Omit<ConversationRow, 'revision'>,
 		conflict: 'fail' | 'replace',
@@ -62,7 +65,9 @@ export interface ConversationStorageService {
 			R
 		>,
 	) => Effect.Effect<TransitionResult<A>, E | ConversationStorageError, R>;
-	readonly cancel: (scope: Scope) => Effect.Effect<boolean>;
+	readonly cancel: (
+		scope: Scope,
+	) => Effect.Effect<boolean, ConversationStorageError>;
 }
 export class ConversationStorage extends Context.Service<
 	ConversationStorage,

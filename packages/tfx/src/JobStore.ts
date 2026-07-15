@@ -33,8 +33,15 @@ export interface JobRecord {
 export class JobStoreError extends Error {
 	readonly _tag = 'JobStoreError';
 	constructor(
-		readonly reason: 'NotFound' | 'StaleToken' | 'InvalidState' | 'Conflict',
+		readonly reason:
+			| 'NotFound'
+			| 'StaleToken'
+			| 'InvalidState'
+			| 'Conflict'
+			| 'PersistenceFailure'
+			| 'InvariantViolation',
 		message: string,
+		readonly cause?: unknown,
 	) {
 		super(message);
 	}
@@ -49,16 +56,22 @@ export interface ScheduleRequest {
 	readonly conflictKey?: string | undefined;
 }
 export interface JobStoreService {
-	readonly schedule: (request: ScheduleRequest) => Effect.Effect<{
-		readonly record: JobRecord;
-		readonly replacedId?: string;
-	}>;
-	readonly get: (id: string) => Effect.Effect<JobRecord | undefined>;
+	readonly schedule: (request: ScheduleRequest) => Effect.Effect<
+		{
+			readonly record: JobRecord;
+			readonly replacedId?: string;
+		},
+		JobStoreError
+	>;
+	readonly get: (
+		id: string,
+	) => Effect.Effect<JobRecord | undefined, JobStoreError>;
 	readonly claimForMigration: (
 		now: number,
 		leaseDuration: number,
 	) => Effect.Effect<
-		{ readonly record: JobRecord; readonly token: ClaimToken } | undefined
+		{ readonly record: JobRecord; readonly token: ClaimToken } | undefined,
+		JobStoreError
 	>;
 	readonly promoteToRunning: (
 		token: ClaimToken,
@@ -76,14 +89,17 @@ export interface JobStoreService {
 		token: ClaimToken,
 		now: number,
 		leaseDuration: number,
-	) => Effect.Effect<boolean>;
+	) => Effect.Effect<boolean, JobStoreError>;
 	readonly finalize: (
 		token: ClaimToken,
 		outcome: JobOutcome,
 		now: number,
 		retryAt?: number,
-	) => Effect.Effect<boolean>;
-	readonly cancel: (id: string, now: number) => Effect.Effect<boolean>;
+	) => Effect.Effect<boolean, JobStoreError>;
+	readonly cancel: (
+		id: string,
+		now: number,
+	) => Effect.Effect<boolean, JobStoreError>;
 	readonly releaseFailed: (
 		id: string,
 		now: number,

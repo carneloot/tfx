@@ -48,7 +48,10 @@ export interface ConversationsService {
 	) => Effect.Effect<TransitionResult<void>, unknown, unknown>;
 	readonly cancelCurrent: (
 		scope?: Scope,
-	) => Effect.Effect<boolean, ConversationScopeUnavailable>;
+	) => Effect.Effect<
+		boolean,
+		ConversationScopeUnavailable | ConversationStorageError
+	>;
 }
 const requireScope = (
 	scope?: Scope,

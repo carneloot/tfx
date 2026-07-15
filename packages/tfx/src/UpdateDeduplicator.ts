@@ -11,12 +11,25 @@ export type ObservedCompletion =
 	| { readonly _tag: 'Completed'; readonly outcome: CompletedOutcome }
 	| { readonly _tag: 'Released' }
 	| { readonly _tag: 'TimedOut' };
+export class UpdateDeduplicatorError extends Error {
+	readonly _tag = 'UpdateDeduplicatorError';
+	constructor(
+		readonly reason: 'PersistenceFailure' | 'InvariantViolation',
+		message: string,
+		readonly cause?: unknown,
+	) {
+		super(message);
+	}
+}
 export type Claim =
 	| { readonly _tag: 'Acquired'; readonly token: ClaimToken }
 	| { readonly _tag: 'Completed'; readonly outcome: CompletedOutcome }
 	| {
 			readonly _tag: 'InProgress';
-			readonly await: Effect.Effect<ObservedCompletion>;
+			readonly await: Effect.Effect<
+				ObservedCompletion,
+				UpdateDeduplicatorError
+			>;
 	  };
 export interface Diagnostics {
 	readonly mode: 'none' | 'memory' | 'durable';
@@ -30,17 +43,19 @@ export interface UpdateDeduplicatorService {
 			readonly leaseDuration?: number;
 			readonly waitTimeout?: number;
 		},
-	) => Effect.Effect<Claim>;
+	) => Effect.Effect<Claim, UpdateDeduplicatorError>;
 	readonly heartbeat: (
 		token: ClaimToken,
 		leaseDuration?: number,
-	) => Effect.Effect<boolean>;
+	) => Effect.Effect<boolean, UpdateDeduplicatorError>;
 	readonly complete: (
 		token: ClaimToken,
 		outcome: CompletedOutcome,
 		retention?: number,
-	) => Effect.Effect<boolean>;
-	readonly release: (token: ClaimToken) => Effect.Effect<boolean>;
+	) => Effect.Effect<boolean, UpdateDeduplicatorError>;
+	readonly release: (
+		token: ClaimToken,
+	) => Effect.Effect<boolean, UpdateDeduplicatorError>;
 }
 export class UpdateDeduplicator extends Context.Service<
 	UpdateDeduplicator,

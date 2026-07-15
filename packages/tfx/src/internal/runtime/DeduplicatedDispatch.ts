@@ -1,7 +1,10 @@
 import * as Effect from 'effect/Effect';
 
 import * as DispatchOutcome from '../../DispatchOutcome.js';
-import type { UpdateDeduplicatorService } from '../../UpdateDeduplicator.js';
+import type {
+	UpdateDeduplicatorError,
+	UpdateDeduplicatorService,
+} from '../../UpdateDeduplicator.js';
 import type { Update } from '../telegram/generated/TelegramApi.types.js';
 class ClaimLost {
 	readonly _tag = 'ClaimLost';
@@ -38,16 +41,17 @@ export const dispatch = (
 								: 'Concurrent dispatch still in progress',
 						);
 			}
-			const monitor: Effect.Effect<never, ClaimLost> = Effect.suspend(() =>
-				Effect.flatMap(
-					Effect.sleep(Math.max(1, Math.floor(leaseDuration / 3))),
-					() =>
-						Effect.flatMap(
-							dedup.heartbeat(claim.token, leaseDuration),
-							(alive) => (alive ? monitor : Effect.fail(new ClaimLost())),
-						),
-				),
-			);
+			const monitor: Effect.Effect<never, ClaimLost | UpdateDeduplicatorError> =
+				Effect.suspend(() =>
+					Effect.flatMap(
+						Effect.sleep(Math.max(1, Math.floor(leaseDuration / 3))),
+						() =>
+							Effect.flatMap(
+								dedup.heartbeat(claim.token, leaseDuration),
+								(alive) => (alive ? monitor : Effect.fail(new ClaimLost())),
+							),
+					),
+				);
 			return yield* Effect.gen(function* () {
 				const outcome = yield* restore(
 					Effect.raceFirst(behavior, monitor).pipe(
@@ -73,7 +77,15 @@ export const dispatch = (
 				return outcome;
 			}).pipe(
 				// Release is fenced; after completion this is a harmless stale release.
-				Effect.ensuring(Effect.asVoid(dedup.release(claim.token))),
+				Effect.ensuring(
+					dedup.release(claim.token).pipe(Effect.catch(() => Effect.void)),
+				),
 			);
 		}),
+	).pipe(
+		Effect.catch(() =>
+			Effect.succeed(
+				DispatchOutcome.retryableFailure('Update deduplication unavailable'),
+			),
+		),
 	);

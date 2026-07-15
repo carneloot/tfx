@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import * as Job from '../src/Job.js';
 import { JobRuntime } from '../src/JobRuntime.js';
 import * as JobRuntimeLive from '../src/JobRuntime.js';
-import { JobStore } from '../src/JobStore.js';
+import { JobStore, JobStoreError } from '../src/JobStore.js';
 import * as MemoryJobStore from '../src/MemoryJobStore.js';
 import * as VersionedSchema from '../src/VersionedSchema.js';
 const history = VersionedSchema.history(
@@ -78,12 +78,13 @@ describe('JobRuntime', () => {
 			const worker = yield* Effect.forkChild(
 				runtime.runOne({ leaseDuration: 30 }),
 			);
-			const awaitRunning: Effect.Effect<void> = Effect.suspend(() =>
-				Effect.flatMap(store.get(scheduled.id), (row) =>
-					row?.status === 'running'
-						? Effect.void
-						: Effect.andThen(Effect.yieldNow, awaitRunning),
-				),
+			const awaitRunning: Effect.Effect<void, JobStoreError> = Effect.suspend(
+				() =>
+					Effect.flatMap(store.get(scheduled.id), (row) =>
+						row?.status === 'running'
+							? Effect.void
+							: Effect.andThen(Effect.yieldNow, awaitRunning),
+					),
 			);
 			yield* awaitRunning;
 			expect(yield* runtime.cancel(scheduled.id)).toBe(true);
@@ -107,12 +108,13 @@ describe('JobRuntime', () => {
 			const worker = yield* Effect.forkChild(
 				runtime.runOne({ leaseDuration: 100 }),
 			);
-			const awaitRunning: Effect.Effect<void> = Effect.suspend(() =>
-				Effect.flatMap(store.get(scheduled.id), (row) =>
-					row?.status === 'running'
-						? Effect.void
-						: Effect.andThen(Effect.yieldNow, awaitRunning),
-				),
+			const awaitRunning: Effect.Effect<void, JobStoreError> = Effect.suspend(
+				() =>
+					Effect.flatMap(store.get(scheduled.id), (row) =>
+						row?.status === 'running'
+							? Effect.void
+							: Effect.andThen(Effect.yieldNow, awaitRunning),
+					),
 			);
 			yield* awaitRunning;
 			yield* Fiber.interrupt(worker);

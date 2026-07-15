@@ -83,6 +83,31 @@ describe('UpdateDeduplicator', () => {
 			}),
 		);
 	});
+	it('maps deduplication operational failures to retryable outcomes', async () => {
+		const service: UpdateDeduplicatorModule.UpdateDeduplicatorService = {
+			diagnostics: { mode: 'durable', backend: 'test' },
+			claim: () =>
+				Effect.fail(
+					new UpdateDeduplicatorModule.UpdateDeduplicatorError(
+						'PersistenceFailure',
+						'unavailable',
+					),
+				),
+			heartbeat: () => Effect.succeed(true),
+			complete: () => Effect.succeed(true),
+			release: () => Effect.succeed(true),
+		};
+		await expect(
+			Effect.runPromise(
+				DeduplicatedDispatch.dispatch(
+					service,
+					{ update_id: 1 } as Update,
+					Effect.succeed(DispatchOutcome.handled),
+				),
+			),
+		).resolves.toMatchObject({ _tag: 'RetryableFailure' });
+	});
+
 	it('returns retryable when the completion fence is lost', async () => {
 		const service: UpdateDeduplicatorModule.UpdateDeduplicatorService = {
 			diagnostics: { mode: 'memory', backend: 'test' },

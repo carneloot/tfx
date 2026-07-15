@@ -15,11 +15,14 @@ export interface JobRuntimeService {
 		job: J,
 		payload: Job.Payload<J>,
 		options?: { readonly runAt?: number; readonly conflictKey?: string },
-	) => Effect.Effect<{ readonly id: string; readonly replacedId?: string }>;
+	) => Effect.Effect<
+		{ readonly id: string; readonly replacedId?: string },
+		JobStoreError
+	>;
 	readonly runOne: (options?: {
 		readonly leaseDuration?: number;
 	}) => Effect.Effect<JobRecord | undefined, unknown>;
-	readonly cancel: (id: string) => Effect.Effect<boolean>;
+	readonly cancel: (id: string) => Effect.Effect<boolean, JobStoreError>;
 	readonly releaseFailed: (
 		id: string,
 		options: { readonly reason: string; readonly resetAttempts?: boolean },
@@ -139,28 +142,30 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							implementation.handler(migrated.success),
 							infrastructure,
 						) as Effect.Effect<void, any, never>;
-						const monitor: Effect.Effect<never, CancelSignal | LeaseSignal> =
-							Effect.suspend(() =>
-								Effect.flatMap(
-									Effect.sleep(Math.max(1, Math.floor(leaseDuration / 3))),
-									() =>
-										Effect.gen(function* () {
-											const current = yield* store.get(running.id);
-											if (current?.cancellationRequested)
-												return yield* Effect.fail(new CancelSignal());
-											const heartbeatNow = yield* Clock.currentTimeMillis;
-											if (
-												!(yield* store.heartbeat(
-													claim.token,
-													heartbeatNow,
-													leaseDuration,
-												))
-											)
-												return yield* Effect.fail(new LeaseSignal());
-											return yield* monitor;
-										}),
-								),
-							);
+						const monitor: Effect.Effect<
+							never,
+							CancelSignal | LeaseSignal | JobStoreError
+						> = Effect.suspend(() =>
+							Effect.flatMap(
+								Effect.sleep(Math.max(1, Math.floor(leaseDuration / 3))),
+								() =>
+									Effect.gen(function* () {
+										const current = yield* store.get(running.id);
+										if (current?.cancellationRequested)
+											return yield* Effect.fail(new CancelSignal());
+										const heartbeatNow = yield* Clock.currentTimeMillis;
+										if (
+											!(yield* store.heartbeat(
+												claim.token,
+												heartbeatNow,
+												leaseDuration,
+											))
+										)
+											return yield* Effect.fail(new LeaseSignal());
+										return yield* monitor;
+									}),
+							),
+						);
 						const exit = yield* Effect.exit(
 							Effect.raceFirst(execution, monitor),
 						);
@@ -200,6 +205,11 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 								failure.value instanceof LeaseSignal
 							)
 								return yield* store.get(running.id);
+							if (
+								Option.isSome(failure) &&
+								failure.value instanceof JobStoreError
+							)
+								return yield* Effect.fail(failure.value);
 							if (Option.isSome(failure)) {
 								const decision = declaration.retry(failure.value);
 								if (decision?._tag === 'Retry') {
