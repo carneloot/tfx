@@ -17,3 +17,11 @@ export const retryableFailure = (error: unknown): DispatchOutcome =>
 	Object.freeze({ _tag: 'RetryableFailure', error: String(error) });
 export const fatal = (cause: unknown): DispatchOutcome =>
 	Object.freeze({ _tag: 'Fatal', cause: String(cause) });
+export const isAcknowledgeable = (
+	outcome: DispatchOutcome,
+): outcome is CompletedOutcome =>
+	outcome._tag === 'Handled' ||
+	outcome._tag === 'HandledWithOutputFailure' ||
+	outcome._tag === 'PermanentInvalid';
+export const isTerminal = (outcome: DispatchOutcome): boolean =>
+	outcome._tag === 'Fatal';
