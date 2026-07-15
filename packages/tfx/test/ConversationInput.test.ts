@@ -54,10 +54,24 @@ describe('ConversationInput', () => {
 				),
 			),
 		).rejects.toBeDefined();
-		await expect(
-			Effect.runPromise(
-				ConversationInput.decode(ConversationInput.reaction, [{ emoji: '👍' }]),
+		for (const effect of [
+			ConversationInput.decode(ConversationInput.reaction, [{ emoji: '👍' }]),
+			ConversationInput.decode(
+				ConversationInput.callback(
+					CallbackData.make('pick', Schema.NumberFromString),
+				),
+				42,
 			),
-		).rejects.toBeInstanceOf(TypeError);
+			ConversationInput.decode(
+				ConversationInput.command(CommandInput.none),
+				42,
+			),
+		]) {
+			const result = await Effect.runPromise(Effect.result(effect));
+			expect(result).toMatchObject({
+				_tag: 'Failure',
+				failure: { _tag: 'ConversationRawInputError' },
+			});
+		}
 	});
 });

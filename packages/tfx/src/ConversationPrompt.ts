@@ -1,5 +1,7 @@
 import * as Effect from 'effect/Effect';
+import type * as Schema from 'effect/Schema';
 
+import type * as CallbackData from './CallbackData.js';
 import * as ConversationChoice from './ConversationChoice.js';
 import * as InlineKeyboard from './InlineKeyboard.js';
 import * as ReplyKeyboard from './ReplyKeyboard.js';
@@ -26,7 +28,10 @@ export const resolve = <A, R, AE = never, AR = never>(
 	options: { readonly acknowledge?: Effect.Effect<void, AE, AR> } = {},
 ): Effect.Effect<
 	ConversationChoice.ChoiceResult<A>,
-	ConversationChoice.ConversationChoiceError | unknown | AE,
+	| ConversationChoice.ConversationChoiceError
+	| CallbackData.CallbackDataError
+	| Schema.SchemaError
+	| AE,
 	R | AR
 > => {
 	if (response === declaration.cancelLabel)

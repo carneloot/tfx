@@ -280,13 +280,13 @@ const resume = (
 ) =>
 	withFreshConversations(
 		Effect.flatMap(Conversations, (service) =>
-			service.resume(built as never, input, { scope, updateId }),
+			service.resume(built, input, { scope, updateId }),
 		),
 	);
 const start = (built: typeof DayStart.built | typeof Reminder.built) =>
 	withFreshConversations(
 		Effect.flatMap(Conversations, (service) =>
-			service.start(built as never, startup, { scope, conflict: 'replace' }),
+			service.start(built, startup, { scope, conflict: 'replace' }),
 		),
 	);
 
@@ -304,6 +304,15 @@ const reminderPrefix = (action: 'Definir' | 'Alterar' | 'Excluir') =>
 	});
 
 describe('pet food conversation transcripts', () => {
+	it('uses a tagged invalid reminder duration error', async () => {
+		const result = await Effect.runPromise(
+			Effect.result(Reminder.parseDuration('invalid')),
+		);
+		expect(result).toMatchObject({
+			_tag: 'Failure',
+			failure: { _tag: 'InvalidReminderDurationError' },
+		});
+	});
 	it('completes midnight day-start after a service rebuild', async () => {
 		const h = harness();
 		await run(

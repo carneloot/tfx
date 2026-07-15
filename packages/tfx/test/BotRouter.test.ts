@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema } from 'effect';
+import { Data, Effect, Layer, Schema } from 'effect';
 import {
 	Bot,
 	BotBuilder,
@@ -29,6 +29,10 @@ const commandUpdate = (id: number, text: string, user = 10, chat = 20) => ({
 		],
 	},
 });
+class TestHandlerError extends Data.TaggedError('TestHandlerError')<{
+	readonly message: string;
+}> {}
+
 const account = BotGroup.make('account').add(
 	Command.make('start', { name: 'start', error: new Error('declared') }),
 );
@@ -136,7 +140,9 @@ describe('public BotRouter', () => {
 	it('routes cancelar before commands and maps handler errors safely', async () => {
 		let cancelled = 0;
 		const handlers = BotBuilder.buildGroup(bot, 'account', (value) =>
-			value.handle('start', () => Effect.fail(new Error('token=secret'))),
+			value.handle('start', () =>
+				Effect.fail(new TestHandlerError({ message: 'token=secret' })),
+			),
 		);
 		const router = await Effect.runPromise(
 			build([handlers], {

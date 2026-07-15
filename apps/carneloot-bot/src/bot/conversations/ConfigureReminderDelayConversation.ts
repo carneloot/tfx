@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 import {
@@ -67,16 +68,28 @@ const invalidDuration = required(
 	),
 );
 
+export class InvalidReminderDurationError extends Data.TaggedError(
+	'InvalidReminderDurationError',
+)<{ readonly message: string }> {}
+
 export const parseDuration = (input: string) => {
 	const match =
 		/^\s*(\d+(?:[.,]\d+)?)\s*(minuto(?:s)?|minute(?:s)?|hora(?:s)?|hour(?:s)?)\s*$/iu.exec(
 			input,
 		);
-	if (match === null) return Effect.fail(new Error('Invalid duration'));
+	if (match === null)
+		return Effect.fail(
+			new InvalidReminderDurationError({ message: 'Invalid duration' }),
+		);
 	const amount = Number(match[1]!.replace(',', '.'));
 	const unit = match[2]!.toLocaleLowerCase('en-US');
 	const milliseconds = amount * (unit.startsWith('h') ? 3_600_000 : 60_000);
-	return Schema.decodeUnknownEffect(ReminderDelayMs)(milliseconds);
+	return Schema.decodeUnknownEffect(ReminderDelayMs)(milliseconds).pipe(
+		Effect.mapError(
+			() =>
+				new InvalidReminderDurationError({ message: 'Invalid duration range' }),
+		),
+	);
 };
 
 const normalized = (milliseconds: number) => {

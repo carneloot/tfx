@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
 
 import type { Options } from '../Options.js';
@@ -6,6 +7,10 @@ import { up as up0001 } from './Migration0001.js';
 import { up as up0002 } from './Migration0002.js';
 import { migrationChecksums } from './MigrationChecksums.js';
 import { make, type Tables } from './Tables.js';
+
+export class MigrationChecksumMismatchError extends Data.TaggedError(
+	'MigrationChecksumMismatchError',
+)<{ readonly version: number }> {}
 
 interface Migration {
 	readonly version: number;
@@ -60,7 +65,9 @@ export const migrate = (options: Options = {}) =>
 							existing.checksum !== migration.checksum
 						)
 							return yield* Effect.fail(
-								new Error(`Migration ${migration.version} checksum mismatch`),
+								new MigrationChecksumMismatchError({
+									version: migration.version,
+								}),
 							);
 						continue;
 					}

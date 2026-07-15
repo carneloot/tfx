@@ -1,7 +1,7 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import * as TfxPostgres from '@tfx/postgres/TfxPostgres';
-import { Deferred, Effect, Layer, Redacted } from 'effect';
+import { Data, Deferred, Effect, Layer, Redacted } from 'effect';
 import { BotRuntime } from 'tfx/BotRuntime';
 import { JobStore } from 'tfx/JobStore';
 import { Telegram } from 'tfx/Telegram';
@@ -53,6 +53,10 @@ const config: AppConfigService = {
 	tfxSchema: 'tfx_restart_e2e',
 	tfxTablePrefix: 'case_',
 };
+class RestartRecoveryTimeoutError extends Data.TaggedError(
+	'RestartRecoveryTimeoutError',
+)<{ readonly message: string }> {}
+
 const update = (id: number, text: string) => ({
 	update_id: id,
 	message: {
@@ -243,7 +247,9 @@ else
 										? Effect.void
 										: remaining === 0
 											? Effect.fail(
-													new Error('Timed out awaiting ambiguous job'),
+													new RestartRecoveryTimeoutError({
+														message: 'Timed out awaiting ambiguous job',
+													}),
 												)
 											: Effect.andThen(
 													Effect.sleep(10),

@@ -1,3 +1,4 @@
+import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
@@ -92,6 +93,23 @@ export const command = <
 		_Context: undefined as never,
 	});
 
+export class ConversationRawInputError extends Data.TaggedError(
+	'ConversationRawInputError',
+)<{
+	readonly reason:
+		| 'CallbackMustBeString'
+		| 'CommandMustBeString'
+		| 'InvalidReaction';
+	readonly message: string;
+}> {}
+
+export type ConversationInputDecodeError =
+	| Schema.SchemaError
+	| ConversationRawInputError
+	| CallbackData.CallbackDataError
+	| ConversationChoice.ConversationChoiceError
+	| CommandInput.CommandInputError;
+
 type RuntimeInput = ConversationInput<any, any, any> & {
 	readonly schema?: Schema.Schema<any>;
 	readonly codec?: CallbackData.CallbackData<any, any, any, any>;
@@ -103,14 +121,19 @@ type RuntimeInput = ConversationInput<any, any, any> & {
 export const decode = <I extends ConversationInput<any, any, any>>(
 	input: I,
 	raw: unknown,
-): Effect.Effect<Decoded<I>, unknown, Requirements<I>> => {
+): Effect.Effect<Decoded<I>, ConversationInputDecodeError, Requirements<I>> => {
 	const value = input as RuntimeInput;
 	switch (value._tag) {
 		case 'Text':
 			return Schema.decodeUnknownEffect(value.schema!)(raw) as never;
 		case 'Callback':
 			if (typeof raw !== 'string')
-				return Effect.fail(new TypeError('Callback input must be a string'));
+				return Effect.fail(
+					new ConversationRawInputError({
+						reason: 'CallbackMustBeString',
+						message: 'Callback input must be a string',
+					}),
+				);
 			return (
 				value.choice === undefined
 					? value.codec!.decode(raw)
@@ -118,7 +141,12 @@ export const decode = <I extends ConversationInput<any, any, any>>(
 			) as never;
 		case 'Command':
 			if (typeof raw !== 'string')
-				return Effect.fail(new TypeError('Command input must be a string'));
+				return Effect.fail(
+					new ConversationRawInputError({
+						reason: 'CommandMustBeString',
+						message: 'Command input must be a string',
+					}),
+				);
 			return CommandParser.parse(value.input!, raw) as never;
 		case 'Reaction':
 			return Array.isArray(raw) &&
@@ -129,6 +157,11 @@ export const decode = <I extends ConversationInput<any, any, any>>(
 						typeof (item as { type?: unknown }).type === 'string',
 				)
 				? Effect.succeed(raw as Decoded<I>)
-				: Effect.fail(new TypeError('Reaction input must be a reaction array'));
+				: Effect.fail(
+						new ConversationRawInputError({
+							reason: 'InvalidReaction',
+							message: 'Reaction input must be a reaction array',
+						}),
+					);
 	}
 };

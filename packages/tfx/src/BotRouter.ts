@@ -1,3 +1,4 @@
+import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
 
 import type * as Bot from './Bot.js';
@@ -22,18 +23,16 @@ export interface Router {
 }
 type RequirementsOfGroups<G extends ReadonlyArray<BotBuilder.BuiltGroup<any>>> =
 	G[number] extends BotBuilder.BuiltGroup<infer R> ? R : never;
-type BuiltConversation = Conversations.BuiltConversation & {
-	readonly _requirements?: unknown;
-};
+type BuiltConversation = Conversations.BuiltConversation<any, any>;
 type RequirementsOfConversations<C extends ReadonlyArray<BuiltConversation>> =
-	C[number] extends { readonly _requirements: infer R } ? R : never;
+	C[number] extends Conversations.BuiltConversation<any, infer R> ? R : never;
 export type CancelEffect = (
 	update: Update,
 ) => Effect.Effect<unknown, unknown, any>;
 type RequirementsOfCancel<C> = C extends (
 	update: Update,
 ) => Effect.Effect<unknown, unknown, infer R>
-	? R
+	? Exclude<R, UpdateContext.UpdateContext | MessageContext.MessageContext>
 	: never;
 export interface Options<
 	B extends Bot.Bot<any, any>,
@@ -48,6 +47,10 @@ export interface Options<
 	readonly cancel?: Cancel;
 	readonly mapError?: (error: unknown) => DispatchOutcome.DispatchOutcome;
 }
+export class UnknownPersistedConversationError extends Data.TaggedError(
+	'UnknownPersistedConversationError',
+)<{ readonly conversationId: string }> {}
+
 const record = (value: unknown): Readonly<Record<string, any>> | undefined =>
 	typeof value === 'object' && value !== null
 		? (value as Readonly<Record<string, any>>)
@@ -180,7 +183,11 @@ export const make = <
 							(item) => item.declaration.id === row.conversationId,
 						);
 						if (built === undefined)
-							return Effect.fail(new Error('Unknown persisted conversation'));
+							return Effect.fail(
+								new UnknownPersistedConversationError({
+									conversationId: row.conversationId,
+								}),
+							);
 						return Effect.map(
 							provideContexts(
 								update,

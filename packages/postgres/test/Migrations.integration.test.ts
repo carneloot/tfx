@@ -87,7 +87,10 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 		const result = await Effect.runPromise(
 			Effect.provide(program, PostgresTestLayer.layer),
 		);
-		expect(result.result._tag).toBe('Failure');
+		expect(result.result).toMatchObject({
+			_tag: 'Failure',
+			failure: { _tag: 'MigrationChecksumMismatchError', version: 1 },
+		});
 		expect(result.count).toBe('2');
 	});
 });

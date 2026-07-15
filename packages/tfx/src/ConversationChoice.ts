@@ -1,4 +1,5 @@
 import * as Effect from 'effect/Effect';
+import type * as Schema from 'effect/Schema';
 
 import type * as CallbackData from './CallbackData.js';
 export type ChoiceResult<A> =
@@ -82,7 +83,7 @@ export const encodeValues = <A, R>(
 	choice: Choice<A, R>,
 ): Effect.Effect<
 	ReadonlyArray<string>,
-	ConversationChoiceError | unknown,
+	ConversationChoiceError | CallbackData.CallbackDataError | Schema.SchemaError,
 	R
 > => {
 	if (choice.callbackData === undefined)

@@ -1,7 +1,7 @@
 import * as BunRuntime from '@effect/platform-bun/BunRuntime';
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
-import { Console, Effect, Layer, Redacted } from 'effect';
+import { Console, Data, Effect, Layer, Redacted } from 'effect';
 import { BotRuntime } from 'tfx/BotRuntime';
 import { Telegram } from 'tfx/Telegram';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
@@ -11,13 +11,24 @@ import * as DemoSummary from './DemoSummary.js';
 import * as Layers from './Layers.js';
 import * as Program from './Program.js';
 
+class DemoTestError extends Data.TaggedError('DemoTestError')<{
+	readonly reason:
+		| 'MissingDatabase'
+		| 'TranscriptFailure'
+		| 'ReminderTimeout'
+		| 'MissingSummary'
+		| 'SummaryMismatch';
+	readonly message: string;
+}> {}
+
 if (
 	process.env.TEST_DATABASE_URL === undefined &&
 	process.env.RUN_TESTCONTAINERS !== 'true'
 ) {
-	throw new Error(
-		'demo:test requires TEST_DATABASE_URL or RUN_TESTCONTAINERS=true',
-	);
+	throw new DemoTestError({
+		reason: 'MissingDatabase',
+		message: 'demo:test requires TEST_DATABASE_URL or RUN_TESTCONTAINERS=true',
+	});
 }
 const postgres =
 	process.env.TEST_DATABASE_URL === undefined
@@ -113,7 +124,10 @@ const program = Effect.scoped(
 			);
 			if (outcome._tag !== 'Handled')
 				return yield* Effect.fail(
-					new Error(`demo transcript failed at ${text}: ${outcome._tag}`),
+					new DemoTestError({
+						reason: 'TranscriptFailure',
+						message: `demo transcript failed at ${text}: ${outcome._tag}`,
+					}),
 				);
 		}
 		const db = sql;
@@ -128,7 +142,12 @@ const program = Effect.scoped(
 					rows[0]?.status === 'completed'
 						? Effect.void
 						: remaining === 0
-							? Effect.fail(new Error('demo reminder did not complete'))
+							? Effect.fail(
+									new DemoTestError({
+										reason: 'ReminderTimeout',
+										message: 'demo reminder did not complete',
+									}),
+								)
 							: Effect.andThen(Effect.sleep(10), awaitReminder(remaining - 1)),
 			);
 		yield* awaitReminder(200);
@@ -146,7 +165,12 @@ const program = Effect.scoped(
 			status: 'sent' | 'unknown' | 'failed';
 		}>`SELECT status FROM carneloot.notification_deliveries LIMIT 1`;
 		if (!counts || !event || !delivery)
-			return yield* Effect.fail(new Error('demo persisted summary missing'));
+			return yield* Effect.fail(
+				new DemoTestError({
+					reason: 'MissingSummary',
+					message: 'demo persisted summary missing',
+				}),
+			);
 		const summary = DemoSummary.format({
 			users: counts.users,
 			pets: counts.pets,
@@ -159,7 +183,10 @@ const program = Effect.scoped(
 			'users=1 pets=1 food_entries=1 reminder_events=1 reminder_status=completed delivery_outcome=sent';
 		if (summary !== expected)
 			return yield* Effect.fail(
-				new Error(`demo persisted summary mismatch: ${summary}`),
+				new DemoTestError({
+					reason: 'SummaryMismatch',
+					message: `demo persisted summary mismatch: ${summary}`,
+				}),
 			);
 		yield* Console.log(summary);
 	}),

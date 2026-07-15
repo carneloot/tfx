@@ -1,6 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
-import { Effect, Layer, Redacted } from 'effect';
+import { Data, Effect, Layer, Redacted } from 'effect';
 import { BotRuntime } from 'tfx/BotRuntime';
 import { Telegram } from 'tfx/Telegram';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
@@ -51,6 +51,10 @@ const config: AppConfigService = {
 	tfxSchema: 'tfx_owned_pet_e2e',
 	tfxTablePrefix: 'case_',
 };
+class ConfiguredTelegramOutputError extends Data.TaggedError(
+	'ConfiguredTelegramOutputError',
+)<{ readonly message: string }> {}
+
 type Sender = {
 	readonly id: number;
 	readonly first_name: string;
@@ -93,7 +97,11 @@ const fixture = Effect.gen(function* () {
 			Effect.suspend(() => {
 				if (failNext) {
 					failNext = false;
-					return Effect.fail(new Error('configured-output-failure') as never);
+					return Effect.fail(
+						new ConfiguredTelegramOutputError({
+							message: 'configured-output-failure',
+						}) as never,
+					);
 				}
 				sent.push(payload.text);
 				return Effect.succeed({ message_id: sent.length });

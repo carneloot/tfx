@@ -1,3 +1,4 @@
+import * as Data from 'effect/Data';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 
@@ -6,6 +7,10 @@ import { Telegram, type TelegramService } from '../../Telegram.js';
 import type { TelegramError } from '../../TelegramError.js';
 import type { Update } from '../telegram/generated/TelegramApi.types.js';
 import type { UpdateSourceService } from './UpdateSource.js';
+export class FatalPollingDispatchError extends Data.TaggedError(
+	'FatalPollingDispatchError',
+)<{ readonly updateId: number }> {}
+
 export interface PollingOptions {
 	readonly timeout?: number;
 	readonly limit?: number;
@@ -87,7 +92,11 @@ export const make = (
 								);
 								for (const item of ordered) {
 									if (DispatchOutcome.isTerminal(item.outcome))
-										return Effect.fail(new Error('Fatal update dispatch'));
+										return Effect.fail(
+											new FatalPollingDispatchError({
+												updateId: item.update.update_id,
+											}),
+										);
 									if (!DispatchOutcome.isAcknowledgeable(item.outcome)) break;
 									offset = item.update.update_id + 1;
 								}
