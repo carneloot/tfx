@@ -22,18 +22,30 @@ export interface Router {
 }
 type RequirementsOfGroups<G extends ReadonlyArray<BotBuilder.BuiltGroup<any>>> =
 	G[number] extends BotBuilder.BuiltGroup<infer R> ? R : never;
-type BuiltConversation = Conversations.BuiltConversation;
+type BuiltConversation = Conversations.BuiltConversation & {
+	readonly _requirements?: unknown;
+};
+type RequirementsOfConversations<C extends ReadonlyArray<BuiltConversation>> =
+	C[number] extends { readonly _requirements: infer R } ? R : never;
+export type CancelEffect = (
+	update: Update,
+) => Effect.Effect<unknown, unknown, any>;
+type RequirementsOfCancel<C> = C extends (
+	update: Update,
+) => Effect.Effect<unknown, unknown, infer R>
+	? R
+	: never;
 export interface Options<
 	B extends Bot.Bot<any, any>,
 	G extends ReadonlyArray<BotBuilder.BuiltGroup<any>>,
+	C extends ReadonlyArray<BuiltConversation> = readonly [],
+	Cancel extends CancelEffect | undefined = undefined,
 > {
 	readonly bot: B;
 	readonly groups: G;
-	readonly conversations?: ReadonlyArray<BuiltConversation>;
+	readonly conversations?: C;
 	readonly botUsername: string;
-	readonly cancel?: (
-		update: Update,
-	) => Effect.Effect<unknown, unknown, unknown>;
+	readonly cancel?: Cancel;
 	readonly mapError?: (error: unknown) => DispatchOutcome.DispatchOutcome;
 }
 const record = (value: unknown): Readonly<Record<string, any>> | undefined =>
@@ -73,18 +85,29 @@ const safeIds = (update: Update): boolean => {
 export const make = <
 	B extends Bot.Bot<any, any>,
 	const G extends ReadonlyArray<BotBuilder.BuiltGroup<any>>,
+	const C extends ReadonlyArray<BuiltConversation> = readonly [],
+	Cancel extends CancelEffect | undefined = undefined,
 >(
-	options: Options<B, G>,
+	options: Options<B, G, C, Cancel>,
 ): Effect.Effect<
 	Router,
 	never,
 	| RequirementsOfGroups<G>
+	| RequirementsOfConversations<C>
+	| RequirementsOfCancel<Cancel>
 	| MiddlewareRegistry
 	| ConversationStorage
 	| Conversations.Conversations
 > =>
 	Effect.gen(function* () {
-		const context = yield* Effect.context<any>();
+		type RuntimeRequirements =
+			| RequirementsOfGroups<G>
+			| RequirementsOfConversations<C>
+			| RequirementsOfCancel<Cancel>
+			| MiddlewareRegistry
+			| ConversationStorage
+			| Conversations.Conversations;
+		const context = yield* Effect.context<RuntimeRequirements>();
 		const middleware = yield* MiddlewareRegistry;
 		const storage = yield* ConversationStorage;
 		const conversations = yield* Conversations.Conversations;
@@ -123,7 +146,13 @@ export const make = <
 					CallbackQueryContext.CallbackQueryContext,
 					CallbackQueryContext.make(callback),
 				);
-			return Effect.provide(provided, context);
+			// Router's structural boundary is environment-free after capturing the
+			// statically computed requirement union above.
+			return Effect.provide(provided, context) as Effect.Effect<
+				any,
+				any,
+				never
+			>;
 		};
 		const router = InternalRouter.make({
 			...(options.cancel === undefined

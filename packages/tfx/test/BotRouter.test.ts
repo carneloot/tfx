@@ -62,9 +62,15 @@ const infrastructure = Layer.mergeAll(
 	MemoryConversationStorage.layer,
 	Layer.provide(Conversations.layer, MemoryConversationStorage.layer),
 );
-const build = <G extends ReadonlyArray<BotBuilder.BuiltGroup<any>>>(
+const build = <
+	G extends ReadonlyArray<BotBuilder.BuiltGroup<any>>,
+	C extends ReadonlyArray<
+		Conversations.BuiltConversation & { readonly _requirements?: unknown }
+	> = readonly [],
+	Cancel extends BotRouter.CancelEffect | undefined = undefined,
+>(
 	groups: G,
-	options: Partial<BotRouter.Options<typeof bot, G>> = {},
+	options: Partial<BotRouter.Options<typeof bot, G, C, Cancel>> = {},
 ) =>
 	Effect.provide(
 		BotRouter.make({
@@ -74,7 +80,7 @@ const build = <G extends ReadonlyArray<BotBuilder.BuiltGroup<any>>>(
 			...options,
 		}),
 		infrastructure,
-	);
+	) as Effect.Effect<BotRouter.Router, never, never>;
 
 describe('public BotRouter', () => {
 	it('aggregates multiple built groups and provides update/message contexts', async () => {
