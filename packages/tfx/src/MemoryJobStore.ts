@@ -132,7 +132,11 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 		promoteToRunning: (token, payload, version, now, leaseDuration) =>
 			locked(() => {
 				const row = records.get(token.id);
-				if (!tokenMatch(row, token, 'migration'))
+				if (
+					!tokenMatch(row, token, 'migration') ||
+					row!.leaseExpiresAt === undefined ||
+					row!.leaseExpiresAt <= now
+				)
 					return Effect.fail(
 						new JobStoreError('StaleToken', 'Migration lease lost'),
 					);
@@ -156,7 +160,9 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 		quarantineMigration: (token, reason, now) =>
 			locked(() => {
 				const row = records.get(token.id);
-				return !tokenMatch(row, token, 'migration')
+				return !tokenMatch(row, token, 'migration') ||
+					row!.leaseExpiresAt === undefined ||
+					row!.leaseExpiresAt <= now
 					? Effect.fail(new JobStoreError('StaleToken', 'Migration lease lost'))
 					: Effect.succeed(
 							update({

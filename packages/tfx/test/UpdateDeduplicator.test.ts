@@ -3,6 +3,8 @@ import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
 import * as DispatchOutcome from '../src/DispatchOutcome.js';
+import * as DeduplicatedDispatch from '../src/internal/runtime/DeduplicatedDispatch.js';
+import type { Update } from '../src/internal/telegram/generated/TelegramApi.types.js';
 import * as MemoryUpdateDeduplicator from '../src/MemoryUpdateDeduplicator.js';
 import { UpdateDeduplicator } from '../src/UpdateDeduplicator.js';
 import * as UpdateDeduplicatorModule from '../src/UpdateDeduplicator.js';
@@ -81,6 +83,67 @@ describe('UpdateDeduplicator', () => {
 			}),
 		);
 	});
+	it('returns retryable when the completion fence is lost', async () => {
+		const service: UpdateDeduplicatorModule.UpdateDeduplicatorService = {
+			diagnostics: { mode: 'memory', backend: 'test' },
+			claim: () =>
+				Effect.succeed({
+					_tag: 'Acquired',
+					token: { updateId: 1, generation: 1 },
+				}),
+			heartbeat: () => Effect.succeed(true),
+			complete: () => Effect.succeed(false),
+			release: () => Effect.succeed(true),
+		};
+		await expect(
+			Effect.runPromise(
+				DeduplicatedDispatch.dispatch(
+					service,
+					{ update_id: 1 } as Update,
+					Effect.succeed(DispatchOutcome.handled),
+				),
+			),
+		).resolves.toMatchObject({ _tag: 'RetryableFailure' });
+	});
+
+	it('releases its fence and preserves external interruption', async () => {
+		let released = 0;
+		const service: UpdateDeduplicatorModule.UpdateDeduplicatorService = {
+			diagnostics: { mode: 'memory', backend: 'test' },
+			claim: () =>
+				Effect.succeed({
+					_tag: 'Acquired',
+					token: { updateId: 1, generation: 1 },
+				}),
+			heartbeat: () => Effect.succeed(true),
+			complete: () => Effect.succeed(true),
+			release: () => Effect.sync(() => (++released, true)),
+		};
+		const fiber = Effect.runFork(
+			DeduplicatedDispatch.dispatch(
+				service,
+				{ update_id: 1 } as Update,
+				Effect.never,
+			),
+		);
+		await Effect.runPromise(Fiber.interrupt(fiber));
+		const exit = await Effect.runPromise(Fiber.await(fiber));
+		expect(exit._tag).toBe('Failure');
+		expect(released).toBe(1);
+	});
+
+	it('validates timing options', async () => {
+		await run(
+			Effect.gen(function* () {
+				const dedup = yield* UpdateDeduplicator;
+				const exit = yield* Effect.exit(
+					dedup.claim(1, { leaseDuration: Infinity }),
+				);
+				expect(exit._tag).toBe('Failure');
+			}),
+		);
+	});
+
 	it('provides an explicit noop layer with duplicate-risk diagnostics', async () => {
 		const program = Effect.gen(function* () {
 			const dedup = yield* UpdateDeduplicator;

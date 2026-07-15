@@ -73,16 +73,21 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 					}),
 				runOne: (options = {}) =>
 					Effect.gen(function* () {
-						const now = yield* Clock.currentTimeMillis;
 						const leaseDuration = options.leaseDuration ?? 30_000;
-						const claim = yield* store.claimForMigration(now, leaseDuration);
+						if (!Number.isFinite(leaseDuration) || leaseDuration <= 0)
+							throw new TypeError('leaseDuration must be finite and positive');
+						const claimNow = yield* Clock.currentTimeMillis;
+						const claim = yield* store.claimForMigration(
+							claimNow,
+							leaseDuration,
+						);
 						if (claim === undefined) return undefined;
 						const implementation = byName.get(claim.record.name);
 						if (implementation === undefined) {
 							yield* store.quarantineMigration(
 								claim.token,
 								'UnknownDeclaration',
-								now,
+								yield* Clock.currentTimeMillis,
 							);
 							return yield* store.get(claim.record.id);
 						}
@@ -93,7 +98,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							yield* store.quarantineMigration(
 								claim.token,
 								'NewerPayloadVersion',
-								now,
+								yield* Clock.currentTimeMillis,
 							);
 							return yield* store.get(claim.record.id);
 						}
@@ -109,7 +114,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 								migrated.failure instanceof VersionedSchemaError
 									? migrated.failure.reason
 									: 'InvalidPayload',
-								now,
+								yield* Clock.currentTimeMillis,
 							);
 							return yield* store.get(claim.record.id);
 						}
@@ -119,11 +124,15 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							claim.token,
 							migrated.success,
 							declaration.payload.latest.version,
-							now,
+							yield* Clock.currentTimeMillis,
 							leaseDuration,
 						);
 						if (running.cancellationRequested) {
-							yield* store.finalize(claim.token, JobOutcome.cancelled, now);
+							yield* store.finalize(
+								claim.token,
+								JobOutcome.cancelled,
+								yield* Clock.currentTimeMillis,
+							);
 							return yield* store.get(running.id);
 						}
 						const execution = Effect.provide(
@@ -155,6 +164,8 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 						const exit = yield* Effect.exit(
 							Effect.raceFirst(execution, monitor),
 						);
+						if (Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause))
+							return yield* Effect.failCause(exit.cause);
 						const finishedAt = yield* Clock.currentTimeMillis;
 						const afterExecution = yield* store.get(running.id);
 						if (afterExecution?.cancellationRequested) {

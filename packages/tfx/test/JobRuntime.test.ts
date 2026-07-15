@@ -98,6 +98,78 @@ describe('JobRuntime', () => {
 		);
 	});
 
+	it('preserves external worker interruption for lease recovery', async () => {
+		const implementation = Job.implement(declaration, () => Effect.never);
+		const program = Effect.gen(function* () {
+			const runtime = yield* JobRuntime;
+			const store = yield* JobStore;
+			const scheduled = yield* runtime.schedule(declaration, { value: 'wait' });
+			const worker = yield* Effect.forkChild(
+				runtime.runOne({ leaseDuration: 100 }),
+			);
+			const awaitRunning: Effect.Effect<void> = Effect.suspend(() =>
+				Effect.flatMap(store.get(scheduled.id), (row) =>
+					row?.status === 'running'
+						? Effect.void
+						: Effect.andThen(Effect.yieldNow, awaitRunning),
+				),
+			);
+			yield* awaitRunning;
+			yield* Fiber.interrupt(worker);
+			return yield* store.get(scheduled.id);
+		});
+		const row = await Effect.runPromise(
+			Effect.provide(provide(program, implementation), TestClock.layer()),
+		);
+		expect(row).toMatchObject({ status: 'running', attempts: 1 });
+	});
+
+	it('rejects promotion after the migration lease expires', async () => {
+		const program = Effect.gen(function* () {
+			const store = yield* JobStore;
+			yield* store.schedule({
+				name: declaration.name,
+				payload: { value: 'late' },
+				payloadVersion: 2,
+				maxAttempts: 3,
+				now: 0,
+				runAt: 0,
+			});
+			const claim = yield* store.claimForMigration(0, 10);
+			if (claim === undefined) throw new Error('expected claim');
+			yield* TestClock.adjust('11 millis');
+			return yield* Effect.flip(
+				store.promoteToRunning(claim.token, { value: 'late' }, 2, 11, 10),
+			);
+		});
+		const error = await Effect.runPromise(
+			Effect.provide(
+				Effect.provide(program, MemoryJobStore.layer),
+				TestClock.layer(),
+			),
+		);
+		expect(error).toMatchObject({ reason: 'StaleToken' });
+	});
+
+	it('rejects invalid lease durations', async () => {
+		const implementation = Job.implement(declaration, () => Effect.void);
+		const exit = await Effect.runPromise(
+			Effect.provide(
+				provide(
+					Effect.gen(function* () {
+						const runtime = yield* JobRuntime;
+						return yield* Effect.exit(
+							runtime.runOne({ leaseDuration: Infinity }),
+						);
+					}),
+					implementation,
+				),
+				TestClock.layer(),
+			),
+		);
+		expect(exit._tag).toBe('Failure');
+	});
+
 	it('quarantines unknown, newer, and invalid payload declarations without attempts', async () => {
 		const implementation = Job.implement(declaration, () => Effect.void);
 		const program = Effect.gen(function* () {

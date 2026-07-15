@@ -1,5 +1,4 @@
 import * as Effect from 'effect/Effect';
-import * as Exit from 'effect/Exit';
 
 import * as DispatchOutcome from '../../DispatchOutcome.js';
 import type { UpdateDeduplicatorService } from '../../UpdateDeduplicator.js';
@@ -45,14 +44,27 @@ export const dispatch = (
 					),
 			),
 		);
-		const exit = yield* Effect.exit(Effect.raceFirst(behavior, monitor));
-		if (Exit.isFailure(exit)) {
-			yield* dedup.release(claim.token);
-			return DispatchOutcome.retryableFailure('Update claim lease lost');
+		const outcome = yield* Effect.raceFirst(behavior, monitor).pipe(
+			Effect.catchTag('ClaimLost', () =>
+				Effect.as(
+					dedup.release(claim.token),
+					DispatchOutcome.retryableFailure('Update claim lease lost'),
+				),
+			),
+			Effect.onInterrupt(() => Effect.asVoid(dedup.release(claim.token))),
+		);
+		if (DispatchOutcome.isAcknowledgeable(outcome)) {
+			const completed = yield* dedup.complete(
+				claim.token,
+				outcome,
+				options.retention,
+			);
+			return completed
+				? outcome
+				: DispatchOutcome.retryableFailure(
+						'Update claim completion fence lost',
+					);
 		}
-		const outcome = exit.value;
-		if (DispatchOutcome.isAcknowledgeable(outcome))
-			yield* dedup.complete(claim.token, outcome, options.retention);
-		else yield* dedup.release(claim.token);
+		yield* dedup.release(claim.token);
 		return outcome;
 	});

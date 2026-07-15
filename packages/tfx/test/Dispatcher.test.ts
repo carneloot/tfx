@@ -12,7 +12,7 @@ describe('Dispatcher', () => {
 			Effect.gen(function* () {
 				const executor = yield* KeyedExecutor.make({
 					concurrency: 2,
-					capacity: 2,
+					capacity: 3,
 				});
 				const firstStarted = yield* Deferred.make<void>();
 				const release = yield* Deferred.make<void>();
@@ -45,6 +45,40 @@ describe('Dispatcher', () => {
 		);
 		await Effect.runPromise(program);
 	});
+	it('bounds admitted work and restores capacity after interruption', async () => {
+		const program = Effect.scoped(
+			Effect.gen(function* () {
+				const executor = yield* KeyedExecutor.make({
+					concurrency: 1,
+					capacity: 1,
+				});
+				const started = yield* Deferred.make<void>();
+				const finalized = yield* Deferred.make<void>();
+				const blockedStarted = yield* Deferred.make<void>();
+				const running = yield* Effect.forkChild(
+					executor.submit(
+						'one',
+						Effect.andThen(
+							Deferred.succeed(started, undefined),
+							Effect.never,
+						).pipe(Effect.ensuring(Deferred.succeed(finalized, undefined))),
+					),
+				);
+				yield* Deferred.await(started);
+				const blocked = yield* Effect.forkChild(
+					executor.submit('two', Deferred.succeed(blockedStarted, undefined)),
+				);
+				yield* Effect.yieldNow;
+				expect(yield* Deferred.isDone(blockedStarted)).toBe(false);
+				yield* Fiber.interrupt(running);
+				yield* Deferred.await(finalized);
+				yield* Fiber.join(blocked);
+				expect(yield* Deferred.isDone(blockedStarted)).toBe(true);
+			}),
+		);
+		await Effect.runPromise(program);
+	});
+
 	it('routes lifecycle, cancel, conversation, command, callback, message, fallback in priority order', async () => {
 		const calls: Array<string> = [];
 		const handler =

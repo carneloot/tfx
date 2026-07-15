@@ -156,7 +156,11 @@ export const layer = (
 									claim.generation,
 									'migration',
 								))[0];
-								if (current === undefined)
+								if (
+									current === undefined ||
+									current.lease_expires_at === null ||
+									new Date(current.lease_expires_at).getTime() <= now
+								)
 									return yield* Effect.fail(
 										new JobStoreError('StaleToken', 'Migration lease lost'),
 									);
@@ -178,9 +182,15 @@ export const layer = (
 					) =>
 						sql.withTransaction(
 							Effect.gen(function* () {
+								const current = (yield* token(
+									claim.id,
+									claim.generation,
+									'migration',
+								))[0];
 								if (
-									(yield* token(claim.id, claim.generation, 'migration'))[0] ===
-									undefined
+									current === undefined ||
+									current.lease_expires_at === null ||
+									new Date(current.lease_expires_at).getTime() <= now
 								)
 									return yield* Effect.fail(
 										new JobStoreError('StaleToken', 'Migration lease lost'),
