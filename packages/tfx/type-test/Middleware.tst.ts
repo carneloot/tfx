@@ -61,7 +61,7 @@ const _layerRequirement: Layer.Layer<Result, Unauthorized, UserRepository> =
 	resultLayer;
 const registryLayer: Layer.Layer<
 	Middleware.MiddlewareRegistry,
-	Unauthorized,
+	never,
 	UserRepository
 > = Middleware.layer(registeredLive, adminLive);
 void registryLayer;

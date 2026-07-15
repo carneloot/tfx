@@ -110,6 +110,24 @@ describe('contextual Telegram helpers', () => {
 		]);
 	});
 
+	it('returns a typed error when deleting an inline callback message', async () => {
+		const context = CallbackQueryContext.make({
+			id: 'inline-1',
+			from: message.from,
+			chat_instance: 'instance',
+			inline_message_id: 'inline-message',
+		} as NonNullable<Update['callback_query']>);
+		await expect(
+			Effect.runPromise(
+				Effect.provideService(
+					Effect.flip(context.deleteMessage()),
+					Telegram,
+					{} as TelegramService,
+				),
+			),
+		).resolves.toMatchObject({ reason: 'InlineMessageCannotBeDeleted' });
+	});
+
 	it('delegates callback helpers', async () => {
 		const callback = {
 			id: 'callback-1',

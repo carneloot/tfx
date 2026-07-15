@@ -4,4 +4,4 @@ export interface Scope {
 	readonly userId: number;
 }
 export const key = (scope: Scope): string =>
-	`${scope.botId}:${scope.chatId}:${scope.userId}`;
+	JSON.stringify([scope.botId, scope.chatId, scope.userId]);

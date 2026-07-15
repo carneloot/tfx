@@ -39,15 +39,33 @@ export const layer: Layer.Layer<ConversationStorage> = Layer.effect(
 			load: (scope) =>
 				withLock(
 					mutex(scope),
-					Effect.sync(() => rows.get(key(scope))),
+					Effect.gen(function* () {
+						const k = key(scope);
+						const row = rows.get(k);
+						if (row === undefined) return undefined;
+						const now = yield* Clock.currentTimeMillis;
+						if (row.expiresAt !== undefined && row.expiresAt <= now) {
+							rows.delete(k);
+							return undefined;
+						}
+						return row;
+					}),
 				),
 			create: (row, conflict) =>
 				withLock(
 					mutex(row.scope),
-					Effect.suspend(() => {
+					Effect.gen(function* () {
 						const k = key(row.scope);
+						const existing = rows.get(k);
+						const now = yield* Clock.currentTimeMillis;
+						if (
+							existing !== undefined &&
+							existing.expiresAt !== undefined &&
+							existing.expiresAt <= now
+						)
+							rows.delete(k);
 						if (rows.has(k) && conflict === 'fail')
-							return Effect.fail(
+							return yield* Effect.fail(
 								new ConversationStorageError(
 									'Conflict',
 									'Conversation already active',
@@ -55,7 +73,7 @@ export const layer: Layer.Layer<ConversationStorage> = Layer.effect(
 							);
 						const created = Object.freeze({ ...row, revision: 0 });
 						rows.set(k, created);
-						return Effect.succeed(created);
+						return created;
 					}),
 				),
 			transition: (scope, updateId, expectedRevision, handler) =>

@@ -48,7 +48,7 @@ export interface Conversation<
 	readonly error: Error | undefined;
 	readonly middleware: M;
 	readonly idleTimeout: number | undefined;
-	readonly migrations: VersionedSchema.History<any> | undefined;
+	readonly migrations: VersionedSchema.AnyHistory | undefined;
 }
 export interface Options<
 	Startup,
@@ -65,7 +65,7 @@ export interface Options<
 	readonly error?: Error;
 	readonly middleware?: M;
 	readonly idleTimeout?: number;
-	readonly migrations?: VersionedSchema.History<any>;
+	readonly migrations?: VersionedSchema.AnyHistory;
 }
 export const make = <
 	const Id extends string,
@@ -82,8 +82,18 @@ export const make = <
 		throw new Error('Conversation version must be positive');
 	if (!(options.initialStep in options.steps))
 		throw new Error(`Unknown initial step '${String(options.initialStep)}'`);
-	if (options.idleTimeout !== undefined && options.idleTimeout <= 0)
-		throw new Error('idleTimeout must be positive');
+	if (
+		options.idleTimeout !== undefined &&
+		(!Number.isFinite(options.idleTimeout) || options.idleTimeout <= 0)
+	)
+		throw new Error('idleTimeout must be finite and positive');
+	if (
+		options.migrations !== undefined &&
+		options.migrations.latest.version !== options.version
+	)
+		throw new Error(
+			`Conversation version ${options.version} does not match migration history latest version ${options.migrations.latest.version}`,
+		);
 	return Object.freeze({
 		_tag: 'Conversation',
 		id,

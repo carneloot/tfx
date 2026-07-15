@@ -15,7 +15,7 @@ type Kind =
 export class CommandInputError extends Error {
 	readonly _tag = 'CommandInputError';
 	constructor(
-		readonly reason: 'InvalidSequence' | 'MissingInput',
+		readonly reason: 'InvalidSequence' | 'MissingInput' | 'UnexpectedInput',
 		message: string,
 	) {
 		super(message);

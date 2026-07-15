@@ -4,17 +4,22 @@ import type * as VersionedSchema from './VersionedSchema.js';
 export type RetryDecision =
 	| { readonly _tag: 'Retry'; readonly retryAfter?: number }
 	| { readonly _tag: 'Permanent' };
-export interface Job<Name extends string, Payload, Error> {
+export interface Job<
+	Name extends string,
+	Payload,
+	Error,
+	H extends VersionedSchema.AnyHistory = VersionedSchema.AnyHistory,
+> {
 	readonly _tag: 'Job';
 	readonly name: Name;
-	readonly payload: VersionedSchema.History<any>;
+	readonly payload: H;
 	readonly maxAttempts: number;
 	readonly retry: (error: Error) => RetryDecision | undefined;
 	readonly schedule: (attempt: number) => number;
 	readonly _Payload: Payload;
 	readonly _Error: Error;
 }
-export interface Options<H extends VersionedSchema.History<any>, Error> {
+export interface Options<H extends VersionedSchema.AnyHistory, Error> {
 	readonly payload: H;
 	readonly error?: Error;
 	readonly maxAttempts: number;
@@ -23,12 +28,12 @@ export interface Options<H extends VersionedSchema.History<any>, Error> {
 }
 export const make = <
 	const Name extends string,
-	H extends VersionedSchema.History<any>,
+	H extends VersionedSchema.AnyHistory,
 	Error = never,
 >(
 	name: Name,
 	options: Options<H, Error>,
-): Job<Name, VersionedSchema.Latest<H>, Error> => {
+): Job<Name, VersionedSchema.Latest<H>, Error, H> => {
 	if (!Number.isInteger(options.maxAttempts) || options.maxAttempts <= 0)
 		throw new Error('maxAttempts must be positive');
 	return Object.freeze({

@@ -34,6 +34,19 @@ describe('CommandParser', () => {
 		).toBeUndefined();
 	});
 
+	it('rejects command input left after the declaration is consumed', async () => {
+		await expect(
+			Effect.runPromise(
+				parseCommand(
+					CommandInput.none,
+					message('/start extra'),
+					'start',
+					'MyBot',
+				),
+			),
+		).rejects.toMatchObject({ reason: 'UnexpectedInput' });
+	});
+
 	it('matches and parses in one effect', async () => {
 		await expect(
 			Effect.runPromise(

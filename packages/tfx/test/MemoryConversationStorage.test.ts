@@ -138,6 +138,45 @@ describe('MemoryConversationStorage', () => {
 		);
 	});
 
+	it('treats expired rows as inactive on load and create', async () => {
+		const program = Effect.gen(function* () {
+			const storage = yield* ConversationStorage;
+			yield* storage.create(
+				{
+					scope,
+					conversationId: 'old',
+					version: 1,
+					step: 'one',
+					state: 0,
+					lastUpdateId: undefined,
+					expiresAt: 1000,
+				},
+				'fail',
+			);
+			yield* TestClock.adjust('2 seconds');
+			expect(yield* storage.load(scope)).toBeUndefined();
+			return yield* storage.create(
+				{
+					scope,
+					conversationId: 'new',
+					version: 1,
+					step: 'one',
+					state: 1,
+					lastUpdateId: undefined,
+					expiresAt: undefined,
+				},
+				'fail',
+			);
+		});
+		const row = await Effect.runPromise(
+			Effect.provide(
+				Effect.provide(program, MemoryConversationStorage.layer),
+				TestClock.layer(),
+			),
+		);
+		expect(row.conversationId).toBe('new');
+	});
+
 	it('expires using TestClock', async () => {
 		const program = Effect.gen(function* () {
 			const storage = yield* ConversationStorage;

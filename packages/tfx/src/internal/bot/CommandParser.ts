@@ -160,7 +160,20 @@ export const parse = <I extends CommandInput<any, any, any, any, any>>(
 	Decoded<I>,
 	Schema.SchemaError | CommandInputError,
 	Requirements<I>
-> => parseNode(input as RuntimeInput, { source, offset: 0 });
+> =>
+	Effect.gen(function* () {
+		const cursor: Cursor = { source, offset: 0 };
+		const value = yield* parseNode(input as RuntimeInput, cursor);
+		skipWhitespace(cursor);
+		if (cursor.offset !== source.length)
+			return yield* Effect.fail(
+				new CommandInputError(
+					'UnexpectedInput',
+					`Unexpected command input '${source.slice(cursor.offset)}'`,
+				),
+			);
+		return value;
+	}) as never;
 
 export const parseCommand = <I extends CommandInput<any, any, any, any, any>>(
 	input: I,

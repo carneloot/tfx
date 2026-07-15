@@ -11,16 +11,26 @@ type Options<
 	Method extends keyof TelegramService,
 	Keys extends PropertyKey,
 > = Omit<Payload<Method>, Keys>;
-type TelegramEffect<Method extends keyof TelegramService> =
+type TelegramEffect<
+	Method extends keyof TelegramService,
+	AdditionalError = never,
+> =
 	ReturnType<TelegramService[Method]> extends Effect.Effect<
 		infer A,
 		infer E,
 		unknown
 	>
-		? Effect.Effect<A, E, Telegram>
+		? Effect.Effect<A, E | AdditionalError, Telegram>
 		: never;
 type CallbackQuery = NonNullable<Update['callback_query']>;
 type CallbackMessage = NonNullable<CallbackQuery['message']>;
+
+export class CallbackQueryContextError extends Error {
+	readonly _tag = 'CallbackQueryContextError';
+	constructor(readonly reason: 'InlineMessageCannotBeDeleted') {
+		super('Cannot delete an inline callback query message');
+	}
+}
 
 export interface CallbackQueryContextService {
 	readonly callbackQuery: CallbackQuery;
@@ -41,7 +51,10 @@ export interface CallbackQueryContextService {
 			| 'text'
 		>,
 	) => TelegramEffect<'editMessageText'>;
-	readonly deleteMessage: () => TelegramEffect<'deleteMessage'>;
+	readonly deleteMessage: () => TelegramEffect<
+		'deleteMessage',
+		CallbackQueryContextError
+	>;
 }
 
 export class CallbackQueryContext extends Context.Service<
@@ -96,8 +109,8 @@ export const make = (
 			),
 		deleteMessage: () =>
 			messageTarget === undefined
-				? Effect.die(
-						new Error('Cannot delete an inline callback query message'),
+				? Effect.fail(
+						new CallbackQueryContextError('InlineMessageCannotBeDeleted'),
 					)
 				: Effect.flatMap(Telegram, (telegram) =>
 						telegram.deleteMessage({

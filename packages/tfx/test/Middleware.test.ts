@@ -88,6 +88,19 @@ describe('Middleware', () => {
 		).resolves.toBe(43);
 	});
 
+	it('fails missing registry implementations inside the Effect channel', async () => {
+		const registry = await Effect.runPromise(
+			Effect.provide(Middleware.MiddlewareRegistry, Middleware.layer()),
+		);
+		expect(() => registry.run(['missing'], Effect.void)).not.toThrow();
+		await expect(
+			Effect.runPromise(Effect.flip(registry.run(['missing'], Effect.void))),
+		).resolves.toMatchObject({
+			_tag: 'MiddlewareRegistryError',
+			middlewareId: 'missing',
+		});
+	});
+
 	it('keeps pipelines immutable and rejects scope reversal', () => {
 		const handler = Middleware.make('handler', {
 			scope: 'handler',

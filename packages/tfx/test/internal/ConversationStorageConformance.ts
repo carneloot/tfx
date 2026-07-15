@@ -60,6 +60,66 @@ export const conversationStorageConformance = (
 					expect(yield* storage.load(scope)).toBeUndefined();
 				}),
 			));
+		it('treats expired rows as inactive for load and conflict create', async () =>
+			run(
+				Effect.gen(function* () {
+					const storage = yield* ConversationStorage;
+					const expiredScope = { ...scope, chatId: 99 };
+					yield* storage.create(
+						{
+							scope: expiredScope,
+							conversationId: 'expired',
+							version: 1,
+							step: 'one',
+							state: 0,
+							lastUpdateId: undefined,
+							expiresAt: 0,
+						},
+						'fail',
+					);
+					expect(yield* storage.load(expiredScope)).toBeUndefined();
+					const replacement = yield* storage.create(
+						{
+							scope: expiredScope,
+							conversationId: 'replacement',
+							version: 1,
+							step: 'one',
+							state: 1,
+							lastUpdateId: undefined,
+							expiresAt: undefined,
+						},
+						'fail',
+					);
+					expect(replacement.conversationId).toBe('replacement');
+					const createScope = { ...scope, chatId: 100 };
+					yield* storage.create(
+						{
+							scope: createScope,
+							conversationId: 'expired-create',
+							version: 1,
+							step: 'one',
+							state: 0,
+							lastUpdateId: undefined,
+							expiresAt: 0,
+						},
+						'fail',
+					);
+					expect(
+						(yield* storage.create(
+							{
+								scope: createScope,
+								conversationId: 'replacement-create',
+								version: 1,
+								step: 'one',
+								state: 1,
+								lastUpdateId: undefined,
+								expiresAt: undefined,
+							},
+							'fail',
+						)).conversationId,
+					).toBe('replacement-create');
+				}),
+			));
 		it.skipIf(!capabilities.durableRestart)(
 			'survives durable restart',
 			() => {},

@@ -60,8 +60,18 @@ export const layer = (
 						: sql<Row>`SELECT * FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
 				const service: any = {
 					load: (scope: Parameters<ConversationStorageService['load']>[0]) =>
-						Effect.map(select(scope), (rows) =>
-							rows[0] === undefined ? undefined : decode(rows[0]),
+						sql.withTransaction(
+							Effect.gen(function* () {
+								const raw = (yield* select(scope, true))[0];
+								if (raw === undefined) return undefined;
+								const row = decode(raw);
+								const now = yield* Clock.currentTimeMillis;
+								if (row.expiresAt !== undefined && row.expiresAt <= now) {
+									yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
+									return undefined;
+								}
+								return row;
+							}),
 						),
 					create: (
 						row: Parameters<ConversationStorageService['create']>[0],
@@ -69,7 +79,16 @@ export const layer = (
 					) =>
 						sql.withTransaction(
 							Effect.gen(function* () {
-								const existing = (yield* select(row.scope, true))[0];
+								let existing = (yield* select(row.scope, true))[0];
+								const now = yield* Clock.currentTimeMillis;
+								if (
+									existing !== undefined &&
+									existing.expires_at !== null &&
+									new Date(existing.expires_at).getTime() <= now
+								) {
+									yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${row.scope.botId} AND chat_id=${row.scope.chatId} AND user_id=${row.scope.userId}`;
+									existing = undefined;
+								}
 								if (existing !== undefined && conflict === 'fail')
 									return yield* Effect.fail(
 										new ConversationStorageError(

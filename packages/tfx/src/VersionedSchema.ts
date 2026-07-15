@@ -20,32 +20,36 @@ export interface Migration {
 	readonly to: number;
 	readonly migrate: (value: any) => any;
 }
-export interface History<Versions extends ReadonlyArray<Version<number, any>>> {
-	readonly versions: Versions;
-	readonly migrations: ReadonlyArray<Migration>;
-	readonly latest: Versions[number];
-	readonly migrate: (
-		version: number,
-		value: unknown,
-	) => Effect.Effect<unknown, VersionedSchemaError | Schema.SchemaError>;
-	readonly decode: (value: {
-		readonly version: number;
-		readonly state: unknown;
-	}) => Effect.Effect<unknown, VersionedSchemaError | Schema.SchemaError>;
-	pipe: <B>(f: (self: History<Versions>) => B) => B;
-}
 type Last<V extends ReadonlyArray<unknown>> = V extends readonly [
 	...infer _,
 	infer L,
 ]
 	? L
-	: never;
-export type Latest<H> =
-	H extends History<infer V>
-		? Last<V> extends Version<number, infer A>
-			? A
-			: never
-		: never;
+	: V[number];
+type LatestOf<V extends ReadonlyArray<Version<number, any>>> =
+	Last<V> extends Version<number, infer A> ? A : never;
+export interface History<Versions extends ReadonlyArray<Version<number, any>>> {
+	readonly versions: Versions;
+	readonly migrations: ReadonlyArray<Migration>;
+	readonly latest: Last<Versions>;
+	readonly migrate: (
+		version: number,
+		value: unknown,
+	) => Effect.Effect<
+		LatestOf<Versions>,
+		VersionedSchemaError | Schema.SchemaError
+	>;
+	readonly decode: (value: {
+		readonly version: number;
+		readonly state: unknown;
+	}) => Effect.Effect<
+		LatestOf<Versions>,
+		VersionedSchemaError | Schema.SchemaError
+	>;
+	pipe: <B>(f: (self: History<Versions>) => B) => B;
+}
+export type AnyHistory = History<ReadonlyArray<Version<number, any>>>;
+export type Latest<H> = H extends History<infer V> ? LatestOf<V> : never;
 export const version = <const V extends number, A>(
 	value: V,
 	schema: Schema.Schema<A>,
@@ -68,11 +72,11 @@ const build = <V extends ReadonlyArray<Version<number, any>>>(
 				'InvalidVersion',
 				'Versions must be unique and contiguous',
 			);
-	const latest = versions.at(-1)!;
+	const latest = versions.at(-1)! as Last<V>;
 	const migrate = (
 		from: number,
 		value: unknown,
-	): Effect.Effect<unknown, VersionedSchemaError | Schema.SchemaError> => {
+	): Effect.Effect<LatestOf<V>, VersionedSchemaError | Schema.SchemaError> => {
 		const source = versions.find((item) => item.version === from);
 		if (source === undefined)
 			return Effect.fail(
@@ -89,7 +93,7 @@ const build = <V extends ReadonlyArray<Version<number, any>>>(
 			): Effect.Effect<
 				unknown,
 				Schema.SchemaError | VersionedSchemaError,
-				never
+				unknown
 			> => {
 				let current = decoded;
 				for (let v = from; v < latest.version; v++) {
@@ -115,11 +119,9 @@ const build = <V extends ReadonlyArray<Version<number, any>>>(
 						);
 					}
 				}
-				return Schema.decodeUnknownEffect(latest.schema)(
-					current,
-				) as Effect.Effect<unknown, Schema.SchemaError, never>;
+				return Schema.decodeUnknownEffect(latest.schema)(current);
 			},
-		);
+		) as Effect.Effect<LatestOf<V>, VersionedSchemaError | Schema.SchemaError>;
 	};
 	const self: History<V> = {
 		versions: Object.freeze([...versions]) as unknown as V,

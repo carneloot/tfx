@@ -193,13 +193,20 @@ type ApplicationsInfrastructure<A extends ReadonlyArray<AnyApplication>> =
 export type ApplicationsError<A extends ReadonlyArray<AnyApplication>> =
 	AppError<A[number]>;
 
+export class MiddlewareRegistryError extends Error {
+	readonly _tag = 'MiddlewareRegistryError';
+	constructor(readonly middlewareId: string) {
+		super(`Missing middleware implementation '${middlewareId}'`);
+	}
+}
+
 export interface MiddlewareRegistryService {
 	readonly applications: Readonly<Record<string, AnyApplication>>;
 	/** Execute selected applications in declaration order around a request effect. */
 	readonly run: <A, E, R, MiddlewareError = never>(
 		ids: ReadonlyArray<string>,
 		effect: Effect.Effect<A, E, R>,
-	) => Effect.Effect<A, E | MiddlewareError, R>;
+	) => Effect.Effect<A, E | MiddlewareError | MiddlewareRegistryError, R>;
 }
 
 export class MiddlewareRegistry extends Context.Service<
@@ -218,44 +225,42 @@ const registry = (
 			throw new Error(`Duplicate middleware implementation '${id}'`);
 		byId[id] = application;
 	}
-	const run: MiddlewareRegistryService['run'] = (ids, effect) => {
-		const selected = ids.map((id) => {
-			const application = byId[id];
-			if (application === undefined)
-				throw new Error(`Missing middleware implementation '${id}'`);
-			return application;
-		});
-		const execute = (index: number): Effect.Effect<any, any, any> => {
-			if (index === selected.length) return effect;
-			const application = selected[index]!;
-			return Effect.flatMap(Effect.context<any>(), (current) =>
-				Effect.flatMap(
-					Effect.provide(
-						application.effect,
-						Context.merge(infrastructure, current),
-					),
-					(service) =>
-						Effect.provideService(
-							execute(index + 1),
-							application.declaration.provides,
-							service,
+	const run: MiddlewareRegistryService['run'] = (ids, effect) =>
+		Effect.suspend(() => {
+			const selected: Array<AnyApplication> = [];
+			for (const id of ids) {
+				const application = byId[id];
+				if (application === undefined)
+					return Effect.fail(new MiddlewareRegistryError(id));
+				selected.push(application);
+			}
+			const execute = (index: number): Effect.Effect<any, any, any> => {
+				if (index === selected.length) return effect;
+				const application = selected[index]!;
+				return Effect.flatMap(Effect.context<any>(), (current) =>
+					Effect.flatMap(
+						Effect.provide(
+							application.effect,
+							Context.merge(infrastructure, current),
 						),
-				),
-			);
-		};
-		return execute(0);
-	};
+						(service) =>
+							Effect.provideService(
+								execute(index + 1),
+								application.declaration.provides,
+								service,
+							),
+					),
+				);
+			};
+			return execute(0);
+		});
 	return Object.freeze({ applications: Object.freeze(byId), run });
 };
 
 /** Capture implementation infrastructure once; middleware effects still execute once per request. */
 export const layer = <const A extends ReadonlyArray<AnyApplication>>(
 	...applications: A
-): Layer.Layer<
-	MiddlewareRegistry,
-	ApplicationsError<A>,
-	ApplicationsInfrastructure<A>
-> =>
+): Layer.Layer<MiddlewareRegistry, never, ApplicationsInfrastructure<A>> =>
 	Layer.effect(
 		MiddlewareRegistry,
 		Effect.map(Effect.context<ApplicationsInfrastructure<A>>(), (context) =>
