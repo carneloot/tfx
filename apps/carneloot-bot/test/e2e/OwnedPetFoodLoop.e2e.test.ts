@@ -1,5 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import { Effect, Layer } from 'effect';
+import { PostgreSqlContainer } from '@testcontainers/postgresql';
+import { Effect, Layer, Redacted } from 'effect';
 import { BotRuntime } from 'tfx/BotRuntime';
 import { Telegram } from 'tfx/Telegram';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
@@ -7,13 +8,30 @@ import { describe, expect, it } from 'vitest';
 
 import type { AppConfigService } from '../../src/Config.js';
 import * as Layers from '../../src/Layers.js';
-import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
 if (process.env.CI === 'true' && !enabled)
 	throw new Error('CI must provide PostgreSQL for owned-pet E2E');
+const postgres =
+	process.env.TEST_DATABASE_URL === undefined
+		? Layer.unwrap(
+				Effect.map(
+					Effect.acquireRelease(
+						Effect.promise(() =>
+							new PostgreSqlContainer('postgres:17-alpine').start(),
+						),
+						(container) =>
+							Effect.promise(() => container.stop()).pipe(Effect.asVoid),
+					),
+					(container) =>
+						PgClient.layer({
+							url: Redacted.make(container.getConnectionUri()),
+						}),
+				),
+			)
+		: PgClient.layer({ url: Redacted.make(process.env.TEST_DATABASE_URL) });
 const config: AppConfigService = {
 	botToken: { toString: () => '<redacted>' } as never,
 	databaseUrl: { toString: () => '<redacted>' } as never,
@@ -84,14 +102,12 @@ const fixture = Effect.gen(function* () {
 		answerCallbackQuery: () => Effect.succeed(true),
 	} as never);
 	const graph = Layers.portable(config, {
-		pg: PostgresTestLayer.layer,
+		pg: postgres,
 		telegram,
 		delivery: UpdateDelivery.manual,
 		botUsername: config.botUsername,
 	});
-	const context = yield* Layer.build(
-		Layer.merge(graph, PostgresTestLayer.layer),
-	);
+	const context = yield* Layer.build(Layer.merge(graph, postgres));
 	const dispatch = (update: unknown) =>
 		Effect.provide(
 			Effect.flatMap(BotRuntime, (runtime) =>
@@ -204,7 +220,7 @@ else
 							).toHaveLength(1);
 						}),
 					),
-					PostgresTestLayer.layer,
+					postgres,
 				),
 			);
 		});
@@ -325,7 +341,7 @@ else
 							).toHaveLength(1);
 						}),
 					),
-					PostgresTestLayer.layer,
+					postgres,
 				),
 			);
 		});
