@@ -10,7 +10,7 @@
 
 ## File map
 
-- Create: `apps/carneloot-bot/migrations/0004_notifications.sql` (application migration version 4; version 3 is `0003_pet_food_source_constraints.sql`)
+- Create: `apps/carneloot-bot/migrations/0004_notifications.sql` and `0005_unreachable_notification_deliveries.sql` (version 5 permits null recipient chat only for audited permanent unreachable failures)
 - Create: `apps/carneloot-bot/src/domain/notifications/{NotificationEvent.ts,NotificationDelivery.ts,RecipientRole.ts,DeliveryOutcome.ts}`
 - Create: `apps/carneloot-bot/src/ports/{NotificationRepository.ts,NotificationRecipients.ts}`
 - Create: `apps/carneloot-bot/src/postgres/NotificationRepositoryLive.ts`
@@ -143,7 +143,7 @@ git commit -m "feat(carneloot): deliver fenced feeding reminders"
 - Slice 1 includes event/delivery persistence; no generic HTTP notification/reply routing yet.
 - Recipient role storage accepts owner/caregiver/subscriber without future schema redesign.
 - Food/event/job changes commit or roll back together; integration tests prove the `ReminderScheduler` implementation performs only ambient-transaction SQL before commit and no external side effect.
-- Pending strictly means no Telegram attempt started.
+- Pending strictly means no Telegram attempt started; missing Telegram identities materialize directly as permanent failed deliveries with sanitized audit errors.
 - Every send has committed sending fence; stale completion cannot overwrite newer generation.
-- Ambiguous/expired sends become unknown; sent/unknown never auto-retry.
+- Ambiguous/expired sends become unknown; sent/unknown never auto-retry. Delivery retryability stops permanently at attempt 8, matching the Job declaration maxAttempts.
 - Reminder survives process restart and only current latest-food schedule sends.

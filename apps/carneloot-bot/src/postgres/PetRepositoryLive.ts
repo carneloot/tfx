@@ -76,6 +76,22 @@ export const layer: Layer.Layer<
 				),
 			);
 		const service: PetRepositoryService = {
+			findById: (petId) =>
+				sql<
+					Record<string, unknown>
+				>`SELECT * FROM carneloot.pets WHERE id=${petId}::uuid`.pipe(
+					Effect.flatMap((rows) =>
+						rows[0] === undefined ? Effect.succeed(undefined) : decode(rows[0]),
+					),
+					Effect.mapError((cause) =>
+						cause instanceof DomainPersistenceError
+							? cause
+							: new DomainPersistenceError({
+									message: 'Pet lookup failed',
+									cause,
+								}),
+					),
+				),
 			addOwned: (ownerId, name) =>
 				sql
 					.withTransaction(

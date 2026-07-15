@@ -6,10 +6,13 @@ import type {
 	PetNameAlreadyExists,
 	UserNotRegistered,
 } from '../domain/DomainError.js';
-import type { UserId } from '../domain/Ids.js';
+import type { PetId, UserId } from '../domain/Ids.js';
 import type { Pet, PetName } from '../domain/Pet.js';
 
 export interface PetRepositoryService {
+	readonly findById?: (
+		petId: PetId,
+	) => Effect.Effect<Pet | undefined, DomainPersistenceError>;
 	readonly addOwned: (
 		ownerId: UserId,
 		name: PetName,
