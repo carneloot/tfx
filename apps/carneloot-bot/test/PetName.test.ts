@@ -11,6 +11,7 @@ describe('PetName', () => {
 	it('enforces independent UTF-8 display and key limits', () => {
 		expect(new TextEncoder().encode(decode('a'.repeat(80)))).toHaveLength(80);
 		expect(() => decode('a'.repeat(81))).toThrow();
+		expect(new TextEncoder().encode(decode('🐶'.repeat(20)))).toHaveLength(80);
 		expect(() => decode('🐶'.repeat(21))).toThrow();
 	});
 	it('rejects empty and Cc controls while retaining Cf policy', () => {

@@ -12,14 +12,11 @@ export const PetId = Schema.String.check(Schema.isPattern(uuidPattern)).pipe(
 export type PetId = typeof PetId.Type;
 export const BotId = Schema.NonEmptyString.pipe(Schema.brand('CarnelootBotId'));
 export type BotId = typeof BotId.Type;
-const SafeTelegramInteger = Schema.Number.check(
+export const TelegramUserId = Schema.Number.check(
 	Schema.makeFilter((value) => Number.isSafeInteger(value) && value > 0),
-);
-export const TelegramUserId = SafeTelegramInteger.pipe(
-	Schema.brand('TelegramUserId'),
-);
+).pipe(Schema.brand('TelegramUserId'));
 export type TelegramUserId = typeof TelegramUserId.Type;
-export const TelegramChatId = SafeTelegramInteger.pipe(
-	Schema.brand('TelegramChatId'),
-);
+export const TelegramChatId = Schema.Number.check(
+	Schema.makeFilter((value) => Number.isSafeInteger(value) && value !== 0),
+).pipe(Schema.brand('TelegramChatId'));
 export type TelegramChatId = typeof TelegramChatId.Type;

@@ -24,6 +24,6 @@ CREATE TABLE IF NOT EXISTS carneloot.pets (
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
   CONSTRAINT pets_owner_name_key UNIQUE (owner_id, name_key),
-  CONSTRAINT pets_name_nonempty CHECK (length(name) > 0),
-  CONSTRAINT pets_name_key_nonempty CHECK (length(name_key) > 0)
+  CONSTRAINT pets_name_octets CHECK (octet_length(name) BETWEEN 1 AND 80),
+  CONSTRAINT pets_name_key_octets CHECK (octet_length(name_key) BETWEEN 1 AND 80)
 );

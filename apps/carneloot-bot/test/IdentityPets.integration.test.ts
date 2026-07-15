@@ -47,12 +47,56 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 			const counts = yield* sql<{
 				users: number;
 				identities: number;
-			}>`SELECT (SELECT count(*)::int FROM carneloot.telegram_identities WHERE bot_id=${profile.botId} AND telegram_user_id=${profile.telegramUserId}) users,(SELECT count(*)::int FROM carneloot.telegram_identities WHERE bot_id=${profile.botId} AND telegram_user_id=${profile.telegramUserId}) identities`;
-			return { a, b, counts: counts[0] };
+			}>`SELECT (SELECT count(*)::int FROM carneloot.users WHERE id=${a.user.id}::uuid) users,(SELECT count(*)::int FROM carneloot.telegram_identities WHERE bot_id=${profile.botId} AND telegram_user_id=${profile.telegramUserId}) identities`;
+			const ledger = yield* sql<{
+				count: number;
+				checksum: string;
+			}>`SELECT count(*)::int count,max(checksum) checksum FROM carneloot.app_migrations WHERE version=1 GROUP BY version`;
+			return { a, b, counts: counts[0], ledger: ledger[0] };
 		});
 		const result = await Effect.runPromise(Effect.provide(program, adapters));
 		expect(result.a.user.id).toBe(result.b.user.id);
 		expect(result.counts).toMatchObject({ users: 1, identities: 1 });
+		expect(result.ledger).toEqual({
+			count: 1,
+			checksum: migration0001Checksum,
+		});
+	});
+	it('refreshes nullable profile fields and allows shared usernames', async () => {
+		const secondProfile = {
+			...profile,
+			telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(9002),
+			privateChatId: Schema.decodeUnknownSync(TelegramChatId)(9002),
+		};
+		const program = Effect.gen(function* () {
+			yield* migrate;
+			const users = yield* UserRepository;
+			const first = yield* users.registerTelegramProfile(profile);
+			yield* Effect.sleep('2 millis');
+			const refreshed = yield* users.registerTelegramProfile({
+				...profile,
+				username: null,
+				firstName: 'Ana Maria',
+				lastName: null,
+			});
+			yield* users.registerTelegramProfile({ ...profile, username: 'shared' });
+			const shared = yield* users.registerTelegramProfile({
+				...secondProfile,
+				username: 'shared',
+			});
+			return { first, refreshed, shared };
+		});
+		const result = await Effect.runPromise(Effect.provide(program, adapters));
+		expect(result.refreshed.user.id).toBe(result.first.user.id);
+		expect(result.refreshed.user.updatedAt).toBeGreaterThan(
+			result.first.user.updatedAt,
+		);
+		expect(result.refreshed.profile).toMatchObject({
+			username: null,
+			firstName: 'Ana Maria',
+			lastName: null,
+		});
+		expect(result.shared.user.id).not.toBe(result.first.user.id);
 	});
 	it('rejects migration checksum drift without applying work', async () => {
 		const program = Effect.gen(function* () {
@@ -99,5 +143,38 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 			_tag: 'Failure',
 			failure: { _tag: 'PetNameAlreadyExists' },
 		});
+	});
+	it('enforces byte limits and explicit FK deletion policies in SQL', async () => {
+		const directProfile = {
+			...profile,
+			telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(9010),
+			privateChatId: Schema.decodeUnknownSync(TelegramChatId)(9010),
+		};
+		const program = Effect.gen(function* () {
+			yield* migrate;
+			const users = yield* UserRepository;
+			const owner = yield* users.registerTelegramProfile(directProfile);
+			const sql = yield* PgClient.PgClient;
+			const now = new Date();
+			const accepted = '🐶'.repeat(20);
+			yield* sql`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${owner.user.id}::uuid,${accepted},${accepted},${now},${now})`;
+			const tooLong = '🐱'.repeat(21);
+			const rejected = yield* Effect.result(
+				sql`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${owner.user.id}::uuid,${tooLong},${tooLong},${now},${now})`,
+			);
+			const restricted = yield* Effect.result(
+				sql`DELETE FROM carneloot.users WHERE id=${owner.user.id}::uuid`,
+			);
+			yield* sql`DELETE FROM carneloot.pets WHERE owner_id=${owner.user.id}::uuid`;
+			yield* sql`DELETE FROM carneloot.users WHERE id=${owner.user.id}::uuid`;
+			const identities = yield* sql<{
+				count: number;
+			}>`SELECT count(*)::int count FROM carneloot.telegram_identities WHERE user_id=${owner.user.id}::uuid`;
+			return { rejected, restricted, identities: identities[0]?.count };
+		});
+		const result = await Effect.runPromise(Effect.provide(program, adapters));
+		expect(result.rejected._tag).toBe('Failure');
+		expect(result.restricted._tag).toBe('Failure');
+		expect(result.identities).toBe(0);
 	});
 });
