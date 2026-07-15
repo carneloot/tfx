@@ -2,7 +2,6 @@ import * as Layer from 'effect/Layer';
 
 import * as PollingSource from './internal/update-source/PollingSource.js';
 import { UpdateSource } from './internal/update-source/UpdateSource.js';
-import { Telegram } from './Telegram.js';
 import * as UpdateDelivery from './UpdateDelivery.js';
 export interface Options extends PollingSource.PollingOptions {
 	readonly id?: string;
