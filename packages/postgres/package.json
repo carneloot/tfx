@@ -8,12 +8,22 @@
 	"type": "module",
 	"sideEffects": [],
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./Options": "./src/Options.ts",
+		"./PostgresConversationStorage": "./src/PostgresConversationStorage.ts",
+		"./PostgresJobStore": "./src/PostgresJobStore.ts",
+		"./PostgresUpdateDeduplicator": "./src/PostgresUpdateDeduplicator.ts",
+		"./TfxPostgres": "./src/TfxPostgres.ts"
 	},
 	"publishConfig": {
 		"access": "public",
 		"exports": {
-			".": "./dist/index.js"
+			".": "./dist/index.js",
+			"./Options": "./dist/Options.js",
+			"./PostgresConversationStorage": "./dist/PostgresConversationStorage.js",
+			"./PostgresJobStore": "./dist/PostgresJobStore.js",
+			"./PostgresUpdateDeduplicator": "./dist/PostgresUpdateDeduplicator.js",
+			"./TfxPostgres": "./dist/TfxPostgres.js"
 		}
 	},
 	"dependencies": {
