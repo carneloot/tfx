@@ -53,6 +53,19 @@ const persistence = (cause: unknown) =>
 			);
 const protect = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 	effect.pipe(Effect.mapError(persistence));
+class HandlerFailure<E> {
+	readonly _tag = 'HandlerFailure';
+	constructor(readonly error: E) {}
+}
+const unwrapHandlerFailure = <A, E, R>(
+	effect: Effect.Effect<A, ConversationStorageError | HandlerFailure<E>, R>,
+): Effect.Effect<A, ConversationStorageError | E, R> =>
+	effect.pipe(
+		Effect.catchIf(
+			(cause): cause is HandlerFailure<E> => cause instanceof HandlerFailure,
+			(cause) => Effect.fail(cause.error),
+		),
+	);
 const validateScope = (scope: Scope) => {
 	if (
 		!Number.isSafeInteger(scope.chatId) ||
@@ -141,59 +154,67 @@ export const layer = (
 					expectedRevision,
 					handler,
 				) =>
-					protect(
-						sql.withTransaction(
-							Effect.gen(function* () {
-								yield* validateScope(scope);
-								if (!Number.isSafeInteger(updateId))
-									return yield* Effect.fail(
-										invariant('Unsafe update identifier'),
+					unwrapHandlerFailure(
+						sql
+							.withTransaction(
+								Effect.gen(function* () {
+									yield* validateScope(scope);
+									if (!Number.isSafeInteger(updateId))
+										return yield* Effect.fail(
+											invariant('Unsafe update identifier'),
+										);
+									const raw = (yield* select(scope, true))[0];
+									if (raw === undefined) return { _tag: 'Missing' as const };
+									const current = yield* decodeRow(raw);
+									if (current.lastUpdateId === updateId)
+										return { _tag: 'Duplicate' as const, row: current };
+									if (current.revision !== expectedRevision)
+										return { _tag: 'Stale' as const, row: current };
+									const now = yield* Clock.currentTimeMillis;
+									if (
+										current.expiresAt !== undefined &&
+										current.expiresAt <= now
+									) {
+										yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
+										return { _tag: 'Expired' as const };
+									}
+									const decision = yield* handler(current).pipe(
+										Effect.mapError((error) => new HandlerFailure(error)),
 									);
-								const raw = (yield* select(scope, true))[0];
-								if (raw === undefined) return { _tag: 'Missing' as const };
-								const current = yield* decodeRow(raw);
-								if (current.lastUpdateId === updateId)
-									return { _tag: 'Duplicate' as const, row: current };
-								if (current.revision !== expectedRevision)
-									return { _tag: 'Stale' as const, row: current };
-								const now = yield* Clock.currentTimeMillis;
-								if (
-									current.expiresAt !== undefined &&
-									current.expiresAt <= now
-								) {
-									yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
-									return { _tag: 'Expired' as const };
-								}
-								const decision = yield* handler(current);
-								const mutation: Mutation = decision.mutation;
-								if (mutation._tag === 'Delete') {
-									yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
+									const mutation: Mutation = decision.mutation;
+									if (mutation._tag === 'Delete') {
+										yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
+										return {
+											_tag: 'Applied' as const,
+											value: decision.value,
+											row: undefined,
+											...(mutation.afterCommit === undefined
+												? {}
+												: { afterCommit: mutation.afterCommit }),
+										};
+									}
+									const rows = yield* sql<
+										Record<string, unknown>
+									>`UPDATE ${schema}.${table} SET step=${mutation.step}, state_json=${sql.json(mutation.state)}, version=${mutation.version ?? current.version}, revision=revision+1, last_update_id=${updateId}, expires_at=${mutation.expiresAt === undefined ? null : new Date(mutation.expiresAt)}, updated_at=now() WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId} RETURNING *`;
+									const rawUpdated = yield* expectOne(rows, () =>
+										invariant('Conversation update returned no row'),
+									);
+									const updated = yield* decodeRow(rawUpdated);
 									return {
 										_tag: 'Applied' as const,
 										value: decision.value,
-										row: undefined,
+										row: updated,
 										...(mutation.afterCommit === undefined
 											? {}
 											: { afterCommit: mutation.afterCommit }),
 									};
-								}
-								const rows = yield* sql<
-									Record<string, unknown>
-								>`UPDATE ${schema}.${table} SET step=${mutation.step}, state_json=${sql.json(mutation.state)}, version=${mutation.version ?? current.version}, revision=revision+1, last_update_id=${updateId}, expires_at=${mutation.expiresAt === undefined ? null : new Date(mutation.expiresAt)}, updated_at=now() WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId} RETURNING *`;
-								const rawUpdated = yield* expectOne(rows, () =>
-									invariant('Conversation update returned no row'),
-								);
-								const updated = yield* decodeRow(rawUpdated);
-								return {
-									_tag: 'Applied' as const,
-									value: decision.value,
-									row: updated,
-									...(mutation.afterCommit === undefined
-										? {}
-										: { afterCommit: mutation.afterCommit }),
-								};
-							}),
-						),
+								}),
+							)
+							.pipe(
+								Effect.mapError((cause) =>
+									cause instanceof HandlerFailure ? cause : persistence(cause),
+								),
+							),
 					);
 				const service = {
 					load: (scope) =>

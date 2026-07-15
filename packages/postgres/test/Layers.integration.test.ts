@@ -18,22 +18,23 @@ describe.skipIf(!enabled)('PostgreSQL aggregate Layer', () => {
 			tablePrefix: 'case_',
 			botId: 'test',
 		};
-		const aggregate = Layer.provide(
+		const aggregate = Layer.provideMerge(
 			TfxPostgres.layer(options),
 			PostgresTestLayer.layer,
 		);
 		const program = Effect.gen(function* () {
+			const providedClient = yield* PgClient.PgClient;
 			yield* ConversationStorage;
 			yield* JobStore;
 			yield* UpdateDeduplicator;
-			const sql = yield* PgClient.PgClient;
-			return yield* sql<{
+			const diagnosticClient = yield* PgClient.PgClient;
+			const rows = yield* diagnosticClient<{
 				current_database: string;
 			}>`SELECT current_database()`;
+			return { sameClient: providedClient === diagnosticClient, rows };
 		});
-		const rows = await Effect.runPromise(
-			Effect.provide(program, Layer.merge(aggregate, PostgresTestLayer.layer)),
-		);
-		expect(rows).toHaveLength(1);
+		const result = await Effect.runPromise(Effect.provide(program, aggregate));
+		expect(result.sameClient).toBe(true);
+		expect(result.rows).toHaveLength(1);
 	});
 });

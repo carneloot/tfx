@@ -190,6 +190,22 @@ export const layer = (
 								? Effect.succeed(undefined)
 								: decodeRow(rows[0]),
 					);
+				const claimDue = (now: number, leaseDuration: number) =>
+					Effect.gen(function* () {
+						const dueRows = yield* sql<
+							Record<string, unknown>
+						>`SELECT * FROM ${schema}.${jobs} WHERE status='scheduled' AND run_at<=${new Date(now)} AND (lease_expires_at IS NULL OR lease_expires_at<=${new Date(now)}) ORDER BY run_at,created_at FOR UPDATE SKIP LOCKED LIMIT 1`;
+						if (dueRows[0] === undefined) return undefined;
+						const due = yield* decodeRow(dueRows[0]);
+						const rows = yield* sql<
+							Record<string, unknown>
+						>`UPDATE ${schema}.${jobs} SET lease_phase='migration',lease_generation=lease_generation+1,lease_expires_at=${new Date(now + leaseDuration)},updated_at=${new Date(now)} WHERE id=${due.id}::uuid RETURNING *`;
+						const record = yield* decodeOne(rows);
+						return {
+							record,
+							token: { id: record.id, generation: record.leaseGeneration },
+						};
+					});
 				const service = {
 					schedule: (request) =>
 						protect(
@@ -223,7 +239,7 @@ export const layer = (
 						protect(
 							sql.withTransaction(
 								Effect.gen(function* () {
-									while (true) {
+									for (let swept = 0; swept < 64; swept++) {
 										const expiredRows = yield* sql<
 											Record<string, unknown>
 										>`SELECT * FROM ${schema}.${jobs} WHERE status='running' AND lease_phase='execution' AND lease_expires_at<=${new Date(now)} ORDER BY run_at,created_at FOR UPDATE SKIP LOCKED LIMIT 1`;
@@ -246,23 +262,9 @@ export const layer = (
 												},
 											};
 										}
-										const dueRows = yield* sql<
-											Record<string, unknown>
-										>`SELECT * FROM ${schema}.${jobs} WHERE status='scheduled' AND run_at<=${new Date(now)} AND (lease_expires_at IS NULL OR lease_expires_at<=${new Date(now)}) ORDER BY run_at,created_at FOR UPDATE SKIP LOCKED LIMIT 1`;
-										if (dueRows[0] === undefined) return undefined;
-										const due = yield* decodeRow(dueRows[0]);
-										const rows = yield* sql<
-											Record<string, unknown>
-										>`UPDATE ${schema}.${jobs} SET lease_phase='migration',lease_generation=lease_generation+1,lease_expires_at=${new Date(now + leaseDuration)},updated_at=${new Date(now)} WHERE id=${due.id}::uuid RETURNING *`;
-										const record = yield* decodeOne(rows);
-										return {
-											record,
-											token: {
-												id: record.id,
-												generation: record.leaseGeneration,
-											},
-										};
+										return yield* claimDue(now, leaseDuration);
 									}
+									return yield* claimDue(now, leaseDuration);
 								}),
 							),
 						),

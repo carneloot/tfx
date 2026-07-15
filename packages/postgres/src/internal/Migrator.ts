@@ -4,6 +4,7 @@ import * as Effect from 'effect/Effect';
 import type { Options } from '../Options.js';
 import { up as up0001 } from './Migration0001.js';
 import { up as up0002 } from './Migration0002.js';
+import { migrationChecksums } from './MigrationChecksums.js';
 import { make, type Tables } from './Tables.js';
 
 interface Migration {
@@ -19,13 +20,13 @@ const migrations: ReadonlyArray<Migration> = Object.freeze([
 	{
 		version: 1,
 		name: 'tfx-core',
-		checksum: 'sha256:tfx-core-v1',
+		checksum: migrationChecksums[1],
 		up: up0001,
 	},
 	{
 		version: 2,
 		name: 'dedup-outcome-invariant',
-		checksum: 'sha256:dedup-outcome-invariant-v1',
+		checksum: migrationChecksums[2],
 		up: up0002,
 	},
 ]);
