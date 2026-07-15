@@ -5,7 +5,7 @@ import { JobStore } from '../../src/JobStore.js';
 import type { Capabilities } from './ConversationStorageConformance.js';
 export const jobStoreConformance = (
 	name: string,
-	storeLayer: () => Layer.Layer<JobStore>,
+	storeLayer: () => Layer.Layer<JobStore, unknown, never>,
 	capabilities: Capabilities = {},
 ) =>
 	describe(`${name} JobStore conformance`, () => {
