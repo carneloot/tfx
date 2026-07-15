@@ -1,6 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import * as PostgresJobStore from '@tfx/postgres/PostgresJobStore';
-import { Effect, Layer, Schema } from 'effect';
+import { Deferred, Effect, Fiber, Layer, Schema } from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { JobRuntime } from 'tfx/JobRuntime';
 import * as JobRuntimeLive from 'tfx/JobRuntime';
@@ -9,10 +9,12 @@ import { NetworkError, RateLimitError, TelegramError } from 'tfx/TelegramError';
 import { describe, expect, it } from 'vitest';
 
 import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
+import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import { FoodAmountMg } from '../../src/domain/pet-food/FoodAmount.js';
 import { FoodEntryId } from '../../src/domain/pet-food/PetFood.js';
 import { PetName } from '../../src/domain/Pet.js';
 import * as FeedingReminderJobLive from '../../src/jobs/FeedingReminderJobLive.js';
+import { NotificationRepository } from '../../src/ports/NotificationRepository.js';
 import { PetFoodRepository } from '../../src/ports/PetFoodRepository.js';
 import { PetRepository } from '../../src/ports/PetRepository.js';
 import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
@@ -28,13 +30,22 @@ import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
-type Mode = 'success' | 'network' | 'rate';
-const control: { mode: Mode; calls: number } = { mode: 'success', calls: 0 };
+type Mode = 'success' | 'network' | 'rate' | 'block';
+const control: {
+	mode: Mode;
+	calls: number;
+	started: Deferred.Deferred<void> | undefined;
+} = { mode: 'success', calls: 0, started: undefined };
 const botId = Schema.decodeUnknownSync(BotId)('carneloot');
 const telegram = Layer.succeed(Telegram, {
 	sendMessage: () =>
 		Effect.suspend(() => {
 			control.calls++;
+			if (control.mode === 'block')
+				return Effect.andThen(
+					Deferred.succeed(control.started!, undefined),
+					Effect.never,
+				);
 			if (control.mode === 'network')
 				return Effect.fail(
 					new TelegramError({
@@ -214,6 +225,35 @@ else
 				await Effect.runPromise(Effect.provide(program, layer));
 				expect(control.calls).toBe(1);
 			}
+		});
+
+		it('recovers an interrupted committed send fence to unknown', async () => {
+			control.mode = 'block';
+			control.calls = 0;
+			control.started = Deferred.makeUnsafe<void>();
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(2_000);
+				const fixture = yield* scheduleFixture;
+				yield* TestClock.setTime(3_000);
+				const fiber = yield* Effect.forkChild(runFresh);
+				yield* Deferred.await(control.started!);
+				yield* Fiber.interrupt(fiber);
+				const sql = yield* PgClient.PgClient;
+				const [sending] = yield* sql<{
+					status: string;
+				}>`SELECT status FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
+				expect(sending?.status).toBe('sending');
+				yield* TestClock.setTime(3_101);
+				yield* (yield* NotificationRepository).recoverExpired(
+					Schema.decodeUnknownSync(EventId)(fixture.event.id),
+					3_101,
+				);
+				const [unknown] = yield* sql<{
+					status: string;
+				}>`SELECT status FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
+				expect(unknown?.status).toBe('unknown');
+			});
+			await Effect.runPromise(Effect.provide(program, layer));
 		});
 
 		it('cancels stale latest food before Telegram', async () => {
