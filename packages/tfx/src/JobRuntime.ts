@@ -201,7 +201,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							} else
 								yield* store.finalize(
 									claim.token,
-									JobOutcome.fatalFailure(Cause.pretty(exit.cause)),
+									JobOutcome.fatalFailure('Job execution defect'),
 									finishedAt,
 								);
 						}

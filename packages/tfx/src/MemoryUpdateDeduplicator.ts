@@ -15,6 +15,7 @@ interface Row {
 	completed?: CompletedOutcome;
 	retentionUntil?: number;
 	waiters: Array<Deferred.Deferred<ObservedCompletion>>;
+	released: boolean;
 }
 class Mutex {
 	private tail = Promise.resolve();
@@ -50,6 +51,7 @@ const make = (): UpdateDeduplicatorService => {
 						return { _tag: 'Completed' as const, outcome: current.completed };
 					if (
 						current === undefined ||
+						current.released ||
 						current.leaseExpiresAt <= now ||
 						(current.completed !== undefined && current.retentionUntil! <= now)
 					) {
@@ -57,6 +59,7 @@ const make = (): UpdateDeduplicatorService => {
 							generation: (current?.generation ?? 0) + 1,
 							leaseExpiresAt: now + duration,
 							waiters: [],
+							released: false,
 						};
 						rows.set(updateId, row);
 						return {
@@ -86,6 +89,7 @@ const make = (): UpdateDeduplicatorService => {
 					if (
 						row === undefined ||
 						row.generation !== token.generation ||
+						row.released ||
 						row.completed !== undefined
 					)
 						return false;
@@ -100,6 +104,7 @@ const make = (): UpdateDeduplicatorService => {
 					if (
 						row === undefined ||
 						row.generation !== token.generation ||
+						row.released ||
 						row.completed !== undefined
 					)
 						return false;
@@ -119,11 +124,13 @@ const make = (): UpdateDeduplicatorService => {
 				if (
 					row === undefined ||
 					row.generation !== token.generation ||
+					row.released ||
 					row.completed !== undefined
 				)
 					return false;
-				rows.delete(token.updateId);
-				for (const waiter of row.waiters)
+				row.released = true;
+				row.leaseExpiresAt = 0;
+				for (const waiter of row.waiters.splice(0))
 					Deferred.doneUnsafe(waiter, Effect.succeed({ _tag: 'Released' }));
 				return true;
 			}),

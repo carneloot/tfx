@@ -53,8 +53,13 @@ describe('UpdateDeduplicator', () => {
 					yield* dedup.complete(first.token, DispatchOutcome.handled),
 				).toBe(false);
 				expect(yield* dedup.release(second.token)).toBe(true);
+				expect(
+					yield* dedup.complete(second.token, DispatchOutcome.handled),
+				).toBe(false);
 				const third = yield* dedup.claim(2);
 				expect(third._tag).toBe('Acquired');
+				if (third._tag === 'Acquired')
+					expect(third.token.generation).toBe(second.token.generation + 1);
 			}),
 		);
 	});
