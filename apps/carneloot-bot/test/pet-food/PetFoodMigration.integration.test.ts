@@ -46,4 +46,86 @@ describe.skipIf(!enabled)('pet food migration', () => {
 			'pet_food_entries_latest_idx',
 		);
 	});
+	it('executes FK, range, null-pair, uniqueness, and cascade constraints', async () => {
+		const userId = crypto.randomUUID();
+		const petId = crypto.randomUUID();
+		const missingPetId = crypto.randomUUID();
+		const missingUserId = crypto.randomUUID();
+		const program = Effect.gen(function* () {
+			yield* migrate;
+			const sql = yield* PgClient.PgClient;
+			return yield* Effect.gen(function* () {
+				yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${userId}::uuid,now(),now())`;
+				yield* sql`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${petId}::uuid,${userId}::uuid,'Constraint pet','constraint pet',now(),now())`;
+				yield* sql`INSERT INTO carneloot.pet_food_settings (pet_id,day_start,timezone,reminder_delay_ms,created_at,updated_at) VALUES (${petId}::uuid,NULL,NULL,NULL,now(),now())`;
+
+				const settingsPetFk = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_settings (pet_id,day_start,timezone,reminder_delay_ms,created_at,updated_at) VALUES (${missingPetId}::uuid,NULL,NULL,NULL,now(),now())`,
+				);
+				const dayStartPair = yield* Effect.result(
+					sql`UPDATE carneloot.pet_food_settings SET day_start=${'08:00'}::time WHERE pet_id=${petId}::uuid`,
+				);
+				const timeZonePair = yield* Effect.result(
+					sql`UPDATE carneloot.pet_food_settings SET timezone='UTC' WHERE pet_id=${petId}::uuid`,
+				);
+				const zeroDelay = yield* Effect.result(
+					sql`UPDATE carneloot.pet_food_settings SET reminder_delay_ms=0 WHERE pet_id=${petId}::uuid`,
+				);
+				const excessiveDelay = yield* Effect.result(
+					sql`UPDATE carneloot.pet_food_settings SET reminder_delay_ms=2592000001 WHERE pet_id=${petId}::uuid`,
+				);
+
+				const entryId = crypto.randomUUID();
+				yield* sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${entryId}::uuid,${petId}::uuid,${userId}::uuid,50000,now(),'constraint-test',1,now(),now())`;
+				const duplicateSource = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,50000,now(),'constraint-test',1,now(),now())`,
+				);
+				const zeroAmount = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,0,now(),'constraint-test',2,now(),now())`,
+				);
+				const excessiveAmount = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,100000001,now(),'constraint-test',3,now(),now())`,
+				);
+				const entryPetFk = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${missingPetId}::uuid,${userId}::uuid,1,now(),'constraint-test',4,now(),now())`,
+				);
+				const recorderFk = yield* Effect.result(
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${missingUserId}::uuid,1,now(),'constraint-test',5,now(),now())`,
+				);
+
+				yield* sql`DELETE FROM carneloot.pets WHERE id=${petId}::uuid`;
+				const children = yield* sql<{
+					settings: number;
+					entries: number;
+				}>`SELECT (SELECT count(*)::int FROM carneloot.pet_food_settings WHERE pet_id=${petId}::uuid) settings,(SELECT count(*)::int FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid) entries`;
+				return {
+					failures: [
+						settingsPetFk,
+						dayStartPair,
+						timeZonePair,
+						zeroDelay,
+						excessiveDelay,
+						duplicateSource,
+						zeroAmount,
+						excessiveAmount,
+						entryPetFk,
+						recorderFk,
+					],
+					children: children[0],
+				};
+			}).pipe(
+				Effect.ensuring(
+					sql`DELETE FROM carneloot.users WHERE id=${userId}::uuid`.pipe(
+						Effect.ignore,
+					),
+				),
+			);
+		});
+		const result = await Effect.runPromise(
+			Effect.provide(program, PostgresTestLayer.layer),
+		);
+		expect(result.failures).toHaveLength(10);
+		expect(result.failures.every((exit) => exit._tag === 'Failure')).toBe(true);
+		expect(result.children).toEqual({ settings: 0, entries: 0 });
+	});
 });

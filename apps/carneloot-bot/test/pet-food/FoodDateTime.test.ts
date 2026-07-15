@@ -52,6 +52,11 @@ describe('FoodDateTime', () => {
 			runAt('2024-01-01T00:00:00Z', parse('03/11/2024 01:30', zone)),
 		).resolves.toBe(instant('2024-11-03T05:30:00Z'));
 	});
+	it('rolls a past yearless date across Dec 31 to Jan 1', async () => {
+		await expect(
+			runAt('2024-12-31T15:00:00Z', parse('01/01 08:00', zone)),
+		).resolves.toBe(instant('2025-01-01T13:00:00Z'));
+	});
 	it('uses the nearest valid yearless leap date within 366 local days', async () => {
 		await expect(
 			runAt('2023-03-01T15:00:00Z', parse('29/02 08:00', zone)),
