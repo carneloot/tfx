@@ -1,4 +1,4 @@
-import { Deferred, Effect, Layer } from 'effect';
+import { Deferred, Effect, Layer, Ref } from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { JobRuntime, type JobRuntimeService } from 'tfx/JobRuntime';
 import { describe, expect, it } from 'vitest';
@@ -68,6 +68,29 @@ describe('JobWorker', () => {
 				}),
 			),
 		);
+	});
+
+	it('interrupts an active runOne when worker scope closes', async () => {
+		const started = Deferred.makeUnsafe<void>();
+		const interrupted = Ref.makeUnsafe(false);
+		await Effect.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					yield* Layer.build(
+						worker(
+							runtime(() =>
+								Effect.andThen(
+									Deferred.succeed(started, undefined),
+									Effect.never,
+								).pipe(Effect.ensuring(Ref.set(interrupted, true))),
+							),
+						),
+					);
+					yield* Deferred.await(started);
+				}),
+			),
+		);
+		expect(Ref.getUnsafe(interrupted)).toBe(true);
 	});
 
 	it('surfaces loop failure through await', async () => {
