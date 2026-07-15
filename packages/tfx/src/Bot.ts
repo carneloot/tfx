@@ -59,3 +59,34 @@ const build = <
 
 export const make = <const Name extends string>(name: Name): Bot<Name, {}> =>
 	build(name, {});
+
+export interface MenuCommand {
+	readonly command: string;
+	readonly description: string;
+}
+
+/** Derives Telegram menu entries from command declaration metadata. */
+export const commandMenu = (bot: Bot<any, any>): ReadonlyArray<MenuCommand> => {
+	const entries: Array<MenuCommand> = [];
+	for (const groupId of Object.keys(bot.groups)) {
+		const group = bot.groups[groupId];
+		for (const commandId of Object.keys(group.commands)) {
+			const command = group.commands[commandId];
+			if (
+				command.description === undefined ||
+				command.description.length < 1 ||
+				command.description.length > 256
+			)
+				throw new Error(
+					`Command '${command.name}' in fragment '${group.id}' must have a description between 1 and 256 characters`,
+				);
+			entries.push(
+				Object.freeze({
+					command: command.name,
+					description: command.description,
+				}),
+			);
+		}
+	}
+	return Object.freeze(entries);
+};

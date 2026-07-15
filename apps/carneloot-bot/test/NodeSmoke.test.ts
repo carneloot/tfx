@@ -86,16 +86,25 @@ describe('portable Node composition', () => {
 		expect(Router.petFoodHandlers.entries).toHaveLength(4);
 		expect(Router.conversations).toHaveLength(4);
 		const polling = Production.pollingOptions(config);
-		expect(polling.commands.map(({ command }) => command)).toEqual([
-			'cadastrar',
-			'adicionar_pet',
-			'listar_pets',
-			'configurar_inicio_dia',
-			'configurar_atraso_notificacao',
-			'status_racao',
-			'colocar_racao',
+		expect(polling.commands).toEqual([
+			{
+				command: 'cadastrar',
+				description: 'Cadastrar ou atualizar seu perfil',
+			},
+			{ command: 'adicionar_pet', description: 'Adicionar um pet' },
+			{ command: 'listar_pets', description: 'Listar seus pets' },
+			{
+				command: 'configurar_inicio_dia',
+				description: 'Configurar início do dia do pet',
+			},
+			{
+				command: 'configurar_atraso_notificacao',
+				description: 'Configurar atraso das notificações',
+			},
+			{ command: 'status_racao', description: 'Consultar o status de ração' },
+			{ command: 'colocar_racao', description: 'Registrar ração para um pet' },
 		]);
-		expect(polling.commands).toHaveLength(7);
+		expect(polling.languageCode).toBe('pt');
 		expect(
 			polling.commands.some(({ command }) => String(command) === 'cancelar'),
 		).toBe(false);

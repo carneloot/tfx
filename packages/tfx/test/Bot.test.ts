@@ -43,6 +43,48 @@ describe('Bot declarations', () => {
 		);
 	});
 
+	it('derives Telegram menu commands from declaration metadata', () => {
+		const bot = Bot.make('App').add(
+			BotGroup.make('pets')
+				.add(
+					Command.make('add', {
+						name: 'add_pet',
+						description: 'Add a pet',
+						error: Schema.Void,
+					}),
+				)
+				.add(
+					Command.make('list', {
+						name: 'list_pets',
+						description: 'List pets',
+						error: Schema.Void,
+					}),
+				),
+		);
+		expect(Bot.commandMenu(bot)).toEqual([
+			{ command: 'add_pet', description: 'Add a pet' },
+			{ command: 'list_pets', description: 'List pets' },
+		]);
+	});
+
+	it.each([undefined, '', 'x'.repeat(257)])(
+		'rejects invalid menu description %j',
+		(description) => {
+			const bot = Bot.make('App').add(
+				BotGroup.make('pets').add(
+					Command.make('add', {
+						name: 'add_pet',
+						...(description === undefined ? {} : { description }),
+						error: Schema.Void,
+					}),
+				),
+			);
+			expect(() => Bot.commandMenu(bot)).toThrow(
+				"Command 'add_pet' in fragment 'pets' must have a description between 1 and 256 characters",
+			);
+		},
+	);
+
 	it('stores middleware ids and exposes a registry-backed invocation bridge', async () => {
 		const declaration = Middleware.make('current-user', {
 			scope: 'command',
