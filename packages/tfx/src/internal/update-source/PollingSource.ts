@@ -58,7 +58,10 @@ export const make = (
 				});
 			let offset: number | undefined;
 			let first = true;
-			const poll: Effect.Effect<void, unknown> = Effect.suspend(() => {
+			const poll: Effect.Effect<
+				void,
+				TelegramError | FatalPollingDispatchError
+			> = Effect.suspend(() => {
 				const request = telegram.getUpdates({
 					...(offset === undefined ? {} : { offset }),
 					limit: options.limit ?? 100,

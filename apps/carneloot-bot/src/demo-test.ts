@@ -1,9 +1,10 @@
 import * as BunRuntime from '@effect/platform-bun/BunRuntime';
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
-import { Console, Data, Effect, Layer, Redacted } from 'effect';
+import { Console, Data, Effect, Layer, Redacted, Schedule } from 'effect';
 import { BotRuntime } from 'tfx/BotRuntime';
 import { Telegram } from 'tfx/Telegram';
+import * as TelegramSchemas from 'tfx/TelegramSchemas';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
 
 import type { AppConfigService } from './Config.js';
@@ -48,7 +49,7 @@ const postgres =
 				),
 			)
 		: PgClient.layer({ url: Redacted.make(process.env.TEST_DATABASE_URL) });
-const config: AppConfigService = {
+const config = {
 	botToken: Redacted.make('fake-demo-token'),
 	databaseUrl: Redacted.make('postgres://redacted'),
 	botId: 'carneloot',
@@ -66,26 +67,36 @@ const config: AppConfigService = {
 	dedupRetentionMillis: 86_400_000,
 	tfxSchema: 'tfx_demo_test',
 	tfxTablePrefix: 'case_',
-};
-const update = (id: number, text: string) => ({
-	update_id: id,
-	message: {
-		message_id: id,
-		date: Math.floor(Date.now() / 1000),
-		chat: { id: 7201, type: 'private' },
-		from: { id: 5201, is_bot: false, first_name: 'Demo' },
-		text,
-		...(text.startsWith('/')
-			? { entities: [{ type: 'bot_command', offset: 0, length: text.length }] }
-			: {}),
-	},
-});
-const telegram = Layer.succeed(Telegram, {
-	sendMessage: () => Effect.succeed({ message_id: 1 }),
+} satisfies AppConfigService;
+const update = (id: number, text: string) =>
+	TelegramSchemas.Update.make({
+		update_id: id,
+		message: {
+			message_id: id,
+			date: Math.floor(Date.now() / 1000),
+			chat: { id: 7201, type: 'private' },
+			from: { id: 5201, is_bot: false, first_name: 'Demo' },
+			text,
+			...(text.startsWith('/')
+				? {
+						entities: [{ type: 'bot_command', offset: 0, length: text.length }],
+					}
+				: {}),
+		},
+	});
+const telegram = Layer.mock(Telegram, {
+	sendMessage: () =>
+		Effect.succeed(
+			TelegramSchemas.Message.make({
+				message_id: 1,
+				date: 0,
+				chat: { id: 7201, type: 'private' },
+			}),
+		),
 	setMessageReaction: () => Effect.succeed(true),
 	answerCallbackQuery: () => Effect.succeed(true),
-} as never);
-const transcript = [
+});
+const transcript = Object.freeze([
 	'/cadastrar',
 	'/adicionar_pet',
 	'Rex',
@@ -101,7 +112,7 @@ const transcript = [
 	'/colocar_racao',
 	'Rex',
 	'50g',
-] as const;
+]);
 const program = Effect.scoped(
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
@@ -118,7 +129,7 @@ const program = Effect.scoped(
 		for (const [index, text] of transcript.entries()) {
 			const outcome = yield* Effect.provide(
 				Effect.flatMap(BotRuntime, (runtime) =>
-					runtime.dispatch(update(index + 1, text) as never),
+					runtime.dispatch(update(index + 1, text)),
 				),
 				context,
 			);
@@ -133,24 +144,23 @@ const program = Effect.scoped(
 		const db = sql;
 		// Parameterize scheduled reminder to due-now only after transcript commits.
 		yield* db`UPDATE tfx_demo_test.case_jobs SET run_at=now() WHERE declaration='feeding-reminder' AND status='scheduled'`;
-		const awaitReminder = (remaining: number): Effect.Effect<void, Error> =>
-			Effect.flatMap(
-				db<{
-					status: string;
-				}>`SELECT status FROM carneloot.notification_events LIMIT 1`,
-				(rows) =>
-					rows[0]?.status === 'completed'
-						? Effect.void
-						: remaining === 0
-							? Effect.fail(
-									new DemoTestError({
-										reason: 'ReminderTimeout',
-										message: 'demo reminder did not complete',
-									}),
-								)
-							: Effect.andThen(Effect.sleep(10), awaitReminder(remaining - 1)),
-			);
-		yield* awaitReminder(200);
+		const awaitReminder = Effect.flatMap(
+			db<{
+				status: string;
+			}>`SELECT status FROM carneloot.notification_events LIMIT 1`,
+			(rows) =>
+				rows[0]?.status === 'completed'
+					? Effect.void
+					: Effect.fail(
+							new DemoTestError({
+								reason: 'ReminderTimeout',
+								message: 'demo reminder did not complete',
+							}),
+						),
+		).pipe(
+			Effect.retry(Schedule.max([Schedule.spaced(10), Schedule.recurs(200)])),
+		);
+		yield* awaitReminder;
 		yield* Effect.provide(Program.releaseSmokeHealth, context);
 		const [counts] = yield* db<{
 			users: number;
@@ -190,5 +200,5 @@ const program = Effect.scoped(
 			);
 		yield* Console.log(summary);
 	}),
-) as Effect.Effect<void, unknown, never>;
+);
 BunRuntime.runMain(Effect.provide(program, postgres));

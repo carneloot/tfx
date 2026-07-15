@@ -1,6 +1,7 @@
 import * as Cause from 'effect/Cause';
 import * as Clock from 'effect/Clock';
 import * as Context from 'effect/Context';
+import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 import * as Layer from 'effect/Layer';
@@ -10,6 +11,14 @@ import * as Job from './Job.js';
 import * as JobOutcome from './JobOutcome.js';
 import { JobStore, JobStoreError, type JobRecord } from './JobStore.js';
 import { VersionedSchemaError } from './VersionedSchema.js';
+export class JobRuntimeOptionsError extends Data.TaggedError(
+	'JobRuntimeOptionsError',
+)<{
+	readonly option: 'leaseDuration' | 'heartbeatInterval';
+	readonly message: string;
+}> {}
+export type JobRuntimeError = JobStoreError | JobRuntimeOptionsError;
+
 export interface JobRuntimeService {
 	readonly schedule: <J extends Job.Job<any, any, any>>(
 		job: J,
@@ -22,13 +31,13 @@ export interface JobRuntimeService {
 	readonly runOne: (options?: {
 		readonly leaseDuration?: number;
 		readonly heartbeatInterval?: number;
-	}) => Effect.Effect<JobRecord | undefined, unknown>;
+	}) => Effect.Effect<JobRecord | undefined, JobRuntimeError>;
 	readonly problems: Effect.Effect<ReadonlyArray<JobRecord>, JobStoreError>;
 	readonly cancel: (id: string) => Effect.Effect<boolean, JobStoreError>;
 	readonly releaseFailed: (
 		id: string,
 		options: { readonly reason: string; readonly resetAttempts?: boolean },
-	) => Effect.Effect<JobRecord, unknown>;
+	) => Effect.Effect<JobRecord, JobStoreError>;
 }
 export class JobRuntime extends Context.Service<
 	JobRuntime,
@@ -84,14 +93,23 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							options.heartbeatInterval ??
 							Math.max(1, Math.floor(leaseDuration / 3));
 						if (!Number.isFinite(leaseDuration) || leaseDuration <= 0)
-							throw new TypeError('leaseDuration must be finite and positive');
+							return yield* Effect.fail(
+								new JobRuntimeOptionsError({
+									option: 'leaseDuration',
+									message: 'leaseDuration must be finite and positive',
+								}),
+							);
 						if (
 							!Number.isFinite(heartbeatInterval) ||
 							heartbeatInterval <= 0 ||
 							heartbeatInterval >= leaseDuration
 						)
-							throw new TypeError(
-								'heartbeatInterval must be finite, positive, and less than leaseDuration',
+							return yield* Effect.fail(
+								new JobRuntimeOptionsError({
+									option: 'heartbeatInterval',
+									message:
+										'heartbeatInterval must be finite, positive, and less than leaseDuration',
+								}),
 							);
 						const claimNow = yield* Clock.currentTimeMillis;
 						const claim = yield* store.claimForMigration(

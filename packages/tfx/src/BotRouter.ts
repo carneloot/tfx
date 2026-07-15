@@ -13,6 +13,7 @@ import * as InternalRouter from './internal/runtime/Router.js';
 import type { Update } from './internal/telegram/generated/TelegramApi.types.js';
 import * as MessageContext from './MessageContext.js';
 import { MiddlewareRegistry } from './Middleware.js';
+import type { TaggedError } from './TaggedError.js';
 import * as UpdateContext from './UpdateContext.js';
 import * as UpdateRoutingScope from './UpdateRoutingScope.js';
 
@@ -28,10 +29,10 @@ type RequirementsOfConversations<C extends ReadonlyArray<BuiltConversation>> =
 	C[number] extends Conversations.BuiltConversation<any, infer R> ? R : never;
 export type CancelEffect = (
 	update: Update,
-) => Effect.Effect<unknown, unknown, any>;
+) => Effect.Effect<unknown, TaggedError, any>;
 type RequirementsOfCancel<C> = C extends (
 	update: Update,
-) => Effect.Effect<unknown, unknown, infer R>
+) => Effect.Effect<unknown, TaggedError, infer R>
 	? Exclude<R, UpdateContext.UpdateContext | MessageContext.MessageContext>
 	: never;
 export interface Options<
@@ -45,7 +46,7 @@ export interface Options<
 	readonly conversations?: C;
 	readonly botUsername: string;
 	readonly cancel?: Cancel;
-	readonly mapError?: (error: unknown) => DispatchOutcome.DispatchOutcome;
+	readonly mapError?: (error: TaggedError) => DispatchOutcome.DispatchOutcome;
 }
 export class UnknownPersistedConversationError extends Data.TaggedError(
 	'UnknownPersistedConversationError',
@@ -122,7 +123,7 @@ export const make = <
 		for (const group of Object.values(options.bot.groups) as ReadonlyArray<any>)
 			for (const command of Object.values(group.commands) as ReadonlyArray<any>)
 				declarations.set(command.name, { groupId: group.id, command });
-		const mapError = (error: unknown) =>
+		const mapError = (error: TaggedError) =>
 			outputFailure(error) ??
 			options.mapError?.(error) ??
 			DispatchOutcome.retryableFailure('router-handler-failed');

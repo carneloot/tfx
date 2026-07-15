@@ -8,6 +8,7 @@ import {
 } from 'tfx';
 
 import * as AddPet from '../application/AddPet.js';
+import { ApplicationError } from '../domain/ApplicationError.js';
 import { BotId, TelegramUserId, UserId } from '../domain/Ids.js';
 import { PetName } from '../domain/Pet.js';
 import { PetRepository } from '../ports/PetRepository.js';
@@ -30,7 +31,7 @@ export const declaration = Conversation.make('add-owned-pet', {
 		}),
 	},
 	idleTimeout: 15 * 60 * 1000,
-	error: undefined as any,
+	error: ApplicationError,
 });
 export const built = ConversationBuilder.done(
 	ConversationBuilder.make(declaration).step('name', {
@@ -40,7 +41,7 @@ export const built = ConversationBuilder.done(
 				yield* UserRepository;
 				const context = yield* MessageContext.MessageContext;
 				yield* context.reply('Qual o nome do seu pet?');
-			}).pipe(Effect.mapError((error): unknown => error)),
+			}),
 		onInput: (state, name) =>
 			Effect.gen(function* () {
 				const context = yield* MessageContext.MessageContext;

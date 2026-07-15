@@ -2,6 +2,9 @@ import * as Context from 'effect/Context';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 
+import type * as ErrorSchema from './ErrorSchema.js';
+import type { TaggedError } from './ErrorSchema.js';
+
 export type Scope = 'global' | 'group' | 'command' | 'conversation' | 'handler';
 
 type AnyKey = Context.Key<any, any>;
@@ -13,7 +16,7 @@ export interface Middleware<
 	S extends Scope,
 	Provides extends AnyKey,
 	Requires,
-	Error,
+	ES extends ErrorSchema.ErrorSchema,
 > {
 	readonly _tag: 'Middleware';
 	readonly id: Id;
@@ -22,41 +25,43 @@ export interface Middleware<
 	/** Request prerequisites, in declaration order. */
 	readonly requires: ReadonlyArray<AnyKey>;
 	readonly _requires: Requires;
-	readonly _error: Error;
+	readonly error: ES;
 }
 
 export interface Options<
 	S extends Scope,
 	Provides extends AnyKey,
 	Requires extends ReadonlyArray<AnyKey>,
-	Error,
+	ES extends ErrorSchema.ErrorSchema,
 > {
 	readonly scope: S;
 	readonly provides: Provides;
 	/** Request service keys which must have been provided earlier. */
 	readonly requires?: Requires;
 	/** Type witness for failures permitted while processing middleware. */
-	readonly error?: Error;
+	readonly error: ES;
 }
 
 export const make = <
 	const Id extends string,
 	const S extends Scope,
 	Provides extends AnyKey,
+	ES extends ErrorSchema.ErrorSchema,
 	const Requires extends ReadonlyArray<AnyKey> = readonly [],
-	Error = never,
 >(
 	id: Id,
-	options: Options<S, Provides, Requires, Error>,
-): Middleware<Id, S, Provides, Identifier<Requires[number]>, Error> =>
+	options: Options<S, Provides, Requires, ES> & {
+		readonly error: ErrorSchema.Valid<ES>;
+	},
+): Middleware<Id, S, Provides, Identifier<Requires[number]>, ES> =>
 	Object.freeze({
 		_tag: 'Middleware' as const,
 		id,
 		scope: options.scope,
 		provides: options.provides,
 		requires: Object.freeze([...(options.requires ?? [])]),
+		error: options.error,
 		_requires: undefined as Identifier<Requires[number]>,
-		_error: undefined as Error,
 	});
 
 export type AnyMiddleware = Middleware<string, Scope, AnyKey, any, any>;
@@ -69,8 +74,8 @@ export type ProvidedBy<Items extends ReadonlyArray<AnyMiddleware>> = Provided<
 >;
 export type DeclaredErrors<Items extends ReadonlyArray<AnyMiddleware>> =
 	Items[number] extends infer D
-		? D extends Middleware<any, any, any, any, infer E>
-			? E
+		? D extends Middleware<any, any, any, any, infer ES>
+			? ErrorSchema.ErrorOf<ES>
 			: never
 		: never;
 export type ValidOrder<
@@ -86,7 +91,9 @@ export type ValidOrder<
 	: true;
 
 type DeclaredError<D> =
-	D extends Middleware<any, any, any, any, infer E> ? E : never;
+	D extends Middleware<any, any, any, any, infer ES>
+		? ErrorSchema.ErrorOf<ES>
+		: never;
 export interface Application<D extends AnyMiddleware, Infrastructure, Error> {
 	readonly declaration: D;
 	readonly effect: Effect.Effect<
@@ -135,7 +142,6 @@ const scopeRank: Record<Scope, number> = {
 export interface Pipeline<Available, Infrastructure, Error> {
 	readonly _available: Available;
 	readonly _infrastructure: Infrastructure;
-	readonly _error: Error;
 	readonly applications: ReadonlyArray<AnyApplication>;
 	use<A extends AnyApplication>(
 		application: A & ([AppRequired<A>] extends [Available] ? unknown : never),
@@ -154,7 +160,6 @@ const build = <Available, Infrastructure, Error>(
 ): Pipeline<Available, Infrastructure, Error> => ({
 	_available: undefined as Available,
 	_infrastructure: undefined as Infrastructure,
-	_error: undefined as Error,
 	applications,
 	use(application) {
 		const previous = applications.at(-1);
@@ -203,10 +208,10 @@ export class MiddlewareRegistryError extends Error {
 export interface MiddlewareRegistryService {
 	readonly applications: Readonly<Record<string, AnyApplication>>;
 	/** Execute selected applications in declaration order around a request effect. */
-	readonly run: <A, E, R>(
+	readonly run: <A, E extends TaggedError, R>(
 		ids: ReadonlyArray<string>,
 		effect: Effect.Effect<A, E, R>,
-	) => Effect.Effect<A, E | unknown, R>;
+	) => Effect.Effect<A, E | TaggedError | MiddlewareRegistryError, R>;
 }
 
 export class MiddlewareRegistry extends Context.Service<

@@ -83,10 +83,7 @@ const validCalendarDate = (parts: LocalParts): boolean => {
 };
 
 /** Parses supported local food timestamps using Effect Clock and DateTime only. */
-export const parse = (
-	input: string,
-	timeZone: IanaTimeZone,
-): Effect.Effect<number, PetFoodError> =>
+export const parse = (input: string, timeZone: IanaTimeZone) =>
 	Effect.gen(function* () {
 		if (Option.isNone(DateTime.zoneMakeNamed(timeZone)))
 			return yield* Effect.fail(

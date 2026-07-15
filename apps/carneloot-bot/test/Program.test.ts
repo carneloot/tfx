@@ -1,17 +1,18 @@
 import { Effect, Layer } from 'effect';
-import { BotRuntime } from 'tfx/BotRuntime';
+import { BotRuntime, type BotRuntimeSourceError } from 'tfx/BotRuntime';
+import { JobStoreError } from 'tfx/JobStore';
 import * as UpdateDeduplicator from 'tfx/UpdateDeduplicator';
 import { describe, expect, it } from 'vitest';
 
-import { JobWorker } from '../src/JobWorker.js';
+import { JobWorker, type JobWorkerError } from '../src/JobWorker.js';
 import * as Program from '../src/Program.js';
 
-const bot = (awaitEffect: Effect.Effect<void, unknown>) =>
+const bot = (awaitEffect: Effect.Effect<void, BotRuntimeSourceError>) =>
 	Layer.succeed(BotRuntime, {
 		dispatch: () => Effect.die('unused'),
 		await: awaitEffect,
 	});
-const worker = (awaitEffect: Effect.Effect<void, unknown>) =>
+const worker = (awaitEffect: Effect.Effect<void, JobWorkerError>) =>
 	Layer.succeed(JobWorker, {
 		await: awaitEffect,
 		diagnostics: {
@@ -70,7 +71,11 @@ describe('Program', () => {
 					Program.run,
 					Layer.mergeAll(
 						bot(Effect.never),
-						worker(Effect.fail('worker failed')),
+						worker(
+							Effect.fail(
+								new JobStoreError('PersistenceFailure', 'worker failed'),
+							),
+						),
 						durable,
 					),
 				),
@@ -78,7 +83,11 @@ describe('Program', () => {
 		);
 		expect(result).toMatchObject({
 			_tag: 'Failure',
-			failure: 'worker failed',
+			failure: {
+				_tag: 'JobStoreError',
+				reason: 'PersistenceFailure',
+				message: 'worker failed',
+			},
 		});
 	});
 });

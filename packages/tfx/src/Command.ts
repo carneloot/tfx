@@ -1,5 +1,6 @@
 import type * as CommandInput from './CommandInput.js';
 import { none } from './CommandInput.js';
+import type * as ErrorSchema from './ErrorSchema.js';
 import { MessageContext } from './MessageContext.js';
 import type * as Middleware from './Middleware.js';
 import { UpdateContext } from './UpdateContext.js';
@@ -9,14 +10,14 @@ type BuiltIn = UpdateContext | MessageContext;
 export interface Command<
 	Id extends string,
 	Input extends CommandInput.CommandInput<any, any>,
-	Error,
+	ES extends ErrorSchema.ErrorSchema,
 	Middlewares extends ReadonlyArray<Middleware.AnyMiddleware> = readonly [],
 > {
 	readonly _tag: 'Command';
 	readonly id: Id;
 	readonly name: string;
 	readonly input: Input;
-	readonly error: Error | undefined;
+	readonly error: ES;
 	readonly description: string | undefined;
 	readonly language: string | undefined;
 	/** Ordered request middleware metadata. Implementations live in a separate Pipeline/Layer. */
@@ -25,12 +26,12 @@ export interface Command<
 
 export interface Options<
 	Input extends CommandInput.CommandInput<any, any>,
-	Error,
+	ES extends ErrorSchema.ErrorSchema,
 	Middlewares extends ReadonlyArray<Middleware.AnyMiddleware>,
 > {
 	readonly name: string;
 	readonly input?: Input;
-	readonly error?: Error;
+	readonly error: ES;
 	readonly description?: string;
 	readonly language?: string;
 	readonly middleware?: Middlewares;
@@ -45,17 +46,18 @@ const scopeRank: Record<Middleware.Scope, number> = {
 };
 export const make = <
 	const Id extends string,
+	ES extends ErrorSchema.ErrorSchema,
 	Input extends CommandInput.CommandInput<any, any> = typeof none,
-	Error = never,
 	const Middlewares extends ReadonlyArray<Middleware.AnyMiddleware> =
 		readonly [],
 >(
 	id: Id,
-	options: Options<Input, Error, Middlewares> &
-		(Middleware.ValidOrder<Middlewares, BuiltIn> extends true
+	options: Options<Input, ES, Middlewares> & {
+		readonly error: ErrorSchema.Valid<ES>;
+	} & (Middleware.ValidOrder<Middlewares, BuiltIn> extends true
 			? unknown
 			: { readonly middleware: never }),
-): Command<Id, Input, Error, Middlewares> => {
+): Command<Id, Input, ES, Middlewares> => {
 	const middleware = [...(options.middleware ?? [])] as Middlewares[number][];
 	const available = new Set<unknown>([UpdateContext, MessageContext]);
 	let rank = -1;
@@ -81,3 +83,5 @@ export const make = <
 		middleware: Object.freeze(middleware) as unknown as Middlewares,
 	});
 };
+export type Error<C> =
+	C extends Command<any, any, infer ES, any> ? ErrorSchema.ErrorOf<ES> : never;

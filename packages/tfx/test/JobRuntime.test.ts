@@ -16,9 +16,13 @@ const history = VersionedSchema.history(
 		(v) => ({ value: v.old }),
 	),
 );
+class RetryFailure extends Schema.TaggedErrorClass<RetryFailure>()(
+	'RetryFailure',
+	{},
+) {}
 const declaration = Job.make('work', {
 	payload: history,
-	error: undefined as unknown as string,
+	error: RetryFailure,
 	maxAttempts: 3,
 	retry: () => Job.retry(100),
 });
@@ -37,7 +41,7 @@ describe('JobRuntime', () => {
 			Effect.suspend(() => {
 				runs++;
 				return runs === 1
-					? Effect.fail('retry')
+					? Effect.fail(new RetryFailure())
 					: Effect.sync(() => expect(payload.value).toBe('old'));
 			}),
 		);

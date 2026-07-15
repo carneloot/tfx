@@ -1,6 +1,7 @@
 import * as Context from 'effect/Context';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
+import * as Schema from 'effect/Schema';
 import {
 	Bot,
 	BotBuilder,
@@ -24,25 +25,31 @@ class CurrentAdmin extends Context.Service<
 	CurrentAdmin,
 	{ readonly id: number }
 >()('test/CurrentAdmin') {}
-type AuthError = { readonly _tag: 'AuthError' };
+class AuthError extends Schema.TaggedErrorClass<AuthError>()('AuthError', {}) {}
 const user = Middleware.make('user', {
 	scope: 'global',
 	provides: CurrentUser,
-	error: undefined as unknown as AuthError,
+	error: AuthError,
 });
 const admin = Middleware.make('admin', {
 	scope: 'command',
 	provides: CurrentAdmin,
 	requires: [CurrentUser],
+	error: Schema.Void,
 });
-// @ts-expect-error CurrentUser is not available before user middleware
-Command.make('invalid-order', { name: 'invalid', middleware: [admin, user] });
+Command.make('invalid-order', {
+	name: 'invalid',
+	// @ts-expect-error CurrentUser is not available before user middleware
+	middleware: [admin, user],
+	error: Schema.Void,
+});
 Command.make('invalid-kind', {
 	name: 'invalid',
+	error: Schema.Void,
 	// @ts-expect-error commands are always message handlers
 	updateKinds: ['callback_query'],
 });
-type Allowed = { readonly _tag: 'Allowed' };
+class Allowed extends Schema.TaggedErrorClass<Allowed>()('Allowed', {}) {}
 
 const petInput = CommandInput.none as CommandInput.CommandInput<{
 	readonly name: string;
@@ -52,11 +59,11 @@ const pets = BotGroup.make('pets')
 		Command.make('addPet', {
 			name: 'add_pet',
 			input: petInput,
-			error: undefined as unknown as Allowed,
+			error: Allowed,
 			middleware: [user, admin],
 		}),
 	)
-	.add(Command.make('listPets', { name: 'list_pets' }));
+	.add(Command.make('listPets', { name: 'list_pets', error: Schema.Void }));
 const app = Bot.make('App').add(pets);
 
 const live = BotBuilder.group(app, 'pets', (handlers) =>
@@ -83,7 +90,7 @@ const _requirements: Layer.Layer<
 	| CallbackQueryContext.CallbackQueryContext
 > = live;
 const plainGroup = BotGroup.make('plain').add(
-	Command.make('ping', { name: 'ping' }),
+	Command.make('ping', { name: 'ping', error: Schema.Void }),
 );
 const plainBot = Bot.make('Plain').add(plainGroup);
 const plainLive: Layer.Layer<any, never, never> = BotBuilder.group(
@@ -95,9 +102,7 @@ void plainLive;
 
 declare const registry: Middleware.MiddlewareRegistryService;
 const typedEntries = BotBuilder.group(app, 'pets', (handlers) => {
-	const first = handlers.handle('addPet', () =>
-		Effect.fail({ _tag: 'Allowed' } as Allowed),
-	);
+	const first = handlers.handle('addPet', () => Effect.fail(new Allowed()));
 	const invoked: Effect.Effect<never, Allowed | AuthError, never> =
 		first._entries[0]!.invoke(registry, { name: 'pet' });
 	void invoked;
@@ -132,6 +137,6 @@ BotBuilder.group(app, 'pets', (handlers) =>
 );
 
 // @ts-expect-error duplicate command declaration
-pets.add(Command.make('addPet', { name: 'another' }));
+pets.add(Command.make('addPet', { name: 'another', error: Schema.Void }));
 // @ts-expect-error duplicate group declaration
 app.add(pets);

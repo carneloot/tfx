@@ -9,21 +9,26 @@ import * as ConversationInput from './ConversationInput.js';
 import {
 	ConversationStorage,
 	ConversationStorageError,
+	type Mutation,
 	type Scope,
 	type TransitionResult,
 } from './ConversationStorage.js';
 import type * as Transition from './internal/conversation/Transition.js';
+import type { TaggedError } from './TaggedError.js';
 import { VersionedSchemaError } from './VersionedSchema.js';
 
-export class ConversationScopeUnavailable extends Error {
-	readonly _tag = 'ConversationScopeUnavailable';
-}
-export class HandledWithOutputFailure extends Error {
-	readonly _tag = 'HandledWithOutputFailure';
-	constructor(readonly cause: unknown) {
-		super('Conversation state committed but output failed');
-	}
-}
+export class ConversationScopeUnavailable extends Schema.TaggedErrorClass<ConversationScopeUnavailable>()(
+	'ConversationScopeUnavailable',
+	{ message: Schema.String },
+) {}
+export class HandledWithOutputFailure extends Schema.TaggedErrorClass<HandledWithOutputFailure>()(
+	'HandledWithOutputFailure',
+	{ cause: Schema.Unknown },
+) {}
+export class ConversationExecutionError extends Schema.TaggedErrorClass<ConversationExecutionError>()(
+	'ConversationExecutionError',
+	{ cause: Schema.Unknown },
+) {}
 export interface BuiltConversation<
 	C extends Conversation.Conversation<any, any, any, any, any, any> =
 		Conversation.Conversation<any, any, any, any, any, any>,
@@ -37,17 +42,32 @@ export interface BuiltConversation<
 }
 type BuiltRequirements<B> =
 	B extends BuiltConversation<any, infer R> ? R : never;
+type BuiltError<B> =
+	B extends BuiltConversation<infer C, any> ? Conversation.ErrorOf<C> : never;
+export type ConversationServiceError<B> =
+	| BuiltError<B>
+	| ConversationScopeUnavailable
+	| ConversationStorageError
+	| Schema.SchemaError
+	| ConversationInput.ConversationInputDecodeError
+	| VersionedSchemaError
+	| HandledWithOutputFailure
+	| ConversationExecutionError;
 export interface ConversationsService {
 	readonly start: <B extends BuiltConversation<any, any>>(
 		built: B,
 		input: Conversation.StartupOf<B['declaration']>,
 		options: { readonly scope?: Scope; readonly conflict?: 'fail' | 'replace' },
-	) => Effect.Effect<void, unknown, BuiltRequirements<B>>;
+	) => Effect.Effect<void, ConversationServiceError<B>, BuiltRequirements<B>>;
 	readonly resume: <B extends BuiltConversation<any, any>>(
 		built: B,
 		input: unknown,
 		options: { readonly scope?: Scope; readonly updateId: number },
-	) => Effect.Effect<TransitionResult<void>, unknown, BuiltRequirements<B>>;
+	) => Effect.Effect<
+		TransitionResult<void>,
+		ConversationServiceError<B>,
+		BuiltRequirements<B>
+	>;
 	readonly cancelCurrent: (
 		scope?: Scope,
 	) => Effect.Effect<
@@ -60,15 +80,20 @@ const requireScope = (
 ): Effect.Effect<Scope, ConversationScopeUnavailable> =>
 	scope === undefined
 		? Effect.fail(
-				new ConversationScopeUnavailable(
-					'Conversation requires bot, chat, and user scope',
-				),
+				new ConversationScopeUnavailable({
+					message: 'Conversation requires bot, chat, and user scope',
+				}),
 			)
 		: Effect.succeed(scope);
-const output = (effect: Effect.Effect<void, unknown, unknown> | undefined) =>
+const output = <E extends TaggedError, R>(
+	effect: Effect.Effect<void, E, R> | undefined,
+) =>
 	effect === undefined
 		? Effect.void
-		: Effect.mapError(effect, (cause) => new HandledWithOutputFailure(cause));
+		: Effect.mapError(
+				effect,
+				(cause) => new HandledWithOutputFailure({ cause }),
+			);
 const invariant = (message: string, cause?: unknown) =>
 	new ConversationStorageError(
 		'InvariantViolation',
@@ -139,7 +164,11 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 						options.conflict ?? 'fail',
 					);
 					yield* output(handlers.enter(state));
-				}) as Effect.Effect<void, unknown, BuiltRequirements<B>>;
+				}) as Effect.Effect<
+					void,
+					ConversationServiceError<B>,
+					BuiltRequirements<B>
+				>;
 			const resume = <B extends BuiltConversation<any, any>>(
 				built: B,
 				input: unknown,
@@ -149,7 +178,11 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 					const scope = yield* requireScope(options.scope);
 					const loaded = yield* storage.load(scope);
 					if (loaded === undefined) return { _tag: 'Missing' as const };
-					const result = yield* storage.transition<void, unknown, unknown>(
+					const result = yield* storage.transition<
+						void,
+						ConversationServiceError<B>,
+						BuiltRequirements<B>
+					>(
 						scope,
 						options.updateId,
 						loaded.revision,
@@ -195,7 +228,16 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 										: handlers.onInvalid === undefined
 											? Effect.fail(decoded.failure)
 											: handlers.onInvalid(state, decoded.failure)
-								) as Effect.Effect<Transition.Transition, unknown, unknown>;
+								) as Effect.Effect<
+									Transition.Transition<
+										string,
+										unknown,
+										TaggedError,
+										BuiltRequirements<B>
+									>,
+									ConversationServiceError<B>,
+									BuiltRequirements<B>
+								>;
 								if (
 									transition._tag === 'Complete' ||
 									transition._tag === 'Cancelled'
@@ -241,7 +283,11 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 											: { afterCommit: transition.afterCommit }),
 									},
 								};
-							}),
+							}) as Effect.Effect<
+								{ readonly value: void; readonly mutation: Mutation },
+								ConversationServiceError<B>,
+								BuiltRequirements<B>
+							>,
 					);
 					if (result._tag === 'Applied') {
 						yield* output(result.afterCommit);
@@ -257,7 +303,7 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 					return result;
 				}) as Effect.Effect<
 					TransitionResult<void>,
-					unknown,
+					ConversationServiceError<B>,
 					BuiltRequirements<B>
 				>;
 			const service: ConversationsService = {

@@ -15,10 +15,9 @@ const boundary = (
 	date: Pick<DateTime.DateTime.Parts, 'year' | 'month' | 'day'>,
 	settings: Settings,
 ): DateTime.Zoned => {
-	const [hour, minute] = settings.localTime.split(':').map(Number) as [
-		number,
-		number,
-	];
+	const [hourText, minuteText] = settings.localTime.split(':');
+	const hour = Number(hourText);
+	const minute = Number(minuteText);
 	const value = DateTime.makeZoned(
 		{ ...date, hour, minute, second: 0, millisecond: 0 },
 		{

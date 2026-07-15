@@ -13,9 +13,11 @@ import {
 	Middleware,
 } from 'tfx';
 
-const first = BotGroup.make('first').add(Command.make('one', { name: 'one' }));
+const first = BotGroup.make('first').add(
+	Command.make('one', { name: 'one', error: Schema.Void }),
+);
 const second = BotGroup.make('second').add(
-	Command.make('two', { name: 'two' }),
+	Command.make('two', { name: 'two', error: Schema.Void }),
 );
 const bot = Bot.make('typed').add(first).add(second);
 const one = BotBuilder.buildGroup(bot, 'first', (handlers) =>
@@ -51,6 +53,7 @@ const declaration = Conversation.make('typed-conversation', {
 			input: ConversationInput.text(Schema.String),
 		}),
 	},
+	error: Schema.Void,
 });
 const built = ConversationBuilder.done(
 	ConversationBuilder.make(declaration).step('input', {

@@ -10,7 +10,7 @@ import {
 	UserNotRegistered,
 } from '../domain/DomainError.js';
 import { PetId, UserId } from '../domain/Ids.js';
-import { PetName, petNameKey, type Pet } from '../domain/Pet.js';
+import { PetName, petNameKey } from '../domain/Pet.js';
 import {
 	PetRepository,
 	type PetRepositoryService,
@@ -23,12 +23,18 @@ const Row = Schema.Struct({
 	created_at: Schema.Unknown,
 	updated_at: Schema.Unknown,
 });
-const decode = (value: unknown): Effect.Effect<Pet, DomainPersistenceError> =>
+const timestamp = (value: unknown) =>
+	value instanceof Date
+		? value.getTime()
+		: typeof value === 'string' || typeof value === 'number'
+			? new Date(value).getTime()
+			: Number.NaN;
+const decode = (value: unknown) =>
 	Effect.try({
 		try: () => {
 			const row = Schema.decodeUnknownSync(Row)(value);
-			const createdAt = new Date(row.created_at as string).getTime();
-			const updatedAt = new Date(row.updated_at as string).getTime();
+			const createdAt = timestamp(row.created_at);
+			const updatedAt = timestamp(row.updated_at);
 			if (!Number.isFinite(createdAt) || !Number.isFinite(updatedAt))
 				throw new Error('Invalid timestamp');
 			return {
@@ -44,20 +50,14 @@ const decode = (value: unknown): Effect.Effect<Pet, DomainPersistenceError> =>
 	});
 const constraint = (cause: unknown) =>
 	typeof cause === 'object' && cause !== null && 'constraint' in cause
-		? (cause as { readonly constraint?: unknown }).constraint
+		? cause.constraint
 		: undefined;
-const persistence = (
-	cause: unknown,
-): DomainPersistenceError | UserNotRegistered =>
+const persistence = (cause: unknown) =>
 	cause instanceof DomainPersistenceError || cause instanceof UserNotRegistered
 		? cause
 		: new DomainPersistenceError({ message: 'Pet repository failed', cause });
 
-export const layer: Layer.Layer<
-	PetRepository,
-	DomainPersistenceError,
-	PgClient.PgClient
-> = Layer.effect(
+export const layer = Layer.effect(
 	PetRepository,
 	Effect.map(PgClient.PgClient, (sql) => {
 		const assertOwner = (ownerId: UserId) =>
@@ -75,7 +75,7 @@ export const layer: Layer.Layer<
 							: Effect.void,
 				),
 			);
-		const service: PetRepositoryService = {
+		const service = {
 			findById: (petId) =>
 				sql<
 					Record<string, unknown>
@@ -126,7 +126,7 @@ export const layer: Layer.Layer<
 						}),
 					)
 					.pipe(Effect.mapError(persistence)),
-		};
+		} satisfies PetRepositoryService;
 		return service;
 	}),
 );

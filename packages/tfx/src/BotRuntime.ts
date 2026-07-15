@@ -1,4 +1,5 @@
 import * as Context from 'effect/Context';
+import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
 import * as Fiber from 'effect/Fiber';
 import * as Layer from 'effect/Layer';
@@ -12,10 +13,14 @@ import { UpdateSource } from './internal/update-source/UpdateSource.js';
 import * as Partitioning from './Partitioning.js';
 import { UpdateDeduplicator } from './UpdateDeduplicator.js';
 import type * as UpdateDelivery from './UpdateDelivery.js';
+export class BotRuntimeSourceError extends Data.TaggedError(
+	'BotRuntimeSourceError',
+)<{ readonly cause: unknown }> {}
+
 export interface BotRuntimeService {
 	readonly dispatch: (update: Update) => Effect.Effect<DispatchOutcome, never>;
 	/** Joins the retained update-source fiber. Source success/failure is observable. */
-	readonly await: Effect.Effect<void, unknown>;
+	readonly await: Effect.Effect<void, BotRuntimeSourceError>;
 }
 export class BotRuntime extends Context.Service<
 	BotRuntime,
@@ -91,8 +96,13 @@ export const layer = <
 			const sourceFiber = yield* Effect.forkScoped(
 				source.run(dispatcher.dispatch),
 			);
-			return { dispatch: dispatcher.dispatch, await: Fiber.join(sourceFiber) };
+			return {
+				dispatch: dispatcher.dispatch,
+				await: Fiber.join(sourceFiber).pipe(
+					Effect.mapError((cause) => new BotRuntimeSourceError({ cause })),
+				),
+			};
 		}),
 	);
-	return Layer.provide(runtime, options.delivery.layer) as never;
+	return Layer.provide(runtime, options.delivery.layer);
 };

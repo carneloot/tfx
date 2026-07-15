@@ -1,4 +1,3 @@
-import { Data } from 'effect';
 import * as Schema from 'effect/Schema';
 import * as Job from 'tfx/Job';
 import * as VersionedSchema from 'tfx/VersionedSchema';
@@ -16,18 +15,25 @@ export const PayloadV1 = Schema.Struct({
 export const Payload = VersionedSchema.history(
 	VersionedSchema.version(1, PayloadV1),
 );
-export class FeedingReminderRetryError extends Data.TaggedError(
+export class FeedingReminderRetryError extends Schema.TaggedErrorClass<FeedingReminderRetryError>()(
 	'FeedingReminderRetryError',
-)<{ readonly message: string; readonly retryAfter?: number }> {}
-export class FeedingReminderPermanentError extends Data.TaggedError(
+	{
+		message: Schema.String,
+		retryAfter: Schema.optionalKey(Schema.Number),
+	},
+) {}
+export class FeedingReminderPermanentError extends Schema.TaggedErrorClass<FeedingReminderPermanentError>()(
 	'FeedingReminderPermanentError',
-)<{ readonly message: string }> {}
-export type FeedingReminderError =
-	| FeedingReminderRetryError
-	| FeedingReminderPermanentError;
+	{ message: Schema.String },
+) {}
+export const FeedingReminderError = Schema.Union([
+	FeedingReminderRetryError,
+	FeedingReminderPermanentError,
+]);
+export type FeedingReminderError = typeof FeedingReminderError.Type;
 export const declaration = Job.make('feeding-reminder', {
 	payload: Payload,
-	error: undefined as unknown as FeedingReminderError,
+	error: FeedingReminderError,
 	maxAttempts: 8,
 	retry: (error) =>
 		error._tag === 'FeedingReminderRetryError'

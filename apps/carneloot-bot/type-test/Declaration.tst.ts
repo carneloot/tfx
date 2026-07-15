@@ -1,4 +1,4 @@
-import { Context, Effect } from 'effect';
+import { Context, Effect, Schema } from 'effect';
 import { BotBuilder, Command, Middleware } from 'tfx';
 
 import { CurrentUser } from '../src/bot/CurrentUser.js';
@@ -34,9 +34,11 @@ const requiresRegistration = Middleware.make('requires-registration', {
 	scope: 'command',
 	provides: Audit,
 	requires: [CurrentUser],
+	error: Schema.Void,
 });
 Command.make('invalid-unregistered', {
 	name: 'invalid_unregistered',
+	error: Schema.Void,
 	// @ts-expect-error CurrentUser requirement is unavailable without registration middleware
 	middleware: [requiresRegistration],
 });

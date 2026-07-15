@@ -7,21 +7,34 @@ import {
 	UpdateSource,
 	type UpdateSourceService,
 } from './internal/update-source/UpdateSource.js';
+import type { TaggedError } from './TaggedError.js';
 const TypeId: unique symbol = Symbol.for('tfx/UpdateDelivery');
-export interface UpdateDelivery<Id extends string, Error, Requirements> {
+export interface UpdateDelivery<
+	Id extends string,
+	Error extends TaggedError,
+	Requirements,
+> {
 	readonly [TypeId]: typeof TypeId;
 	readonly id: Id;
 	readonly layer: Layer.Layer<UpdateSource, Error, Requirements>;
 }
 /** Low-level constructor retained for platform delivery implementations. */
-export const make = <const Id extends string, E, R>(options: {
+export const make = <
+	const Id extends string,
+	E extends TaggedError,
+	R,
+>(options: {
 	readonly id: Id;
 	readonly layer: Layer.Layer<UpdateSource, E, R>;
 }): UpdateDelivery<Id, E, R> =>
 	Object.freeze({ [TypeId]: TypeId as typeof TypeId, ...options });
 
 /** Public source constructor; internal UpdateSource service never escapes the API. */
-export const fromSource = <const Id extends string, E = never, R = never>(
+export const fromSource = <
+	const Id extends string,
+	E extends TaggedError = never,
+	R = never,
+>(
 	id: Id,
 	run: (
 		deliver: (update: Update) => Effect.Effect<DispatchOutcome, never>,

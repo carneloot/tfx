@@ -1,5 +1,6 @@
 export const packageName = 'tfx' as const;
 
+export * as TaggedError from './TaggedError.js';
 export * as Telegram from './Telegram.js';
 export * as TelegramError from './TelegramError.js';
 export * as TelegramSchemas from './TelegramSchemas.js';
@@ -31,6 +32,7 @@ export * as JobStore from './JobStore.js';
 export * as JobRuntime from './JobRuntime.js';
 export * as MemoryJobStore from './MemoryJobStore.js';
 export * as DispatchOutcome from './DispatchOutcome.js';
+export * as ErrorSchema from './ErrorSchema.js';
 export * as UpdateDeduplicator from './UpdateDeduplicator.js';
 export * as MemoryUpdateDeduplicator from './MemoryUpdateDeduplicator.js';
 export * as UpdateDelivery from './UpdateDelivery.js';

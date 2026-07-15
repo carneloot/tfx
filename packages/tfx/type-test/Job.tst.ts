@@ -4,7 +4,7 @@ class Repository extends Context.Service<
 	Repository,
 	{ readonly value: string }
 >()('types/JobRepository') {}
-type Failure = { readonly _tag: 'Failure' };
+class Failure extends Schema.TaggedErrorClass<Failure>()('Failure', {}) {}
 const history = VersionedSchema.history(
 	VersionedSchema.version(1, Schema.Struct({ old: Schema.String })),
 ).pipe(
@@ -15,7 +15,7 @@ const history = VersionedSchema.history(
 );
 const declaration = Job.make('literal-job', {
 	payload: history,
-	error: undefined as unknown as Failure,
+	error: Failure,
 	maxAttempts: 3,
 	retry: () => Job.permanent,
 });
@@ -24,7 +24,7 @@ const implementation = Job.implement(declaration, (payload) => {
 	const value: string = payload.value;
 	return Effect.as(Repository, value);
 });
-type Requirement = (typeof implementation)['_R'];
+type Requirement = NonNullable<(typeof implementation)['_R']>;
 const requirement: Requirement = undefined as unknown as Repository;
 void literal;
 void requirement;

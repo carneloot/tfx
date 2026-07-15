@@ -1,21 +1,30 @@
-import { Data } from 'effect';
+import * as Schema from 'effect/Schema';
 
-export class PetAccessDenied extends Data.TaggedError('PetAccessDenied')<{
-	readonly message: string;
-}> {}
-export class PetFoodSetupMissing extends Data.TaggedError(
+export class PetAccessDenied extends Schema.TaggedErrorClass<PetAccessDenied>()(
+	'PetAccessDenied',
+	{ message: Schema.String },
+) {}
+
+export class PetFoodSetupMissing extends Schema.TaggedErrorClass<PetFoodSetupMissing>()(
 	'PetFoodSetupMissing',
-)<{ readonly message: string }> {}
-export class DuplicateFoodEntry extends Data.TaggedError('DuplicateFoodEntry')<{
-	readonly message: string;
-}> {}
+	{ message: Schema.String },
+) {}
 
-export class PetFoodError extends Data.TaggedError('PetFoodError')<{
-	readonly reason:
-		| 'InvalidAmount'
-		| 'InvalidTimeZone'
-		| 'InvalidLocalTime'
-		| 'InvalidFoodDateTime'
-		| 'NonexistentLocalTime';
-	readonly message: string;
-}> {}
+export class DuplicateFoodEntry extends Schema.TaggedErrorClass<DuplicateFoodEntry>()(
+	'DuplicateFoodEntry',
+	{ message: Schema.String },
+) {}
+
+export class PetFoodError extends Schema.TaggedErrorClass<PetFoodError>()(
+	'PetFoodError',
+	{
+		reason: Schema.Literals([
+			'InvalidAmount',
+			'InvalidTimeZone',
+			'InvalidLocalTime',
+			'InvalidFoodDateTime',
+			'NonexistentLocalTime',
+		]),
+		message: Schema.String,
+	},
+) {}

@@ -2,20 +2,17 @@ import * as BunHttpClient from '@effect/platform-bun/BunHttpClient';
 import * as PgClient from '@effect/sql-pg/PgClient';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
-import type { BotRuntime } from 'tfx/BotRuntime';
 import * as Polling from 'tfx/Polling';
 import * as Telegram from 'tfx/Telegram';
-import type { UpdateDeduplicator } from 'tfx/UpdateDeduplicator';
 
 import { AppConfig, type AppConfigService } from './Config.js';
 import * as AppConfigLive from './Config.js';
-import type { JobWorker } from './JobWorker.js';
 import * as Layers from './Layers.js';
 
 export const pollingOptions = (config: AppConfigService) => ({
 	timeout: config.pollingTimeoutSeconds,
 	retryDelay: config.pollingRetryDelayMillis,
-	allowedUpdates: [
+	allowedUpdates: Object.freeze([
 		'message',
 		'edited_message',
 		'channel_post',
@@ -27,8 +24,8 @@ export const pollingOptions = (config: AppConfigService) => ({
 		'my_chat_member',
 		'chat_member',
 		'chat_join_request',
-	] as const,
-	commands: [
+	]),
+	commands: Object.freeze([
 		{ command: 'cadastrar', description: 'Cadastrar ou atualizar seu perfil' },
 		{ command: 'adicionar_pet', description: 'Adicionar um pet' },
 		{ command: 'listar_pets', description: 'Listar seus pets' },
@@ -42,7 +39,7 @@ export const pollingOptions = (config: AppConfigService) => ({
 		},
 		{ command: 'status_racao', description: 'Consultar o status de ração' },
 		{ command: 'colocar_racao', description: 'Registrar ração para um pet' },
-	] as const,
+	]),
 });
 
 export const fromConfig = (config: AppConfigService) => {
@@ -59,8 +56,4 @@ export const fromConfig = (config: AppConfigService) => {
 	});
 };
 const configuredLayer = Layer.unwrap(Effect.map(AppConfig, fromConfig));
-export const appLayer: Layer.Layer<
-	BotRuntime | JobWorker | UpdateDeduplicator,
-	unknown,
-	never
-> = Layer.provide(configuredLayer, AppConfigLive.layer);
+export const appLayer = Layer.provide(configuredLayer, AppConfigLive.layer);

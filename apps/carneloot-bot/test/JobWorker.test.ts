@@ -1,6 +1,7 @@
 import { Deferred, Effect, Layer, Ref } from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { JobRuntime, type JobRuntimeService } from 'tfx/JobRuntime';
+import { JobStoreError } from 'tfx/JobStore';
 import { describe, expect, it } from 'vitest';
 
 import { JobWorker } from '../src/JobWorker.js';
@@ -103,7 +104,13 @@ describe('JobWorker', () => {
 		const contextProgram = Effect.scoped(
 			Effect.gen(function* () {
 				const context = yield* Layer.build(
-					worker(runtime(() => Effect.fail('store failed'))),
+					worker(
+						runtime(() =>
+							Effect.fail(
+								new JobStoreError('PersistenceFailure', 'store failed'),
+							),
+						),
+					),
 				);
 				return yield* Effect.provide(
 					Effect.flatMap(JobWorker, (service) => Effect.result(service.await)),
@@ -113,7 +120,7 @@ describe('JobWorker', () => {
 		);
 		expect(await Effect.runPromise(contextProgram)).toMatchObject({
 			_tag: 'Failure',
-			failure: 'store failed',
+			failure: { _tag: 'JobStoreError', reason: 'PersistenceFailure' },
 		});
 	});
 

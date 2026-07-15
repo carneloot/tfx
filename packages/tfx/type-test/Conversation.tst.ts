@@ -22,6 +22,7 @@ const flow = Conversation.make('flow', {
 			input: ConversationInput.text(Schema.String),
 		}),
 	},
+	error: Schema.Void,
 });
 const partial = ConversationBuilder.make(flow).step('first', {
 	enter: () => Effect.void,

@@ -13,7 +13,9 @@ export const cancelCurrent = Effect.gen(function* () {
 	const update = yield* UpdateContext.UpdateContext;
 	if (update.chatId === undefined || update.userId === undefined)
 		return yield* Effect.fail(
-			new ConversationScopeUnavailable('Missing conversation scope'),
+			new ConversationScopeUnavailable({
+				message: 'Missing conversation scope',
+			}),
 		);
 	const conversations = yield* Conversations.Conversations;
 	const cancelled = yield* conversations.cancelCurrent({

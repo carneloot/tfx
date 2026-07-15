@@ -10,6 +10,8 @@
 	"sideEffects": [],
 	"exports": {
 		".": "./src/index.ts",
+		"./TaggedError": "./src/TaggedError.ts",
+		"./ErrorSchema": "./src/ErrorSchema.ts",
 		"./Telegram": "./src/Telegram.ts",
 		"./TelegramError": "./src/TelegramError.ts",
 		"./TelegramSchemas": "./src/TelegramSchemas.ts",
@@ -53,6 +55,8 @@
 		"access": "public",
 		"exports": {
 			".": "./dist/index.js",
+			"./TaggedError": "./dist/TaggedError.js",
+			"./ErrorSchema": "./dist/ErrorSchema.js",
 			"./Telegram": "./dist/Telegram.js",
 			"./TelegramError": "./dist/TelegramError.js",
 			"./TelegramSchemas": "./dist/TelegramSchemas.js",

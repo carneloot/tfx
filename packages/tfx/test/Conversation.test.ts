@@ -10,11 +10,16 @@ import { ConversationStorage } from '../src/ConversationStorage.js';
 import * as MemoryConversationStorage from '../src/MemoryConversationStorage.js';
 import * as VersionedSchema from '../src/VersionedSchema.js';
 
+class TestConversationError extends Schema.TaggedErrorClass<TestConversationError>()(
+	'TestConversationError',
+	{ message: Schema.String },
+) {}
+
 const scope = { botId: 'bot', chatId: 1, userId: 2 };
 const declaration = Conversation.make('counter', {
 	version: 1,
 	startup: Schema.Number,
-	error: undefined as unknown as string,
+	error: TestConversationError,
 	initialStep: 'count',
 	initialize: (n) => n,
 	steps: {
@@ -38,6 +43,7 @@ describe('Conversation', () => {
 				initialStep: 'count',
 				initialize: (value) => value,
 				steps: declaration.steps,
+				error: Schema.Void,
 				migrations,
 			}),
 		).toThrow('does not match');
@@ -53,7 +59,9 @@ describe('Conversation', () => {
 					Effect.suspend(() => {
 						enters++;
 						outputs.push(`enter:${state}`);
-						return state > 0 ? Effect.fail('output') : Effect.void;
+						return state > 0
+							? Effect.fail(new TestConversationError({ message: 'output' }))
+							: Effect.void;
 					}),
 				onInput: (state, input) =>
 					Effect.sync(() => {

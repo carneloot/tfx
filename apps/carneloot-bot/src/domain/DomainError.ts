@@ -1,19 +1,27 @@
-import { Data } from 'effect';
-export class InvalidDomainInput extends Data.TaggedError('InvalidDomainInput')<{
-	readonly message: string;
-	readonly cause?: unknown;
-}> {}
-export class UserNotRegistered extends Data.TaggedError('UserNotRegistered')<{
-	readonly message: string;
-}> {}
-export class PetNameAlreadyExists extends Data.TaggedError(
+import * as Schema from 'effect/Schema';
+
+export class InvalidDomainInput extends Schema.TaggedErrorClass<InvalidDomainInput>()(
+	'InvalidDomainInput',
+	{
+		message: Schema.String,
+		cause: Schema.optionalKey(Schema.Unknown),
+	},
+) {}
+
+export class UserNotRegistered extends Schema.TaggedErrorClass<UserNotRegistered>()(
+	'UserNotRegistered',
+	{ message: Schema.String },
+) {}
+
+export class PetNameAlreadyExists extends Schema.TaggedErrorClass<PetNameAlreadyExists>()(
 	'PetNameAlreadyExists',
-)<{
-	readonly message: string;
-}> {}
-export class DomainPersistenceError extends Data.TaggedError(
+	{ message: Schema.String },
+) {}
+
+export class DomainPersistenceError extends Schema.TaggedErrorClass<DomainPersistenceError>()(
 	'DomainPersistenceError',
-)<{
-	readonly message: string;
-	readonly cause?: unknown;
-}> {}
+	{
+		message: Schema.String,
+		cause: Schema.optionalKey(Schema.Unknown),
+	},
+) {}

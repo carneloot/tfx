@@ -8,9 +8,11 @@ import {
 	ConversationInput,
 	MessageContext,
 } from 'tfx';
+import type { TaggedError } from 'tfx/TaggedError';
 
 import * as ConfigureReminderDelay from '../../application/ConfigureReminderDelay.js';
 import { authorize } from '../../application/PetFoodAccess.js';
+import { ApplicationError } from '../../domain/ApplicationError.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../domain/Ids.js';
 import { ReminderDelayMs } from '../../domain/pet-food/PetFood.js';
 import { PetName } from '../../domain/Pet.js';
@@ -33,17 +35,17 @@ const ActionState = Schema.Struct({
 });
 const SelectedState = Schema.Struct({ ...Base, petId: PetId });
 const Text = ConversationInput.text(Schema.String);
-const widen = <A, E, R>(
-	effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, unknown, R> =>
-	effect.pipe(Effect.mapError((error): unknown => error));
+const widen = <A, E extends TaggedError, R>(effect: Effect.Effect<A, E, R>) =>
+	effect;
 const reply = (text: string) =>
 	widen(
 		Effect.flatMap(MessageContext.MessageContext, (context) =>
 			context.reply(text),
-		),
+		).pipe(Effect.asVoid),
 	);
-const required = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+const required = <A, E extends TaggedError, R>(
+	effect: Effect.Effect<A, E, R>,
+) =>
 	Effect.gen(function* () {
 		yield* PgClient.PgClient;
 		yield* PetFoodRepository;
@@ -81,8 +83,8 @@ export const parseDuration = (input: string) => {
 		return Effect.fail(
 			new InvalidReminderDurationError({ message: 'Invalid duration' }),
 		);
-	const amount = Number(match[1]!.replace(',', '.'));
-	const unit = match[2]!.toLocaleLowerCase('en-US');
+	const amount = Number((match[1] ?? '').replace(',', '.'));
+	const unit = (match[2] ?? '').toLocaleLowerCase('en-US');
 	const milliseconds = amount * (unit.startsWith('h') ? 3_600_000 : 60_000);
 	return Schema.decodeUnknownEffect(ReminderDelayMs)(milliseconds).pipe(
 		Effect.mapError(
@@ -119,7 +121,7 @@ export const declaration = Conversation.make('configure-reminder-delay', {
 		}),
 	},
 	idleTimeout: 15 * 60 * 1000,
-	error: undefined as unknown,
+	error: ApplicationError,
 });
 
 const access = (state: typeof SelectedState.Type) => ({

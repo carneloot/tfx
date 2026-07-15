@@ -1,4 +1,4 @@
-import { Deferred, Effect, Layer, Ref } from 'effect';
+import { Deferred, Effect, Layer, Ref, Schema } from 'effect';
 import {
 	Bot,
 	BotRuntime,
@@ -9,6 +9,10 @@ import {
 } from 'tfx';
 import { describe, expect, it } from 'vitest';
 
+class SourceFailure extends Schema.TaggedErrorClass<SourceFailure>()(
+	'SourceFailure',
+	{ message: Schema.String },
+) {}
 const update = (id: number) => ({ update_id: id }) as never;
 const runtime = (delivery: UpdateDelivery.UpdateDelivery<any, any, never>) =>
 	Layer.provide(
@@ -98,7 +102,7 @@ describe('BotRuntime', () => {
 			const delivery = UpdateDelivery.fromSource('failure', () =>
 				Effect.andThen(
 					delayed ? Deferred.await(gate) : Effect.void,
-					Effect.fail('source failed'),
+					Effect.fail(new SourceFailure({ message: 'source failed' })),
 				),
 			);
 			const result = await Effect.runPromise(
@@ -117,7 +121,10 @@ describe('BotRuntime', () => {
 			);
 			expect(result).toMatchObject({
 				_tag: 'Failure',
-				failure: 'source failed',
+				failure: {
+					_tag: 'BotRuntimeSourceError',
+					cause: { _tag: 'SourceFailure', message: 'source failed' },
+				},
 			});
 		}
 	});

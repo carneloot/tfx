@@ -14,7 +14,7 @@ import {
 	TelegramUserId,
 	UserId,
 } from '../domain/Ids.js';
-import type { RegisteredUser, TelegramProfile } from '../domain/User.js';
+import type { TelegramProfile } from '../domain/User.js';
 import {
 	UserRepository,
 	type UserRepositoryService,
@@ -35,7 +35,9 @@ const time = (value: unknown) => {
 	const result =
 		value instanceof Date
 			? value.getTime()
-			: new Date(value as string).getTime();
+			: typeof value === 'string' || typeof value === 'number'
+				? new Date(value).getTime()
+				: Number.NaN;
 	if (!Number.isFinite(result)) throw new Error('Invalid timestamp');
 	return result;
 };
@@ -43,9 +45,7 @@ const safeUserId = (value: string | number) =>
 	Schema.decodeUnknownSync(TelegramUserId)(Number(value));
 const safeChatId = (value: string | number) =>
 	Schema.decodeUnknownSync(TelegramChatId)(Number(value));
-const decode = (
-	value: unknown,
-): Effect.Effect<RegisteredUser, DomainPersistenceError> =>
+const decode = (value: unknown) =>
 	Effect.try({
 		try: () => {
 			const row = Schema.decodeUnknownSync(Row)(value);
@@ -68,7 +68,7 @@ const decode = (
 		catch: (cause) =>
 			new DomainPersistenceError({ message: 'Malformed user row', cause }),
 	});
-const persistence = (cause: unknown): DomainPersistenceError =>
+const persistence = (cause: unknown) =>
 	cause instanceof DomainPersistenceError
 		? cause
 		: new DomainPersistenceError({ message: 'User repository failed', cause });
@@ -83,11 +83,7 @@ const select = (
 	FROM carneloot.telegram_identities i JOIN carneloot.users u ON u.id=i.user_id
 	WHERE i.bot_id=${botId} AND i.telegram_user_id=${telegramUserId}`;
 
-export const layer: Layer.Layer<
-	UserRepository,
-	DomainPersistenceError,
-	PgClient.PgClient
-> = Layer.effect(
+export const layer = Layer.effect(
 	UserRepository,
 	Effect.map(PgClient.PgClient, (sql) => {
 		const validateProfile = (profile: TelegramProfile) =>
@@ -96,7 +92,7 @@ export const layer: Layer.Layer<
 				Schema.decodeUnknownEffect(TelegramUserId)(profile.telegramUserId),
 				Schema.decodeUnknownEffect(TelegramChatId)(profile.privateChatId),
 			]).pipe(Effect.mapError(persistence), Effect.asVoid);
-		const service: UserRepositoryService = {
+		const service = {
 			registerTelegramProfile: (profile: TelegramProfile) =>
 				Effect.andThen(
 					validateProfile(profile),
@@ -117,7 +113,10 @@ export const layer: Layer.Layer<
 								const timestamp = new Date(now);
 								if (existing[0] !== undefined) {
 									yield* sql`UPDATE carneloot.telegram_identities SET username=${profile.username},first_name=${profile.firstName},last_name=${profile.lastName},private_chat_id=${profile.privateChatId},updated_at=${timestamp} WHERE bot_id=${profile.botId} AND telegram_user_id=${profile.telegramUserId}`;
-									yield* sql`UPDATE carneloot.users SET updated_at=${timestamp} WHERE id=${existing[0].id as string}::uuid`;
+									const existingUserId = Schema.decodeUnknownSync(UserId)(
+										existing[0].id,
+									);
+									yield* sql`UPDATE carneloot.users SET updated_at=${timestamp} WHERE id=${existingUserId}::uuid`;
 									const refreshed = yield* select(
 										sql,
 										profile.botId,
@@ -153,7 +152,7 @@ export const layer: Layer.Layer<
 						);
 					return yield* decode(rows[0]);
 				}),
-		};
+		} satisfies UserRepositoryService;
 		return service;
 	}),
 );

@@ -154,6 +154,18 @@
 			}
 		},
 		{
+			"files": ["apps/carneloot-bot/src/**/*.ts"],
+			"rules": {
+				"@typescript-eslint/consistent-type-assertions": [
+					"error",
+					{
+						"assertionStyle": "never"
+					}
+				],
+				"@typescript-eslint/no-non-null-assertion": "error"
+			}
+		},
+		{
 			"files": ["packages/tfx/scripts/generate-telegram.ts"],
 			"rules": {
 				"no-regex-spaces": "off",

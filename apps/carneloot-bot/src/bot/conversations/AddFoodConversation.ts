@@ -8,9 +8,11 @@ import {
 	ConversationInput,
 	MessageContext,
 } from 'tfx';
+import type { TaggedError } from 'tfx/TaggedError';
 
 import * as AddFood from '../../application/AddFood.js';
 import { authorize } from '../../application/PetFoodAccess.js';
+import { ApplicationError } from '../../domain/ApplicationError.js';
 import {
 	BotId,
 	PetId,
@@ -43,17 +45,17 @@ const AmountState = Schema.Struct({
 	timeZone: IanaTimeZone,
 });
 const Text = ConversationInput.text(Schema.String);
-const widen = <A, E, R>(
-	effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, unknown, R> =>
-	effect.pipe(Effect.mapError((error): unknown => error));
+const widen = <A, E extends TaggedError, R>(effect: Effect.Effect<A, E, R>) =>
+	effect;
 const reply = (text: string) =>
 	widen(
 		Effect.flatMap(MessageContext.MessageContext, (context) =>
 			context.reply(text),
-		),
+		).pipe(Effect.asVoid),
 	);
-const required = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+const required = <A, E extends TaggedError, R>(
+	effect: Effect.Effect<A, E, R>,
+) =>
 	Effect.gen(function* () {
 		yield* PgClient.PgClient;
 		yield* PetFoodRepository;
@@ -86,7 +88,12 @@ const splitInput = (
 		/^(.*?\S)\s+((?:\d{2}[/-]\d{2}(?:[/-]\d{4})? \d{2}:\d{2})|(?:\d{2}:\d{2}))$/u.exec(
 			trimmed,
 		);
-	if (suffix !== null) return { amount: suffix[1]!, dateTime: suffix[2]! };
+	if (suffix !== null) {
+		const amount = suffix[1];
+		const dateTime = suffix[2];
+		if (amount !== undefined && dateTime !== undefined)
+			return { amount, dateTime };
+	}
 	return { amount: trimmed, dateTime: '' };
 };
 
@@ -100,7 +107,7 @@ export const declaration = Conversation.make('add-pet-food', {
 		amount: Conversation.step('amount', { state: AmountState, input: Text }),
 	},
 	idleTimeout: 15 * 60 * 1_000,
-	error: undefined as unknown,
+	error: ApplicationError,
 });
 
 export const built = ConversationBuilder.done(
@@ -185,12 +192,11 @@ export const built = ConversationBuilder.done(
 								),
 							);
 							if (result._tag === 'Failure') {
-								const error = result.failure as { readonly _tag?: string };
-								if (error._tag === 'DuplicateFoodEntry')
+								if (result.failure._tag === 'DuplicateFoodEntry')
 									return yield* stay(
 										'Já existe um registro de ração nesse horário.',
 									);
-								if (error._tag === 'PetFoodSetupMissing')
+								if (result.failure._tag === 'PetFoodSetupMissing')
 									return yield* stay(setupWarning(state.petName));
 								return yield* stay(
 									'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',

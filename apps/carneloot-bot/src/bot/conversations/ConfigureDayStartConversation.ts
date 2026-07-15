@@ -7,9 +7,11 @@ import {
 	ConversationInput,
 	MessageContext,
 } from 'tfx';
+import type { TaggedError } from 'tfx/TaggedError';
 
 import * as ConfigureDayStart from '../../application/ConfigureDayStart.js';
 import { authorize } from '../../application/PetFoodAccess.js';
+import { ApplicationError } from '../../domain/ApplicationError.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../domain/Ids.js';
 import { IanaTimeZone, LocalTime } from '../../domain/pet-food/FoodDateTime.js';
 import { PetName } from '../../domain/Pet.js';
@@ -37,17 +39,17 @@ const TimeZoneState = Schema.Struct({
 	dayStart: LocalTime,
 });
 const Text = ConversationInput.text(Schema.String);
-const widen = <A, E, R>(
-	effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, unknown, R> =>
-	effect.pipe(Effect.mapError((error): unknown => error));
+const widen = <A, E extends TaggedError, R>(effect: Effect.Effect<A, E, R>) =>
+	effect;
 const reply = (text: string) =>
 	widen(
 		Effect.flatMap(MessageContext.MessageContext, (context) =>
 			context.reply(text),
-		),
+		).pipe(Effect.asVoid),
 	);
-const required = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+const required = <A, E extends TaggedError, R>(
+	effect: Effect.Effect<A, E, R>,
+) =>
 	Effect.gen(function* () {
 		yield* PgClient.PgClient;
 		yield* PetFoodRepository;
@@ -80,7 +82,7 @@ export const declaration = Conversation.make('configure-pet-day-start', {
 		}),
 	},
 	idleTimeout: 15 * 60 * 1000,
-	error: undefined as unknown,
+	error: ApplicationError,
 });
 export const built = ConversationBuilder.done(
 	ConversationBuilder.make(declaration)

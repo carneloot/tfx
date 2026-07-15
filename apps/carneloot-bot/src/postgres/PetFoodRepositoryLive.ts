@@ -15,15 +15,17 @@ import {
 	type PetFoodRepositoryService,
 } from '../ports/PetFoodRepository.js';
 
-const timestamp = (value: unknown): number => {
+const timestamp = (value: unknown) => {
 	const result =
 		value instanceof Date
 			? value.getTime()
-			: new Date(value as string).getTime();
+			: typeof value === 'string' || typeof value === 'number'
+				? new Date(value).getTime()
+				: Number.NaN;
 	if (!Number.isFinite(result)) throw new Error('Invalid timestamp');
 	return result;
 };
-const safeInteger = (value: unknown, minimum = 0): number => {
+const safeInteger = (value: unknown, minimum = 0) => {
 	const result = typeof value === 'number' ? value : Number(value);
 	if (!Number.isSafeInteger(result) || result < minimum)
 		throw new Error('Unsafe integer');
@@ -136,169 +138,162 @@ const decodeOne = <A>(
 	return decode(rows[0]);
 };
 
-export const layer: Layer.Layer<PetFoodRepository, never, PgClient.PgClient> =
-	Layer.effect(
-		PetFoodRepository,
-		Effect.map(PgClient.PgClient, (sql) => {
-			const settings = (petId: string) =>
-				sql<
-					Record<string, unknown>
-				>`SELECT pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at FROM carneloot.pet_food_settings WHERE pet_id=${petId}::uuid`;
-			const entries = (
-				fragment: Effect.Effect<
-					ReadonlyArray<Record<string, unknown>>,
-					unknown
-				>,
-			) =>
-				protect(fragment, 'Pet food query failed').pipe(
-					Effect.flatMap((rows) =>
-						Effect.try({
-							try: () => rows.map(decodeEntry),
-							catch: (cause) => persistence('Malformed pet food row', cause),
-						}),
-					),
-				);
-			const service: PetFoodRepositoryService = {
-				lockOwnedPet: (ownerId, petId) =>
-					protect(
-						Effect.flatMap(
-							sql<
-								Record<string, unknown>
-							>`SELECT * FROM carneloot.pets WHERE id=${petId}::uuid AND owner_id=${ownerId}::uuid FOR UPDATE`,
-							(rows) =>
-								rows[0] === undefined
-									? Effect.fail(
-											new PetAccessDenied({
-												message: 'Pet is not owned by user',
-											}),
-										)
-									: Effect.try({
-											try: () => decodePet(rows[0]),
-											catch: (cause) => persistence('Malformed pet row', cause),
-										}),
-						),
-						'Pet ownership query failed',
-					),
-				getSettings: (petId) =>
-					protect(settings(petId), 'Settings query failed').pipe(
-						Effect.flatMap((rows) =>
+export const layer = Layer.effect(
+	PetFoodRepository,
+	Effect.map(PgClient.PgClient, (sql) => {
+		const settings = (petId: string) =>
+			sql<
+				Record<string, unknown>
+			>`SELECT pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at FROM carneloot.pet_food_settings WHERE pet_id=${petId}::uuid`;
+		const entries = <E>(
+			fragment: Effect.Effect<ReadonlyArray<Record<string, unknown>>, E>,
+		) =>
+			protect(fragment, 'Pet food query failed').pipe(
+				Effect.flatMap((rows) =>
+					Effect.try({
+						try: () => rows.map(decodeEntry),
+						catch: (cause) => persistence('Malformed pet food row', cause),
+					}),
+				),
+			);
+		const service = {
+			lockOwnedPet: (ownerId, petId) =>
+				protect(
+					Effect.flatMap(
+						sql<
+							Record<string, unknown>
+						>`SELECT * FROM carneloot.pets WHERE id=${petId}::uuid AND owner_id=${ownerId}::uuid FOR UPDATE`,
+						(rows) =>
 							rows[0] === undefined
-								? Effect.succeed(undefined)
+								? Effect.fail(
+										new PetAccessDenied({
+											message: 'Pet is not owned by user',
+										}),
+									)
 								: Effect.try({
-										try: () => decodeSettings(rows[0]),
-										catch: (cause) =>
-											persistence('Malformed settings row', cause),
+										try: () => decodePet(rows[0]),
+										catch: (cause) => persistence('Malformed pet row', cause),
 									}),
-						),
 					),
-				setDayStart: (petId, dayStart, timeZone, now) =>
-					protect(
-						Effect.flatMap(
-							sql<
-								Record<string, unknown>
-							>`INSERT INTO carneloot.pet_food_settings (pet_id,day_start,timezone,created_at,updated_at) VALUES (${petId}::uuid,${dayStart}::time,${timeZone},${new Date(now)},${new Date(now)}) ON CONFLICT (pet_id) DO UPDATE SET day_start=EXCLUDED.day_start,timezone=EXCLUDED.timezone,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
-							(rows) =>
-								Effect.try({
-									try: () => decodeOne(rows, decodeSettings),
+					'Pet ownership query failed',
+				),
+			getSettings: (petId) =>
+				protect(settings(petId), 'Settings query failed').pipe(
+					Effect.flatMap((rows) =>
+						rows[0] === undefined
+							? Effect.succeed(undefined)
+							: Effect.try({
+									try: () => decodeSettings(rows[0]),
 									catch: (cause) =>
 										persistence('Malformed settings row', cause),
 								}),
-						),
-						'Settings update failed',
 					),
-				setReminderDelay: (petId, delay, now) =>
-					protect(
-						Effect.flatMap(
-							sql<
-								Record<string, unknown>
-							>`INSERT INTO carneloot.pet_food_settings (pet_id,reminder_delay_ms,created_at,updated_at) VALUES (${petId}::uuid,${delay},${new Date(now)},${new Date(now)}) ON CONFLICT (pet_id) DO UPDATE SET reminder_delay_ms=EXCLUDED.reminder_delay_ms,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
-							(rows) =>
-								Effect.try({
-									try: () => decodeOne(rows, decodeSettings),
-									catch: (cause) =>
-										persistence('Malformed settings row', cause),
-								}),
-						),
-						'Delay update failed',
+				),
+			setDayStart: (petId, dayStart, timeZone, now) =>
+				protect(
+					Effect.flatMap(
+						sql<
+							Record<string, unknown>
+						>`INSERT INTO carneloot.pet_food_settings (pet_id,day_start,timezone,created_at,updated_at) VALUES (${petId}::uuid,${dayStart}::time,${timeZone},${new Date(now)},${new Date(now)}) ON CONFLICT (pet_id) DO UPDATE SET day_start=EXCLUDED.day_start,timezone=EXCLUDED.timezone,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
+						(rows) =>
+							Effect.try({
+								try: () => decodeOne(rows, decodeSettings),
+								catch: (cause) => persistence('Malformed settings row', cause),
+							}),
 					),
-				clearReminderDelay: (petId, now) =>
-					protect(
-						Effect.flatMap(
-							sql<
-								Record<string, unknown>
-							>`INSERT INTO carneloot.pet_food_settings (pet_id,created_at,updated_at) VALUES (${petId}::uuid,${new Date(now)},${new Date(now)}) ON CONFLICT (pet_id) DO UPDATE SET reminder_delay_ms=NULL,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
-							(rows) =>
-								Effect.try({
-									try: () => decodeOne(rows, decodeSettings),
-									catch: (cause) =>
-										persistence('Malformed settings row', cause),
-								}),
-						),
-						'Delay deletion failed',
+					'Settings update failed',
+				),
+			setReminderDelay: (petId, delay, now) =>
+				protect(
+					Effect.flatMap(
+						sql<
+							Record<string, unknown>
+						>`INSERT INTO carneloot.pet_food_settings (pet_id,reminder_delay_ms,created_at,updated_at) VALUES (${petId}::uuid,${delay},${new Date(now)},${new Date(now)}) ON CONFLICT (pet_id) DO UPDATE SET reminder_delay_ms=EXCLUDED.reminder_delay_ms,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
+						(rows) =>
+							Effect.try({
+								try: () => decodeOne(rows, decodeSettings),
+								catch: (cause) => persistence('Malformed settings row', cause),
+							}),
 					),
-				latestEntry: (petId) =>
-					Effect.map(
-						entries(
-							sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
-						),
-						(rows) => rows[0],
+					'Delay update failed',
+				),
+			clearReminderDelay: (petId, now) =>
+				protect(
+					Effect.flatMap(
+						sql<
+							Record<string, unknown>
+						>`INSERT INTO carneloot.pet_food_settings (pet_id,created_at,updated_at) VALUES (${petId}::uuid,${new Date(now)},${new Date(now)}) ON CONFLICT (pet_id) DO UPDATE SET reminder_delay_ms=NULL,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
+						(rows) =>
+							Effect.try({
+								try: () => decodeOne(rows, decodeSettings),
+								catch: (cause) => persistence('Malformed settings row', cause),
+							}),
 					),
-				findBySource: (petId, botId, updateId) =>
-					Effect.map(
-						entries(
-							sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND source_bot_id=${botId} AND source_update_id=${updateId}`,
-						),
-						(rows) => rows[0],
+					'Delay deletion failed',
+				),
+			latestEntry: (petId) =>
+				Effect.map(
+					entries(
+						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
 					),
-				findBusinessDuplicate: (petId, fedAt) =>
-					Effect.map(
-						entries(
-							sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND abs(extract(epoch FROM (fed_at-${new Date(fedAt)}::timestamptz))*1000) < 60000 ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
-						),
-						(rows) => rows[0],
+					(rows) => rows[0],
+				),
+			findBySource: (petId, botId, updateId) =>
+				Effect.map(
+					entries(
+						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND source_bot_id=${botId} AND source_update_id=${updateId}`,
 					),
-				insert: (entry) =>
-					protect(
-						Effect.flatMap(
-							sql<
-								Record<string, unknown>
-							>`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,source_message_id,created_at,updated_at) VALUES (${entry.id}::uuid,${entry.petId}::uuid,${entry.recordedBy}::uuid,${entry.amountMg},${new Date(entry.fedAt)},${entry.source.botId},${entry.source.updateId},${entry.source.messageChatId},${entry.source.messageId},${new Date(entry.now)},${new Date(entry.now)}) RETURNING *`,
-							(rows) =>
-								Effect.try({
-									try: () => decodeOne(rows, decodeEntry),
-									catch: (cause) =>
-										persistence('Malformed inserted food row', cause),
-								}),
-						),
-						'Food insert failed',
+					(rows) => rows[0],
+				),
+			findBusinessDuplicate: (petId, fedAt) =>
+				Effect.map(
+					entries(
+						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND abs(extract(epoch FROM (fed_at-${new Date(fedAt)}::timestamptz))*1000) < 60000 ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
 					),
-				status: (petId, start, end) =>
-					protect(
-						Effect.flatMap(
-							sql<{
-								total_mg: string | number;
-								latest_fed_at: unknown | null;
-							}>`SELECT coalesce(sum(amount_mg),0) AS total_mg,max(fed_at) AS latest_fed_at FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND fed_at>=${new Date(start)} AND fed_at<${new Date(end)}`,
-							(rows) =>
-								Effect.try({
-									try: () => {
-										const row = rows[0];
-										if (row === undefined)
-											throw new Error('Missing aggregate row');
-										return {
-											totalMg: safeInteger(row.total_mg),
-											latestFedAt:
-												row.latest_fed_at === null
-													? null
-													: timestamp(row.latest_fed_at),
-										};
-									},
-									catch: (cause) => persistence('Malformed status row', cause),
-								}),
-						),
-						'Status query failed',
+					(rows) => rows[0],
+				),
+			insert: (entry) =>
+				protect(
+					Effect.flatMap(
+						sql<
+							Record<string, unknown>
+						>`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,source_message_id,created_at,updated_at) VALUES (${entry.id}::uuid,${entry.petId}::uuid,${entry.recordedBy}::uuid,${entry.amountMg},${new Date(entry.fedAt)},${entry.source.botId},${entry.source.updateId},${entry.source.messageChatId},${entry.source.messageId},${new Date(entry.now)},${new Date(entry.now)}) RETURNING *`,
+						(rows) =>
+							Effect.try({
+								try: () => decodeOne(rows, decodeEntry),
+								catch: (cause) =>
+									persistence('Malformed inserted food row', cause),
+							}),
 					),
-			};
-			return service;
-		}),
-	);
+					'Food insert failed',
+				),
+			status: (petId, start, end) =>
+				protect(
+					Effect.flatMap(
+						sql<{
+							total_mg: string | number;
+							latest_fed_at: unknown | null;
+						}>`SELECT coalesce(sum(amount_mg),0) AS total_mg,max(fed_at) AS latest_fed_at FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND fed_at>=${new Date(start)} AND fed_at<${new Date(end)}`,
+						(rows) =>
+							Effect.try({
+								try: () => {
+									const row = rows[0];
+									if (row === undefined)
+										throw new Error('Missing aggregate row');
+									return {
+										totalMg: safeInteger(row.total_mg),
+										latestFedAt:
+											row.latest_fed_at === null
+												? null
+												: timestamp(row.latest_fed_at),
+									};
+								},
+								catch: (cause) => persistence('Malformed status row', cause),
+							}),
+					),
+					'Status query failed',
+				),
+		} satisfies PetFoodRepositoryService;
+		return service;
+	}),
+);

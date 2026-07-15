@@ -1,5 +1,6 @@
 import * as Context from 'effect/Context';
 import * as Effect from 'effect/Effect';
+import * as Schema from 'effect/Schema';
 import { Bot, BotBuilder, BotGroup, Command, Middleware } from 'tfx';
 import { describe, expect, it } from 'vitest';
 
@@ -13,7 +14,9 @@ class CurrentUser extends Context.Service<
 describe('Bot declarations', () => {
 	it('are immutable and add returns a new declaration', () => {
 		const empty = BotGroup.make('pets');
-		const pets = empty.add(Command.make('add', { name: 'add_pet' }));
+		const pets = empty.add(
+			Command.make('add', { name: 'add_pet', error: Schema.Void }),
+		);
 		expect(Object.isFrozen(empty)).toBe(true);
 		expect(Object.isFrozen(pets.commands)).toBe(true);
 		expect(Object.keys(empty.commands)).toEqual([]);
@@ -23,17 +26,17 @@ describe('Bot declarations', () => {
 
 	it('rejects invalid Telegram command names with fragment context', () => {
 		const fragment = BotGroup.make('pets').add(
-			Command.make('add', { name: 'Add-Pet' }),
+			Command.make('add', { name: 'Add-Pet', error: Schema.Void }),
 		);
 		expect(() => Bot.make('App').add(fragment)).toThrow("fragment 'pets'");
 	});
 
 	it('rejects command-name collisions across fragments', () => {
 		const pets = BotGroup.make('pets').add(
-			Command.make('add', { name: 'shared' }),
+			Command.make('add', { name: 'shared', error: Schema.Void }),
 		);
 		const food = BotGroup.make('food').add(
-			Command.make('add', { name: 'shared' }),
+			Command.make('add', { name: 'shared', error: Schema.Void }),
 		);
 		expect(() => Bot.make('App').add(pets).add(food)).toThrow(
 			"fragments 'pets' and 'food'",
@@ -44,13 +47,18 @@ describe('Bot declarations', () => {
 		const declaration = Middleware.make('current-user', {
 			scope: 'command',
 			provides: CurrentUser,
+			error: Schema.Void,
 		});
 		const application = Middleware.implement(
 			declaration,
 			Effect.succeed({ id: 42 }),
 		);
 		const group = BotGroup.make('users').add(
-			Command.make('show', { name: 'show', middleware: [declaration] }),
+			Command.make('show', {
+				name: 'show',
+				middleware: [declaration],
+				error: Schema.Void,
+			}),
 		);
 		const bot = Bot.make('App').add(group);
 		const handlers = BotBuilder.group(bot, 'users', (builder) =>

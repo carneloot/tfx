@@ -5,6 +5,7 @@ import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
 import { JobRuntime } from 'tfx/JobRuntime';
 
+import type { BotId, PetId } from '../domain/Ids.js';
 import { EventId } from '../domain/notifications/NotificationEvent.js';
 import * as FeedingReminderJob from '../jobs/FeedingReminderJob.js';
 import { NotificationRepository } from '../ports/NotificationRepository.js';
@@ -15,18 +16,19 @@ import {
 	type ReminderSchedulerService,
 } from '../ports/ReminderScheduler.js';
 
-const safeCause = (cause: unknown): unknown => {
+const safeCause = (cause: unknown) => {
 	if (typeof cause !== 'object' || cause === null)
 		return { message: String(cause) };
-	const value = cause as {
-		readonly _tag?: unknown;
-		readonly reason?: unknown;
-		readonly code?: unknown;
-	};
 	return {
-		...(typeof value._tag === 'string' ? { tag: value._tag } : {}),
-		...(typeof value.reason === 'string' ? { reason: value.reason } : {}),
-		...(typeof value.code === 'string' ? { code: value.code } : {}),
+		...('_tag' in cause && typeof cause._tag === 'string'
+			? { tag: cause._tag }
+			: {}),
+		...('reason' in cause && typeof cause.reason === 'string'
+			? { reason: cause.reason }
+			: {}),
+		...('code' in cause && typeof cause.code === 'string'
+			? { code: cause.code }
+			: {}),
 	};
 };
 const schedulerError = (message: string, cause?: unknown) =>
@@ -35,11 +37,7 @@ const schedulerError = (message: string, cause?: unknown) =>
 		...(cause === undefined ? {} : { cause: safeCause(cause) }),
 	});
 
-export const layer: Layer.Layer<
-	ReminderScheduler,
-	never,
-	PgClient.PgClient | NotificationRepository | PetFoodRepository | JobRuntime
-> = Layer.effect(
+export const layer = Layer.effect(
 	ReminderScheduler,
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
@@ -54,12 +52,12 @@ export const layer: Layer.Layer<
 					? Effect.void
 					: Effect.asVoid(jobs.cancel(event.jobId)),
 			);
-		const cancelLocked = (botId: string, petId: string, now: number) =>
+		const cancelLocked = (botId: BotId, petId: PetId, now: number) =>
 			Effect.flatMap(
-				notifications.cancelActiveForPet(botId as never, petId as never, now),
+				notifications.cancelActiveForPet(botId, petId, now),
 				cancelJobs,
 			);
-		const service: ReminderSchedulerService = {
+		const service = {
 			replaceForLatest: (request) =>
 				sql
 					.withTransaction(
@@ -116,9 +114,16 @@ export const layer: Layer.Layer<
 									event.id,
 									now,
 								);
-								if (revived)
-									event = (yield* notifications.getDispatchContext(event.id))!;
-								else {
+								if (revived) {
+									const restored = yield* notifications.getDispatchContext(
+										event.id,
+									);
+									if (restored === undefined)
+										return yield* Effect.fail(
+											schedulerError('Revived reminder event disappeared'),
+										);
+									event = restored;
+								} else {
 									const generationId = Schema.decodeUnknownSync(EventId)(
 										crypto.randomUUID(),
 									);
@@ -208,7 +213,7 @@ export const layer: Layer.Layer<
 								: schedulerError('Failed to cancel feeding reminder', cause),
 						),
 					),
-		};
+		} satisfies ReminderSchedulerService;
 		return service;
 	}),
 );

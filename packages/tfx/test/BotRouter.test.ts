@@ -1,4 +1,4 @@
-import { Data, Effect, Layer, Schema } from 'effect';
+import { Effect, Layer, Schema } from 'effect';
 import {
 	Bot,
 	BotBuilder,
@@ -29,14 +29,23 @@ const commandUpdate = (id: number, text: string, user = 10, chat = 20) => ({
 		],
 	},
 });
-class TestHandlerError extends Data.TaggedError('TestHandlerError')<{
-	readonly message: string;
-}> {}
+class TestHandlerError extends Schema.TaggedErrorClass<TestHandlerError>()(
+	'TestHandlerError',
+	{ message: Schema.String },
+) {}
 
 const account = BotGroup.make('account').add(
-	Command.make('start', { name: 'start', error: new Error('declared') }),
+	Command.make('start', {
+		name: 'start',
+		error: Schema.Union([
+			TestHandlerError,
+			Conversations.HandledWithOutputFailure,
+		]),
+	}),
 );
-const pets = BotGroup.make('pets').add(Command.make('list', { name: 'pets' }));
+const pets = BotGroup.make('pets').add(
+	Command.make('list', { name: 'pets', error: Schema.Void }),
+);
 const bot = Bot.make('declared').add(account).add(pets);
 const conversationDeclaration = Conversation.make('counter', {
 	version: 1,
@@ -49,6 +58,7 @@ const conversationDeclaration = Conversation.make('counter', {
 			input: ConversationInput.text(Schema.NumberFromString),
 		}),
 	},
+	error: Schema.Void,
 });
 let resumed = 0;
 const builtConversation = ConversationBuilder.done(
@@ -182,7 +192,9 @@ describe('public BotRouter', () => {
 		const handlers = BotBuilder.buildGroup(bot, 'account', (value) =>
 			value.handle('start', () =>
 				Effect.fail(
-					new Conversations.HandledWithOutputFailure(new Error('token=secret')),
+					new Conversations.HandledWithOutputFailure({
+						cause: new TestHandlerError({ message: 'token=secret' }),
+					}),
 				),
 			),
 		);

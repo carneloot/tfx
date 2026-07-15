@@ -1,13 +1,17 @@
-import { Data } from 'effect';
 import * as Context from 'effect/Context';
 import type * as Effect from 'effect/Effect';
+import * as Schema from 'effect/Schema';
 
 import type { BotId, PetId, UserId } from '../domain/Ids.js';
 import type { FoodEntryId } from '../domain/pet-food/PetFood.js';
 
-export class ReminderSchedulerError extends Data.TaggedError(
+export class ReminderSchedulerError extends Schema.TaggedErrorClass<ReminderSchedulerError>()(
 	'ReminderSchedulerError',
-)<{ readonly message: string; readonly cause?: unknown }> {}
+	{
+		message: Schema.String,
+		cause: Schema.optionalKey(Schema.Unknown),
+	},
+) {}
 export interface ReminderSchedule {
 	readonly botId: BotId;
 	readonly ownerUserId: UserId;

@@ -1,87 +1,87 @@
 import * as Duration from 'effect/Duration';
 import * as Schema from 'effect/Schema';
 
-export class NetworkError extends Schema.ErrorClass<NetworkError>(
+export class NetworkError extends Schema.TaggedErrorClass<NetworkError>()(
 	'NetworkError',
-)({
-	message: Schema.String,
-}) {
-	readonly _tag = 'NetworkError' as const;
+	{
+		message: Schema.String,
+	},
+) {
 	readonly isRetryable = true;
 	readonly retryAfter = undefined;
 }
 
-export class RateLimitError extends Schema.ErrorClass<RateLimitError>(
+export class RateLimitError extends Schema.TaggedErrorClass<RateLimitError>()(
 	'RateLimitError',
-)({
-	errorCode: Schema.Number,
-	description: Schema.String,
-	retryAfterSeconds: Schema.Number,
-}) {
-	readonly _tag = 'RateLimitError' as const;
+	{
+		errorCode: Schema.Number,
+		description: Schema.String,
+		retryAfterSeconds: Schema.Number,
+	},
+) {
 	readonly isRetryable = true;
 	get retryAfter(): Duration.Duration {
 		return Duration.seconds(this.retryAfterSeconds);
 	}
 }
 
-export class AuthenticationError extends Schema.ErrorClass<AuthenticationError>(
+export class AuthenticationError extends Schema.TaggedErrorClass<AuthenticationError>()(
 	'AuthenticationError',
-)({ errorCode: Schema.Number, description: Schema.String }) {
-	readonly _tag = 'AuthenticationError' as const;
+	{ errorCode: Schema.Number, description: Schema.String },
+) {
 	readonly isRetryable = false;
 	readonly retryAfter = undefined;
 }
-export class ForbiddenError extends Schema.ErrorClass<ForbiddenError>(
+export class ForbiddenError extends Schema.TaggedErrorClass<ForbiddenError>()(
 	'ForbiddenError',
-)({ errorCode: Schema.Number, description: Schema.String }) {
-	readonly _tag = 'ForbiddenError' as const;
+	{ errorCode: Schema.Number, description: Schema.String },
+) {
 	readonly isRetryable = false;
 	readonly retryAfter = undefined;
 }
-export class InvalidRequestError extends Schema.ErrorClass<InvalidRequestError>(
+export class InvalidRequestError extends Schema.TaggedErrorClass<InvalidRequestError>()(
 	'InvalidRequestError',
-)({ errorCode: Schema.Number, description: Schema.String }) {
-	readonly _tag = 'InvalidRequestError' as const;
+	{ errorCode: Schema.Number, description: Schema.String },
+) {
 	readonly isRetryable = false;
 	readonly retryAfter = undefined;
 }
-export class ConflictError extends Schema.ErrorClass<ConflictError>(
+export class ConflictError extends Schema.TaggedErrorClass<ConflictError>()(
 	'ConflictError',
-)({ errorCode: Schema.Number, description: Schema.String }) {
-	readonly _tag = 'ConflictError' as const;
+	{ errorCode: Schema.Number, description: Schema.String },
+) {
 	readonly isRetryable = true;
 	readonly retryAfter = undefined;
 }
-export class ChatMigrationError extends Schema.ErrorClass<ChatMigrationError>(
+export class ChatMigrationError extends Schema.TaggedErrorClass<ChatMigrationError>()(
 	'ChatMigrationError',
-)({
-	errorCode: Schema.Number,
-	description: Schema.String,
-	migrateToChatId: Schema.Number,
-}) {
-	readonly _tag = 'ChatMigrationError' as const;
+	{
+		errorCode: Schema.Number,
+		description: Schema.String,
+		migrateToChatId: Schema.Number,
+	},
+) {
 	readonly isRetryable = false;
 	readonly retryAfter = undefined;
 }
-export class InternalTelegramError extends Schema.ErrorClass<InternalTelegramError>(
+export class InternalTelegramError extends Schema.TaggedErrorClass<InternalTelegramError>()(
 	'InternalTelegramError',
-)({ errorCode: Schema.Number, description: Schema.String }) {
-	readonly _tag = 'InternalTelegramError' as const;
+	{ errorCode: Schema.Number, description: Schema.String },
+) {
 	readonly isRetryable = true;
 	readonly retryAfter = undefined;
 }
-export class InvalidResponseError extends Schema.ErrorClass<InvalidResponseError>(
+export class InvalidResponseError extends Schema.TaggedErrorClass<InvalidResponseError>()(
 	'InvalidResponseError',
-)({ message: Schema.String }) {
-	readonly _tag = 'InvalidResponseError' as const;
+	{ message: Schema.String },
+) {
 	readonly isRetryable = false;
 	readonly retryAfter = undefined;
 }
-export class UnknownError extends Schema.ErrorClass<UnknownError>(
+export class UnknownError extends Schema.TaggedErrorClass<UnknownError>()(
 	'UnknownError',
-)({ message: Schema.String }) {
-	readonly _tag = 'UnknownError' as const;
+	{ message: Schema.String },
+) {
 	readonly isRetryable = false;
 	readonly retryAfter = undefined;
 }
@@ -100,14 +100,14 @@ export const TelegramErrorReason = Schema.Union([
 ]);
 export type TelegramErrorReason = typeof TelegramErrorReason.Type;
 
-export class TelegramError extends Schema.ErrorClass<TelegramError>(
+export class TelegramError extends Schema.TaggedErrorClass<TelegramError>()(
 	'TelegramError',
-)({
-	module: Schema.Literal('Telegram'),
-	method: Schema.String,
-	reason: TelegramErrorReason,
-}) {
-	readonly _tag = 'TelegramError' as const;
+	{
+		module: Schema.Literal('Telegram'),
+		method: Schema.String,
+		reason: TelegramErrorReason,
+	},
+) {
 	get cause(): TelegramErrorReason {
 		return this.reason;
 	}

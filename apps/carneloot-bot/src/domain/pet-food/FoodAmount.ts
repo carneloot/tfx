@@ -12,11 +12,13 @@ const invalid = (value: string) =>
 const parse = (input: string): bigint | undefined => {
 	const match = /^([0-9]+)(?:\.([0-9]+))?\s*(mg|g|kg)?$/iu.exec(input.trim());
 	if (match === null) return undefined;
-	const unit = (match[3]?.toLowerCase() ?? 'g') as 'mg' | 'g' | 'kg';
+	const unit = match[3]?.toLowerCase() ?? 'g';
 	const scale = unit === 'mg' ? 1n : unit === 'g' ? 1_000n : 1_000_000n;
+	const whole = match[1];
+	if (whole === undefined) return undefined;
 	const fraction = match[2] ?? '';
 	const denominator = 10n ** BigInt(fraction.length);
-	const numerator = BigInt(match[1]!) * denominator + BigInt(fraction || '0');
+	const numerator = BigInt(whole) * denominator + BigInt(fraction || '0');
 	const scaled = numerator * scale;
 	if (scaled % denominator !== 0n) return undefined;
 	const milligrams = scaled / denominator;
@@ -36,7 +38,7 @@ export const FoodAmount = Schema.String.pipe(
 			const value = parse(input);
 			return value === undefined
 				? Effect.fail(invalid(input))
-				: Effect.succeed(Number(value) as FoodAmount);
+				: Effect.succeed(Schema.decodeUnknownSync(FoodAmountMg)(Number(value)));
 		}),
 		encode: SchemaGetter.transform((value) => `${value}mg`),
 	}),

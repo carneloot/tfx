@@ -1,6 +1,7 @@
 import * as Context from 'effect/Context';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
+import * as Schema from 'effect/Schema';
 
 import * as Middleware from '../src/Middleware.js';
 
@@ -20,18 +21,21 @@ class Result extends Context.Service<Result, { readonly id: number }>()(
 	'types/Result',
 ) {}
 
-type Unauthorized = { readonly _tag: 'Unauthorized' };
+class Unauthorized extends Schema.TaggedErrorClass<Unauthorized>()(
+	'Unauthorized',
+	{},
+) {}
 
 const RegisteredUser = Middleware.make('registered-user', {
 	scope: 'global',
 	provides: CurrentUser,
-	error: undefined as unknown as Unauthorized,
+	error: Unauthorized,
 });
 const RequireAdmin = Middleware.make('require-admin', {
 	scope: 'group',
 	provides: CurrentAdmin,
 	requires: [CurrentUser],
-	error: undefined as unknown as Unauthorized,
+	error: Unauthorized,
 });
 
 const registeredLive = Middleware.implement(

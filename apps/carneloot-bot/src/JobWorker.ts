@@ -1,12 +1,28 @@
 import * as Clock from 'effect/Clock';
 import * as Context from 'effect/Context';
+import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
 import * as Fiber from 'effect/Fiber';
 import * as Layer from 'effect/Layer';
-import { JobRuntime } from 'tfx/JobRuntime';
-import type { JobRecord } from 'tfx/JobStore';
+import { JobRuntime, type JobRuntimeOptionsError } from 'tfx/JobRuntime';
+import { JobStoreError, type JobRecord } from 'tfx/JobStore';
 
-import { NotificationRepository } from './ports/NotificationRepository.js';
+import {
+	NotificationRepository,
+	type NotificationRepositoryError,
+} from './ports/NotificationRepository.js';
+
+export class JobWorkerOptionsError extends Data.TaggedError(
+	'JobWorkerOptionsError',
+)<{
+	readonly option: 'idleDelay' | 'leaseDuration' | 'heartbeatInterval';
+	readonly message: string;
+}> {}
+export type JobWorkerError =
+	| JobStoreError
+	| JobRuntimeOptionsError
+	| NotificationRepositoryError
+	| JobWorkerOptionsError;
 
 export interface JobWorkerDiagnostics {
 	readonly recoveredDeliveries: number;
@@ -15,9 +31,9 @@ export interface JobWorkerDiagnostics {
 	readonly quarantinedJobIds: ReadonlyArray<string>;
 }
 export interface JobWorkerService {
-	readonly await: Effect.Effect<void, unknown>;
+	readonly await: Effect.Effect<void, JobWorkerError>;
 	readonly diagnostics: JobWorkerDiagnostics;
-	readonly problems: Effect.Effect<ReadonlyArray<JobRecord>, unknown>;
+	readonly problems: Effect.Effect<ReadonlyArray<JobRecord>, JobStoreError>;
 }
 export class JobWorker extends Context.Service<JobWorker, JobWorkerService>()(
 	'carneloot/JobWorker',
@@ -27,22 +43,31 @@ export interface Options {
 	readonly leaseDuration: number;
 	readonly heartbeatInterval: number;
 }
-const validate = (value: number, name: string) => {
-	if (!Number.isFinite(value) || value <= 0)
-		throw new TypeError(`${name} must be finite and positive`);
-};
-export const layer = (
-	options: Options,
-): Layer.Layer<JobWorker, unknown, JobRuntime | NotificationRepository> =>
+const validate = (
+	value: number,
+	option: 'idleDelay' | 'leaseDuration' | 'heartbeatInterval',
+) =>
+	!Number.isFinite(value) || value <= 0
+		? Effect.fail(
+				new JobWorkerOptionsError({
+					option,
+					message: `${option} must be finite and positive`,
+				}),
+			)
+		: Effect.void;
+export const layer = (options: Options) =>
 	Layer.effect(
 		JobWorker,
 		Effect.gen(function* () {
-			validate(options.idleDelay, 'idleDelay');
-			validate(options.leaseDuration, 'leaseDuration');
-			validate(options.heartbeatInterval, 'heartbeatInterval');
+			yield* validate(options.idleDelay, 'idleDelay');
+			yield* validate(options.leaseDuration, 'leaseDuration');
+			yield* validate(options.heartbeatInterval, 'heartbeatInterval');
 			if (options.heartbeatInterval >= options.leaseDuration)
-				throw new TypeError(
-					'heartbeatInterval must be less than leaseDuration',
+				return yield* Effect.fail(
+					new JobWorkerOptionsError({
+						option: 'heartbeatInterval',
+						message: 'heartbeatInterval must be less than leaseDuration',
+					}),
 				);
 			const jobs = yield* JobRuntime;
 			const notifications = yield* NotificationRepository;
@@ -55,18 +80,19 @@ export const layer = (
 			const quarantinedJobIds = startupProblems
 				.filter((job) => job.status === 'quarantined')
 				.map((job) => job.id);
-			const loop: Effect.Effect<void, unknown> = Effect.suspend(() =>
-				Effect.flatMap(
-					jobs.runOne({
-						leaseDuration: options.leaseDuration,
-						heartbeatInterval: options.heartbeatInterval,
-					}),
-					(record) =>
-						record === undefined
-							? Effect.andThen(Effect.sleep(options.idleDelay), loop)
-							: loop,
-				),
-			);
+			const loop: Effect.Effect<void, JobStoreError | JobRuntimeOptionsError> =
+				Effect.suspend(() =>
+					Effect.flatMap(
+						jobs.runOne({
+							leaseDuration: options.leaseDuration,
+							heartbeatInterval: options.heartbeatInterval,
+						}),
+						(record) =>
+							record === undefined
+								? Effect.andThen(Effect.sleep(options.idleDelay), loop)
+								: loop,
+					),
+				);
 			const fiber = yield* Effect.forkScoped(loop);
 			return Object.freeze({
 				await: Fiber.join(fiber),

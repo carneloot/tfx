@@ -37,12 +37,12 @@ export const petFoodHandlers = BotBuilder.buildGroup(
 			.handle('foodStatus', () => PetFoodHandlers.foodStatus)
 			.handle('addFood', () => PetFoodHandlers.startAddFood),
 );
-export const conversations = [
+export const conversations = Object.freeze([
 	AddPetConversation.built,
 	ConfigureDayStartConversation.built,
 	ConfigureReminderDelayConversation.built,
 	AddFoodConversation.built,
-] as const;
+]);
 export const make = (botUsername: string) =>
 	BotRouter.make({
 		bot: Carneloot,
@@ -51,12 +51,11 @@ export const make = (botUsername: string) =>
 		botUsername,
 		cancel: () => CancelConversation.cancelCurrent,
 		mapError: (error) => {
-			const tag =
-				typeof error === 'object' && error !== null && '_tag' in error
-					? String(error._tag)
-					: 'Unknown';
-			if (tag === 'UserNotRegistered' || tag === 'InvalidDomainInput')
-				return DispatchOutcome.permanentInvalid(tag);
+			if (
+				error._tag === 'UserNotRegistered' ||
+				error._tag === 'InvalidDomainInput'
+			)
+				return DispatchOutcome.permanentInvalid(error._tag);
 			return DispatchOutcome.retryableFailure('application-handler-failed');
 		},
 	});

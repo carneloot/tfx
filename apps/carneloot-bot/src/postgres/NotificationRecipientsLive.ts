@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
@@ -15,14 +16,11 @@ import {
 const Row = Schema.Struct({
 	private_chat_id: Schema.Union([Schema.String, Schema.Number]),
 });
-export const layer: Layer.Layer<
-	NotificationRecipients,
-	never,
-	PgClient.PgClient
-> = Layer.effect(
+const Recipient = Data.taggedEnum<ResolvedRecipient>();
+export const layer = Layer.effect(
 	NotificationRecipients,
 	Effect.map(PgClient.PgClient, (sql) => {
-		const service: NotificationRecipientsService = {
+		const service = {
 			resolveOwner: (botId, ownerUserId) =>
 				Effect.flatMap(
 					sql<
@@ -32,29 +30,29 @@ export const layer: Layer.Layer<
 						rows,
 					): Effect.Effect<ResolvedRecipient, NotificationRecipientsError> => {
 						if (rows[0] === undefined)
-							return Effect.succeed({
-								_tag: 'Unreachable' as const,
-								recipientUserId: ownerUserId,
-								recipientRole: owner,
-								channel: 'telegram' as const,
-								error: {
-									code: 'MissingTelegramIdentity',
-									message: 'Recipient has no Telegram identity for this bot',
-								},
-							});
+							return Effect.succeed(
+								Recipient.Unreachable({
+									recipientUserId: ownerUserId,
+									recipientRole: owner,
+									channel: 'telegram',
+									error: {
+										code: 'MissingTelegramIdentity',
+										message: 'Recipient has no Telegram identity for this bot',
+									},
+								}),
+							);
 						return Effect.try({
 							try: () => {
 								const row = Schema.decodeUnknownSync(Row)(rows[0]);
 								const chatId = Schema.decodeUnknownSync(TelegramChatId)(
 									Number(row.private_chat_id),
 								);
-								return {
-									_tag: 'Reachable' as const,
+								return Recipient.Reachable({
 									recipientUserId: ownerUserId,
 									recipientChatId: chatId,
 									recipientRole: owner,
-									channel: 'telegram' as const,
-								};
+									channel: 'telegram',
+								});
 							},
 							catch: (cause) =>
 								new NotificationRecipientsError({
@@ -73,7 +71,7 @@ export const layer: Layer.Layer<
 								}),
 					),
 				),
-		};
+		} satisfies NotificationRecipientsService;
 		return service;
 	}),
 );

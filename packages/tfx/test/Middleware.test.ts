@@ -1,5 +1,6 @@
 import * as Context from 'effect/Context';
 import * as Effect from 'effect/Effect';
+import * as Schema from 'effect/Schema';
 import { describe, expect, it } from 'vitest';
 
 import * as Middleware from '../src/Middleware.js';
@@ -20,11 +21,13 @@ class UserRepository extends Context.Service<
 const RegisteredUser = Middleware.make('registered-user', {
 	scope: 'global',
 	provides: CurrentUser,
+	error: Schema.Void,
 });
 const RequireAdmin = Middleware.make('require-admin', {
 	scope: 'group',
 	provides: CurrentAdmin,
 	requires: [CurrentUser],
+	error: Schema.Void,
 });
 
 describe('Middleware', () => {
@@ -105,10 +108,12 @@ describe('Middleware', () => {
 		const handler = Middleware.make('handler', {
 			scope: 'handler',
 			provides: CurrentUser,
+			error: Schema.Void,
 		});
 		const global = Middleware.make('global', {
 			scope: 'global',
 			provides: CurrentAdmin,
+			error: Schema.Void,
 		});
 		const first = Middleware.empty.use(
 			Middleware.implement(handler, Effect.succeed({ id: 1 })),

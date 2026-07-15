@@ -1,6 +1,7 @@
 import type * as Schema from 'effect/Schema';
 
 import type * as ConversationInput from './ConversationInput.js';
+import type * as ErrorSchema from './ErrorSchema.js';
 import type * as Middleware from './Middleware.js';
 import type * as VersionedSchema from './VersionedSchema.js';
 
@@ -22,6 +23,10 @@ export const step = <
 	options: { readonly state: Schema.Schema<State>; readonly input: Input },
 ): Step<Id, State, Input> => Object.freeze({ id, ...options });
 export type AnyStep = Step<string, any, any>;
+export type ErrorOf<C> =
+	C extends Conversation<any, any, any, any, infer ES, any>
+		? ErrorSchema.ErrorOf<ES>
+		: never;
 export type StartupOf<C> =
 	C extends Conversation<any, infer A, any, any, any, any> ? A : never;
 export type StateOf<S> = S extends Step<any, infer A, any> ? A : never;
@@ -35,7 +40,7 @@ export interface Conversation<
 	Startup,
 	Steps extends Readonly<Record<string, AnyStep>>,
 	Initial extends keyof Steps,
-	Error,
+	ES extends ErrorSchema.ErrorSchema,
 	M extends ReadonlyArray<Middleware.AnyMiddleware>,
 > {
 	readonly _tag: 'Conversation';
@@ -45,7 +50,7 @@ export interface Conversation<
 	readonly steps: Steps;
 	readonly initialStep: Initial;
 	readonly initialize: (input: Startup) => StateOf<Steps[Initial]>;
-	readonly error: Error | undefined;
+	readonly error: ES;
 	readonly middleware: M;
 	readonly idleTimeout: number | undefined;
 	readonly migrations: VersionedSchema.AnyHistory | undefined;
@@ -54,7 +59,7 @@ export interface Options<
 	Startup,
 	Steps extends Readonly<Record<string, AnyStep>>,
 	Initial extends keyof Steps,
-	Error,
+	ES extends ErrorSchema.ErrorSchema,
 	M extends ReadonlyArray<Middleware.AnyMiddleware>,
 > {
 	readonly version: number;
@@ -62,7 +67,7 @@ export interface Options<
 	readonly steps: Steps;
 	readonly initialStep: Initial;
 	readonly initialize: (input: Startup) => StateOf<Steps[Initial]>;
-	readonly error?: Error;
+	readonly error: ES;
 	readonly middleware?: M;
 	readonly idleTimeout?: number;
 	readonly migrations?: VersionedSchema.AnyHistory;
@@ -72,12 +77,14 @@ export const make = <
 	Startup,
 	const Steps extends Readonly<Record<string, AnyStep>>,
 	const Initial extends keyof Steps,
-	Error = never,
+	ES extends ErrorSchema.ErrorSchema,
 	const M extends ReadonlyArray<Middleware.AnyMiddleware> = readonly [],
 >(
 	id: Id,
-	options: Options<Startup, Steps, Initial, Error, M>,
-): Conversation<Id, Startup, Steps, Initial, Error, M> => {
+	options: Options<Startup, Steps, Initial, ES, M> & {
+		readonly error: ErrorSchema.Valid<ES>;
+	},
+): Conversation<Id, Startup, Steps, Initial, ES, M> => {
 	if (!Number.isInteger(options.version) || options.version <= 0)
 		throw new Error('Conversation version must be positive');
 	if (!(options.initialStep in options.steps))

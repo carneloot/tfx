@@ -16,7 +16,10 @@ import {
 	FeedingReminderRetryError,
 } from '../jobs/FeedingReminderJob.js';
 import { NotificationRecipients } from '../ports/NotificationRecipients.js';
-import { NotificationRepository } from '../ports/NotificationRepository.js';
+import {
+	NotificationRepository,
+	type NotificationRepositoryError,
+} from '../ports/NotificationRepository.js';
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { PetRepository } from '../ports/PetRepository.js';
 
@@ -149,7 +152,12 @@ export const execute = (
 		const status = yield* food.status(payload.petId, window.start, window.end);
 		const text = reminderText(pet.name, status.totalMg);
 		const telegram = yield* Telegram;
-		const loop: Effect.Effect<void, unknown, never> = Effect.suspend(() =>
+		const loop: Effect.Effect<
+			void,
+			| NotificationRepositoryError
+			| FeedingReminderRetryError
+			| FeedingReminderPermanentError
+		> = Effect.suspend(() =>
 			Effect.gen(function* () {
 				const claimNow = yield* Clock.currentTimeMillis;
 				const claim = yield* notifications.claimNext(

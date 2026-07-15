@@ -1,5 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import * as Clock from 'effect/Clock';
+import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
 
 import type { BotId, TelegramUserId, UserId } from '../domain/Ids.js';
@@ -14,15 +15,16 @@ export interface Identity {
 	readonly botId: BotId;
 	readonly telegramUserId: TelegramUserId;
 }
-export type PetFoodStatus =
-	| { readonly _tag: 'MissingDayStart'; readonly pet: Pet }
-	| {
-			readonly _tag: 'Configured';
-			readonly pet: Pet;
-			readonly totalMg: number;
-			readonly latestFedAt: number | null;
-			readonly window: DayBoundary.Window;
-	  };
+export type PetFoodStatus = Data.TaggedEnum<{
+	readonly MissingDayStart: { readonly pet: Pet };
+	readonly Configured: {
+		readonly pet: Pet;
+		readonly totalMg: number;
+		readonly latestFedAt: number | null;
+		readonly window: DayBoundary.Window;
+	};
+}>;
+const PetFoodStatus = Data.taggedEnum<PetFoodStatus>();
 export const execute = (identity: Identity) =>
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
@@ -41,7 +43,7 @@ export const execute = (identity: Identity) =>
 							settings.dayStart === null ||
 							settings.timeZone === null
 						)
-							return { _tag: 'MissingDayStart' as const, pet };
+							return PetFoodStatus.MissingDayStart({ pet });
 						const window = DayBoundary.current(now, {
 							localTime: settings.dayStart,
 							timeZone: settings.timeZone,
@@ -51,12 +53,11 @@ export const execute = (identity: Identity) =>
 							window.start,
 							window.end,
 						);
-						return {
-							_tag: 'Configured' as const,
+						return PetFoodStatus.Configured({
 							pet,
 							...summary,
 							window,
-						};
+						});
 					}),
 				);
 			}),

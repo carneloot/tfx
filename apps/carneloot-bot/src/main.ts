@@ -1,4 +1,4 @@
-export const packageName = 'carneloot-bot' as const;
+export const packageName = 'carneloot-bot';
 export * as Config from './Config.js';
 export * as DemoSummary from './DemoSummary.js';
 export * as JobWorker from './JobWorker.js';

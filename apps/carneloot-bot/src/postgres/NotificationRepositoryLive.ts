@@ -66,13 +66,20 @@ const DeliveryRow = Schema.Struct({
 	created_at: Schema.Unknown,
 	updated_at: Schema.Unknown,
 });
-const timestamp = (value: unknown): number | null => {
+const timestamp = (value: unknown) => {
 	if (value === null) return null;
 	const result =
 		value instanceof Date
 			? value.getTime()
-			: new Date(value as string).getTime();
+			: typeof value === 'string' || typeof value === 'number'
+				? new Date(value).getTime()
+				: Number.NaN;
 	if (!Number.isFinite(result)) throw new Error('Invalid timestamp');
+	return result;
+};
+const requiredTimestamp = (value: unknown) => {
+	const result = timestamp(value);
+	if (result === null) throw new Error('Missing timestamp');
 	return result;
 };
 const safeInteger = (value: string | number, minimum?: number) => {
@@ -97,8 +104,8 @@ const decodeEventSync = (raw: unknown): NotificationEvent => {
 		status: row.status,
 		dedupeKey: row.dedupe_key,
 		jobId: row.job_id,
-		createdAt: timestamp(row.created_at)!,
-		updatedAt: timestamp(row.updated_at)!,
+		createdAt: requiredTimestamp(row.created_at),
+		updatedAt: requiredTimestamp(row.updated_at),
 		completedAt: timestamp(row.completed_at),
 		cancelledAt: timestamp(row.cancelled_at),
 	};
@@ -136,8 +143,8 @@ const decodeDeliverySync = (raw: unknown): NotificationDelivery => {
 		sentAt: timestamp(row.sent_at),
 		failedAt: timestamp(row.failed_at),
 		unknownAt: timestamp(row.unknown_at),
-		createdAt: timestamp(row.created_at)!,
-		updatedAt: timestamp(row.updated_at)!,
+		createdAt: requiredTimestamp(row.created_at),
+		updatedAt: requiredTimestamp(row.updated_at),
 	};
 };
 const error = (
@@ -171,11 +178,7 @@ const decodeDelivery = (raw: unknown) =>
 			error('InvariantViolation', 'Malformed notification delivery row', cause),
 	});
 
-export const layer: Layer.Layer<
-	NotificationRepository,
-	NotificationRepositoryError,
-	PgClient.PgClient
-> = Layer.effect(
+export const layer = Layer.effect(
 	NotificationRepository,
 	Effect.andThen(
 		migrate.pipe(
@@ -192,7 +195,7 @@ export const layer: Layer.Layer<
 				rows[0] === undefined
 					? Effect.fail(error('InvariantViolation', 'Expected delivery row'))
 					: decodeDelivery(rows[0]);
-			const service: NotificationRepositoryService = {
+			const service = {
 				createEvent: (input) =>
 					protect(
 						sql.withTransaction(
@@ -428,7 +431,7 @@ export const layer: Layer.Layer<
 							}),
 						),
 					),
-			};
+			} satisfies NotificationRepositoryService;
 			return service;
 		}),
 	),

@@ -3,10 +3,11 @@ import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 import { Conversations, MessageContext, UpdateContext } from 'tfx';
-import { ConversationScopeUnavailable } from 'tfx/Conversations';
 
 import * as GetFoodStatus from '../application/GetFoodStatus.js';
 import * as ListPets from '../application/ListPets.js';
+import { ConversationOperationError } from '../domain/ApplicationError.js';
+import { InvalidDomainInput } from '../domain/DomainError.js';
 import { TelegramChatId } from '../domain/Ids.js';
 import type { Pet } from '../domain/Pet.js';
 import type { RegisteredUser } from '../domain/User.js';
@@ -39,13 +40,26 @@ const start = (
 		const update = yield* UpdateContext.UpdateContext;
 		if (update.chatId === undefined || update.userId === undefined)
 			return yield* Effect.fail(
-				new ConversationScopeUnavailable('Missing conversation scope'),
+				new ConversationOperationError({
+					message: 'Missing conversation scope',
+					cause: { _tag: 'MissingConversationScope' },
+				}),
 			);
 		const conversations = yield* Conversations.Conversations;
-		yield* conversations.start(built, input(current, pets), {
-			scope: { botId, chatId: update.chatId, userId: update.userId },
-			conflict: 'replace',
-		});
+		yield* conversations
+			.start(built, input(current, pets), {
+				scope: { botId, chatId: update.chatId, userId: update.userId },
+				conflict: 'replace',
+			})
+			.pipe(
+				Effect.mapError(
+					(cause) =>
+						new ConversationOperationError({
+							message: 'Could not start configuration conversation',
+							cause,
+						}),
+				),
+			);
 	});
 
 export const startConfigureDayStart = start(
@@ -108,23 +122,44 @@ export const startAddFood = Effect.gen(function* () {
 	const update = yield* UpdateContext.UpdateContext;
 	if (update.chatId === undefined || update.userId === undefined)
 		return yield* Effect.fail(
-			new ConversationScopeUnavailable('Missing conversation scope'),
+			new ConversationOperationError({
+				message: 'Missing conversation scope',
+				cause: { _tag: 'MissingConversationScope' },
+			}),
 		);
 	const conversations = yield* Conversations.Conversations;
 	const messageChatId = yield* Schema.decodeUnknownEffect(TelegramChatId)(
 		context.chatId,
+	).pipe(
+		Effect.mapError(
+			(cause) =>
+				new InvalidDomainInput({
+					message: 'Invalid Telegram chat id',
+					cause,
+				}),
+		),
 	);
-	yield* conversations.start(
-		AddFoodConversation.built,
-		{
-			...input(current, pets),
-			updateId: update.updateId,
-			messageChatId,
-			messageId: context.messageId,
-		},
-		{
-			scope: { botId, chatId: update.chatId, userId: update.userId },
-			conflict: 'replace',
-		},
-	);
+	yield* conversations
+		.start(
+			AddFoodConversation.built,
+			{
+				...input(current, pets),
+				updateId: update.updateId,
+				messageChatId,
+				messageId: context.messageId,
+			},
+			{
+				scope: { botId, chatId: update.chatId, userId: update.userId },
+				conflict: 'replace',
+			},
+		)
+		.pipe(
+			Effect.mapError(
+				(cause) =>
+					new ConversationOperationError({
+						message: 'Could not start add-food conversation',
+						cause,
+					}),
+			),
+		);
 });

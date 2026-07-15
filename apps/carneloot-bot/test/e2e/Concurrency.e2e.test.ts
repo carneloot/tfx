@@ -1,7 +1,7 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import * as TfxPostgres from '@tfx/postgres/TfxPostgres';
-import { Deferred, Effect, Fiber, Layer, Redacted, Ref } from 'effect';
+import { Deferred, Effect, Fiber, Layer, Redacted, Ref, Schema } from 'effect';
 import {
 	Bot,
 	BotBuilder,
@@ -46,7 +46,9 @@ const postgres: Layer.Layer<PgClient.PgClient, unknown, never> =
 				),
 			)
 		: PgClient.layer({ url: Redacted.make(process.env.TEST_DATABASE_URL) });
-const group = BotGroup.make('work').add(Command.make('run', { name: 'run' }));
+const group = BotGroup.make('work').add(
+	Command.make('run', { name: 'run', error: Schema.Void }),
+);
 const declaration = Bot.make('concurrency').add(group);
 const update = (id: number, chatId: number, userId = 100) => ({
 	update_id: id,

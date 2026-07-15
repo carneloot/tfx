@@ -3,6 +3,7 @@ import type * as Effect from 'effect/Effect';
 import type * as Conversation from './Conversation.js';
 import type * as ConversationInput from './ConversationInput.js';
 import type * as Transition from './internal/conversation/Transition.js';
+import type { TaggedError } from './TaggedError.js';
 export {
 	to,
 	stay,
@@ -14,22 +15,21 @@ type StepsOf<C> =
 	C extends Conversation.Conversation<any, any, infer S, any, any, any>
 		? S
 		: never;
-type ErrorOf<C> =
-	C extends Conversation.Conversation<any, any, any, any, infer E, any>
-		? E
-		: never;
+type ErrorOf<C> = Conversation.ErrorOf<C>;
 type AnyTransition<S extends Readonly<Record<string, Conversation.AnyStep>>> =
 	| {
 			[K in keyof S & string]: Transition.Transition<
 				K,
-				Conversation.StateOf<S[K]>
+				Conversation.StateOf<S[K]>,
+				TaggedError,
+				any
 			>;
 	  }[keyof S & string]
-	| Transition.Transition<never, never>;
+	| Transition.Transition<never, never, TaggedError, any>;
 export interface StepHandlers<
 	S extends Conversation.AnyStep,
 	Steps extends Readonly<Record<string, Conversation.AnyStep>>,
-	E,
+	E extends TaggedError,
 	R,
 > {
 	readonly enter: (state: Conversation.StateOf<S>) => Effect.Effect<void, E, R>;
@@ -54,9 +54,9 @@ export interface Builder<
 	readonly implementations: Implementations;
 	readonly _remaining: Remaining;
 	readonly _requirements: R;
-	step<const Id extends Remaining, E extends ErrorOf<C>, SR>(
+	step<const Id extends Remaining, SR>(
 		id: Id,
-		handlers: StepHandlers<StepsOf<C>[Id], StepsOf<C>, E, SR>,
+		handlers: StepHandlers<StepsOf<C>[Id], StepsOf<C>, ErrorOf<C>, SR>,
 	): Builder<
 		C,
 		Exclude<Remaining, Id>,

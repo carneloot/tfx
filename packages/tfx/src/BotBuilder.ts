@@ -31,8 +31,7 @@ type InputRequirements<C> =
 	C extends Command.Command<any, infer Input, any, any>
 		? CommandInput.Requirements<Input>
 		: never;
-type DeclaredError<C> =
-	C extends Command.Command<any, any, infer Error, any> ? Error : never;
+type DeclaredError<C> = Command.Error<C>;
 type MiddlewareProvided<C> =
 	C extends Command.Command<any, any, any, infer M>
 		? Middleware.ProvidedBy<M>

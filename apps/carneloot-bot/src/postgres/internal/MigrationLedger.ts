@@ -16,12 +16,13 @@ const invalid = (message: string) =>
 export const validateAppliedMigrations = (
 	migrations: ReadonlyArray<MigrationIdentity>,
 	applied: ReadonlyArray<MigrationIdentity>,
-): Effect.Effect<void, DomainPersistenceError> => {
+) => {
 	if (applied.length > migrations.length)
 		return Effect.fail(invalid('unknown future migration version'));
-	for (let index = 0; index < applied.length; index++) {
-		const actual = applied[index]!;
-		const expected = migrations[index]!;
+	for (const [index, actual] of applied.entries()) {
+		const expected = migrations[index];
+		if (expected === undefined)
+			return Effect.fail(invalid('unknown future migration version'));
 		if (actual.version !== expected.version)
 			return Effect.fail(
 				invalid(
