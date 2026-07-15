@@ -41,7 +41,12 @@
 		"./MemoryJobStore": "./src/MemoryJobStore.ts",
 		"./DispatchOutcome": "./src/DispatchOutcome.ts",
 		"./UpdateDeduplicator": "./src/UpdateDeduplicator.ts",
-		"./MemoryUpdateDeduplicator": "./src/MemoryUpdateDeduplicator.ts"
+		"./MemoryUpdateDeduplicator": "./src/MemoryUpdateDeduplicator.ts",
+		"./UpdateDelivery": "./src/UpdateDelivery.ts",
+		"./BotRuntime": "./src/BotRuntime.ts",
+		"./Polling": "./src/Polling.ts",
+		"./UpdateRoutingScope": "./src/UpdateRoutingScope.ts",
+		"./Partitioning": "./src/Partitioning.ts"
 	},
 	"publishConfig": {
 		"access": "public",
@@ -78,7 +83,12 @@
 			"./MemoryJobStore": "./dist/MemoryJobStore.js",
 			"./DispatchOutcome": "./dist/DispatchOutcome.js",
 			"./UpdateDeduplicator": "./dist/UpdateDeduplicator.js",
-			"./MemoryUpdateDeduplicator": "./dist/MemoryUpdateDeduplicator.js"
+			"./MemoryUpdateDeduplicator": "./dist/MemoryUpdateDeduplicator.js",
+			"./UpdateDelivery": "./dist/UpdateDelivery.js",
+			"./BotRuntime": "./dist/BotRuntime.js",
+			"./Polling": "./dist/Polling.js",
+			"./UpdateRoutingScope": "./dist/UpdateRoutingScope.js",
+			"./Partitioning": "./dist/Partitioning.js"
 		}
 	},
 	"scripts": {

@@ -32,3 +32,8 @@ export * as MemoryJobStore from './MemoryJobStore.js';
 export * as DispatchOutcome from './DispatchOutcome.js';
 export * as UpdateDeduplicator from './UpdateDeduplicator.js';
 export * as MemoryUpdateDeduplicator from './MemoryUpdateDeduplicator.js';
+export * as UpdateDelivery from './UpdateDelivery.js';
+export * as BotRuntime from './BotRuntime.js';
+export * as Polling from './Polling.js';
+export * as UpdateRoutingScope from './UpdateRoutingScope.js';
+export * as Partitioning from './Partitioning.js';
