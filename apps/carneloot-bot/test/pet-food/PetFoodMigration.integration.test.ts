@@ -46,6 +46,32 @@ describe.skipIf(!enabled)('pet food migration', () => {
 			'pet_food_entries_latest_idx',
 		);
 	});
+	it('rejects unknown future versions and a missing applied prefix', async () => {
+		const program = Effect.gen(function* () {
+			yield* migrate;
+			const sql = yield* PgClient.PgClient;
+			return yield* sql.withTransaction(
+				Effect.gen(function* () {
+					yield* sql`SELECT pg_advisory_xact_lock(hashtextextended('carneloot:app_migrations', 0))`;
+					yield* sql`INSERT INTO carneloot.app_migrations (version,name,checksum) VALUES (99,'future','future')`;
+					const unknown = yield* Effect.result(migrate);
+					yield* sql`DELETE FROM carneloot.app_migrations WHERE version=99`;
+					yield* sql`DELETE FROM carneloot.app_migrations WHERE version=1`;
+					const gap = yield* Effect.result(migrate);
+					yield* sql`INSERT INTO carneloot.app_migrations (version,name,checksum) VALUES (1,'identity-pets',${migration0001Checksum})`;
+					return { unknown, gap };
+				}),
+			);
+		});
+		const result = await Effect.runPromise(
+			Effect.provide(program, PostgresTestLayer.layer),
+		);
+		for (const failure of [result.unknown, result.gap])
+			expect(failure).toMatchObject({
+				_tag: 'Failure',
+				failure: { _tag: 'DomainPersistenceError' },
+			});
+	});
 	it('executes FK, range, null-pair, uniqueness, and cascade constraints', async () => {
 		const userId = crypto.randomUUID();
 		const petId = crypto.randomUUID();

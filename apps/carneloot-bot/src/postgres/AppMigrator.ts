@@ -2,10 +2,14 @@ import * as PgClient from '@effect/sql-pg/PgClient';
 import * as Effect from 'effect/Effect';
 
 import { DomainPersistenceError } from '../domain/DomainError.js';
+import {
+	type MigrationIdentity,
+	validateAppliedMigrations,
+} from './internal/MigrationLedger.js';
 import { migration0001Checksum, migration0001Sql } from './Migration0001Sql.js';
 import { migration0002Checksum, migration0002Sql } from './Migration0002Sql.js';
 
-interface Migration {
+interface Migration extends MigrationIdentity {
 	readonly version: number;
 	readonly name: string;
 	readonly checksum: string;
@@ -44,21 +48,8 @@ export const migrate = Effect.flatMap(PgClient.PgClient, (sql) =>
 				name: string;
 				checksum: string;
 			}>`SELECT version,name,checksum FROM carneloot.app_migrations ORDER BY version`;
-			const byVersion = new Map(applied.map((row) => [row.version, row]));
-			for (const migration of migrations) {
-				const existing = byVersion.get(migration.version);
-				if (existing !== undefined) {
-					if (
-						existing.name !== migration.name ||
-						existing.checksum !== migration.checksum
-					)
-						return yield* Effect.fail(
-							new DomainPersistenceError({
-								message: `Carneloot migration ${migration.version} checksum mismatch`,
-							}),
-						);
-					continue;
-				}
+			yield* validateAppliedMigrations(migrations, applied);
+			for (const migration of migrations.slice(applied.length)) {
 				yield* sql.unsafe(migration.sql);
 				yield* sql`INSERT INTO carneloot.app_migrations (version,name,checksum) VALUES (${migration.version},${migration.name},${migration.checksum})`;
 			}
