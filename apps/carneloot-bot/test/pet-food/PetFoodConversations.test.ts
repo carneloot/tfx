@@ -99,6 +99,7 @@ interface Harness {
 	scheduler: Array<string>;
 	authorizationFails: { value: boolean };
 	outputFailure: { value: boolean };
+	removeKeyboardReplies: Array<boolean>;
 	layer: Layer.Layer<
 		| ConversationStorage
 		| PetFoodRepository
@@ -121,14 +122,22 @@ const harness = (): Harness => {
 	const scheduler: Array<string> = [];
 	const authorizationFails = { value: false };
 	const outputFailure = { value: false };
+	const removeKeyboardReplies: Array<boolean> = [];
 	const context = {
 		message: {} as never,
 		chatId: scope.chatId,
 		messageId: 1,
 		messageThreadId: undefined,
 		businessConnectionId: undefined,
-		reply: (text: string) =>
+		reply: (text: string, options) =>
 			Effect.suspend(() => {
+				removeKeyboardReplies.push(
+					(
+						options?.reply_markup as
+							| { readonly remove_keyboard?: boolean }
+							| undefined
+					)?.remove_keyboard === true,
+				);
 				if (
 					outputFailure.value &&
 					(text.includes('sucesso') || text.includes('configurado para'))
@@ -245,6 +254,7 @@ const harness = (): Harness => {
 		scheduler,
 		authorizationFails,
 		outputFailure,
+		removeKeyboardReplies,
 		layer,
 		context,
 	};
@@ -446,6 +456,7 @@ describe('pet food conversation transcripts', () => {
 					const exit = yield* Effect.exit(resume(Reminder.built, '2 hours', 3));
 					const storage = yield* ConversationStorage;
 					expect(yield* storage.load(scope)).toBeUndefined();
+					yield* resume(Reminder.built, '2 hours', 3);
 					return exit;
 				}),
 				failed.layer,
@@ -467,7 +478,14 @@ describe('pet food conversation transcripts', () => {
 					expect((yield* storage.load(scope))?.step).toBe('pet');
 					yield* withFreshConversations(CancelConversation.cancelCurrent);
 					expect(yield* storage.load(scope)).toBeUndefined();
-					yield* start(Reminder.built);
+					yield* withFreshConversations(
+						PetFoodHandlers.startConfigureReminderDelay,
+					);
+					yield* resume(Reminder.built, 'Rex', 2);
+					yield* withFreshConversations(
+						PetFoodHandlers.startConfigureReminderDelay,
+					);
+					expect((yield* storage.load(scope))?.step).toBe('pet');
 					yield* withFreshConversations(CancelConversation.cancelCurrent);
 					expect(yield* storage.load(scope)).toBeUndefined();
 				}),
@@ -477,6 +495,7 @@ describe('pet food conversation transcripts', () => {
 		expect(
 			h.replies.filter((text) => text === 'Conversa cancelada.'),
 		).toHaveLength(2);
+		expect(h.removeKeyboardReplies.filter(Boolean)).toHaveLength(2);
 	});
 
 	it('does not create state when no pets exist', async () => {
@@ -487,13 +506,17 @@ describe('pet food conversation transcripts', () => {
 		};
 		await run(
 			Effect.provide(
-				withFreshConversations(
-					Effect.provideService(
-						PetFoodHandlers.startConfigureDayStart,
-						PetRepository,
-						emptyPets,
-					),
-				),
+				Effect.gen(function* () {
+					yield* withFreshConversations(
+						Effect.provideService(
+							PetFoodHandlers.startConfigureDayStart,
+							PetRepository,
+							emptyPets,
+						),
+					);
+					const storage = yield* ConversationStorage;
+					expect(yield* storage.load(scope)).toBeUndefined();
+				}),
 				h.layer,
 			),
 		);
