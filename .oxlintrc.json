@@ -10,6 +10,7 @@
 	"ignorePatterns": [
 		"node_modules/**",
 		".repos/**",
+		".pi/**",
 		".pi-subagents/**",
 		"packages/tfx/src/internal/telegram/generated/**",
 		"dist/**",
