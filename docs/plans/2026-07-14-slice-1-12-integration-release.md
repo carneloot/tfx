@@ -10,7 +10,9 @@
 
 ## File map
 
-- Create: `apps/carneloot-bot/src/{Config.ts,Layers.ts,Program.ts,main.ts}`
+- Create: `apps/carneloot-bot/src/{Config.ts,Layers.ts,Program.ts,JobWorker.ts}`
+- Modify: `apps/carneloot-bot/src/main.ts`
+- Modify: `packages/tfx/src/BotRuntime.ts`, `packages/tfx/test/BotRuntime.test.ts`
 - Create: `apps/carneloot-bot/src/postgres/Migrations.ts`
 - Create: `apps/carneloot-bot/test/Config.test.ts`
 - Create: `apps/carneloot-bot/test/e2e/{OwnedPetFoodLoop.e2e.test.ts,RestartRecovery.e2e.test.ts,Concurrency.e2e.test.ts}`
@@ -18,27 +20,31 @@
 - Create: `.changeset/slice-1-owned-pet-food.md`
 - Modify: root `README.md`, package manifests/scripts, CI workflow
 
-### Task 1: Configuration and scoped composition
+### Task 1: Observable runtime lifecycle, configuration, and scoped composition
 
-- [ ] **Step 1: Write config failures**
+- [ ] **Step 1: Add the public BotRuntime lifecycle contract**
 
-Require redacted bot token/database URL, bot ID, polling timeout/margin, queue capacity/concurrency, job/dedup lease/heartbeat values, and tfx-only `TFX_POSTGRES_SCHEMA`/`TFX_POSTGRES_TABLE_PREFIX`. Carneloot domain tables use fixed explicitly qualified `carneloot` schema in Slices 1–4; no app schema/prefix option is implied. Invalid heartbeat≥lease, HTTP timeout≤long-poll timeout, or non-durable production mode must fail before Telegram polling.
+Write failing tfx tests where a controlled UpdateSource fails after Layer acquisition and where scope shutdown interrupts a running source. Extend `BotRuntimeService` with `readonly await: Effect.Effect<void, unknown>`; the Layer retains the scoped source fiber and `await` joins it, preserving authentication/conflict/fatal polling failure instead of hiding it. Keep `dispatch` unchanged. Top-level application code must run/await this effect; scope shutdown interrupts source, dispatcher children, and job worker.
 
-- [ ] **Step 2: Implement application Layer graph**
+- [ ] **Step 2: Write config failures**
 
-Provide `PgClient.layer` once. Run tfx and app migrations. Merge `TfxPostgres.layer`, repositories, handlers, FeedingReminder JobRuntime, generated Telegram facade, Bun HttpClient, and `BotRuntime.layer(Carneloot, { delivery: Polling.make({ timeout: "30 seconds", transportTimeoutMargin: "5 seconds" }) })`. Assert dedup diagnostics `mode === "durable"`.
+Require only consumed fields: redacted bot token/database URL, bot ID, polling timeout seconds, polling retry-delay milliseconds, dispatcher capacity/concurrency, job idle-backoff milliseconds, job/dedup lease/heartbeat milliseconds, and tfx-only `TFX_POSTGRES_SCHEMA`/`TFX_POSTGRES_TABLE_PREFIX`. Decode numeric environment values once into the exact numeric units expected by Polling/worker APIs. Carneloot tables remain fixed in explicitly qualified `carneloot`. Reject heartbeat ≥ lease, unsafe/non-integer bot/update identity configuration, and non-durable production mode before polling. Do not retain an HTTP-timeout or transport-margin field until an actual platform HttpClient configuration consumes it.
 
-- [ ] **Step 3: Implement scoped Bun program**
+- [ ] **Step 3: Implement application Layer graph**
 
-Use Bun runtime entry to run one Effect scope. Acquisition order: config/client → migrations → repositories/stores → job workers → polling; release reverses it. Signals interrupt scope; unfinished updates/jobs retain retryable leases.
+Declare app runtime dependencies explicitly: runtime dependencies `@effect/platform-bun`, `@effect/sql-pg`, `effect`, `tfx`, and `@tfx/postgres`; dev dependency `@effect/platform-node` for portable smoke composition. Provide `PgClient.layer` exactly once. `TfxPostgres.layer` performs its own coordinated tfx migration once; app migrator uses the same client, with no manual duplicate tfx migration. Compose repositories, handlers, FeedingReminder JobRuntime, JobWorker, Telegram facade, Bun HttpClient, and `BotRuntime.layer(Carneloot, { delivery: Polling.make({ timeout: config.pollingTimeoutSeconds, retryDelay: config.pollingRetryDelayMillis }), capacity: config.dispatchCapacity, concurrency: config.dispatchConcurrency })`. Layer dependencies—not handwritten acquisition order—express migration-before-repository/runtime construction. Assert dedup diagnostics `mode === "durable"`.
 
-- [ ] **Step 4: Add Node smoke composition**
+- [ ] **Step 4: Implement scoped JobWorker and Bun program**
+
+Create a `JobWorker` service/Layer because `JobRuntime.layer` only exposes `runOne`. Its scoped loop calls `runOne({ leaseDuration })`, immediately continues after a claimed job, and sleeps the configured bounded idle backoff only when no job is due; validate positive finite durations, prevent zero-delay spin, preserve worker defects/store failures through an `await` lifecycle effect, and let interruption leave leases for recovery. Bun main runs one scoped Layer graph and awaits both `BotRuntime.await` and `JobWorker.await` (race/fail-fast supervision); signals interrupt the shared scope, whose finalizers stop polling/dispatcher/jobs. Tests use TestClock for idle backoff and interruption/recovery.
+
+- [ ] **Step 5: Add Node smoke composition**
 
 Test same portable packages/program factory with `@effect/platform-node` HttpClient; no tfx platform wrappers.
 
-- [ ] **Step 5: Run and commit**
+- [ ] **Step 6: Run and commit**
 
-Run: `pnpm --filter carneloot-bot check && pnpm --filter carneloot-bot test -- Config`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot check && pnpm --filter carneloot-bot test -- Config && pnpm --filter tfx test -- BotRuntime`
 Expected: config/composition tests PASS.
 
 ```bash
@@ -72,7 +78,7 @@ Unregistered guard; missing sender; no pets; invalid pet/timezone/duration/food;
 
 - [ ] **Step 3: Run E2E**
 
-Run: `pnpm --filter carneloot-bot test -- OwnedPetFoodLoop.e2e.test.ts`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- OwnedPetFoodLoop.e2e.test.ts`
 Expected: PASS with real PostgreSQL and no external Telegram.
 
 - [ ] **Step 4: Commit**
@@ -94,11 +100,11 @@ Seed v1/current and invalid/newer payloads. Assert migration claim does not incr
 
 - [ ] **Step 3: Add update concurrency proof**
 
-Duplicate update across two runtime clients executes one mutation. Same-chat updates run FIFO; unrelated chats overlap. Retryable update blocks contiguous polling offset while later completed update is skipped on repeated batch.
+Duplicate update across two runtime clients executes one mutation. Same-chat updates run FIFO; unrelated chats overlap. Retryable update blocks contiguous polling offset while later completed update is skipped on repeated batch. Every update/chat/user ID fixture stays within JS safe-integer range and ingress rejection of an unsafe number is covered; arbitrary bigint/string Telegram IDs remain deferred to a future tfx model change.
 
 - [ ] **Step 4: Run and commit**
 
-Run: `pnpm --filter carneloot-bot test -- RestartRecovery.e2e.test.ts Concurrency.e2e.test.ts`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- RestartRecovery.e2e.test.ts Concurrency.e2e.test.ts`
 Expected: PASS.
 
 ```bash
@@ -120,7 +126,10 @@ Include `mise install`, `pnpm install`, PostgreSQL startup, migrations, env fiel
 
 Minor changesets for `tfx` and `@tfx/postgres`; describe generated Telegram facade, declarations/runtime, conversations/jobs/dedup, PostgreSQL adapters. Do not publish.
 
-- [ ] **Step 4: Commit docs**
+- [ ] **Step 4: Validate and commit docs**
+
+Run: `pnpm format && pnpm lint`
+Expected: PASS before staging documentation/package changes.
 
 ```bash
 git add README.md apps/carneloot-bot/README.md apps/carneloot-bot/.env.example package.json apps/carneloot-bot/package.json .changeset/slice-1-owned-pet-food.md
@@ -131,13 +140,13 @@ git commit -m "docs: add Slice 1 runnable demo"
 
 - [ ] **Step 1: Regeneration and static gates**
 
-Run: `pnpm --filter tfx telegram:check && pnpm build && pnpm check && pnpm test:unit`
-Expected: PASS and clean generated diff.
+Run: `pnpm format && pnpm lint && pnpm --filter tfx telegram:check && pnpm check && pnpm test:unit && pnpm test:integration && pnpm build`
+Expected: PASS, clean generated diff, and no environment-gated PostgreSQL skip in release mode. CI mirrors these format/lint/generated/check/unit/integration/build gates.
 
 - [ ] **Step 2: Real PostgreSQL suites under Node**
 
-Run: `pnpm test:integration && pnpm --filter carneloot-bot test -- test/e2e`
-Expected: PASS.
+Run: `pnpm format && pnpm lint && pnpm test:integration && pnpm --filter carneloot-bot test -- test/e2e`
+Expected: every real-PostgreSQL suite executes and passes. Release validation fails when a suite reports an environment-gated skip; CI supplies PostgreSQL 17 and `TEST_DATABASE_URL`.
 
 - [ ] **Step 3: Bun compatibility gate**
 
@@ -146,7 +155,7 @@ Expected: PASS against PostgreSQL 17.
 
 - [ ] **Step 4: Package/export inspection**
 
-Run `pnpm --filter tfx pack --pack-destination dist-pack` and same for `@tfx/postgres`. Inspect tarballs: public subpaths present; generated/raw internal runtime files present because facade imports them but blocked by package exports; private tests and Testcontainers absent. Install tarballs into temp Node and Bun smoke consumers, including one facade call through fake HttpClient.
+Run `pnpm --filter tfx pack --pack-destination dist-pack` and same for `@tfx/postgres`. Inspect tarballs: declared public subpaths and the generated Telegram runtime asset required by the facade are present; broad raw/internal source subpaths remain inaccessible through package exports; private tests and Testcontainers are absent. Install both packed tarballs into temporary Node and Bun consumers, import every public subpath, and execute one facade call through fake HttpClient. Keep Changesets as a dry run only: no publish or deployment.
 
 - [ ] **Step 5: Fresh review**
 
@@ -154,7 +163,7 @@ Review against design sections 4–10, 14, and Slice 1 checklist. Require no SQL
 
 - [ ] **Step 6: Run demo and record evidence**
 
-Run: `pnpm --filter carneloot-bot demo:test`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot demo:test`
 Expected: transcript completes and reports one user, one pet, one food entry, one scheduled/completed reminder with persisted delivery outcome.
 
 - [ ] **Step 7: Commit review fixes separately if needed**

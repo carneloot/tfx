@@ -23,7 +23,7 @@
 
 - [ ] **Step 1: Write parser/date tests**
 
-Accept `50`, `50g`, `50000mg`, `0.05kg`; reject zero/negative, unknown units, fractional milligram, NaN/infinity, and over 100kg. Parse optional `HH:mm`, `DD/MM HH:mm`, `DD-MM HH:mm`, and four-digit-year forms in pet timezone. Reject nonexistent DST local time; resolve repeated time through explicit earlier-offset policy and test it.
+Accept `50`, `50g`, `50000mg`, `0.05kg`; reject zero/negative, unknown units, fractional milligram, NaN/infinity, and over 100kg. Parse optional `HH:mm`, `DD/MM HH:mm`, `DD-MM HH:mm`, and four-digit-year forms using injected `Clock` and Effect `DateTime` only—never `new Date` or host timezone. For yearless day/month, choose the earliest valid local calendar date on or after the injected current zoned local date (current year, otherwise next year), including today even when the supplied clock time has passed; reject when that date is more than 366 local calendar days ahead. Reject nonexistent DST local time and resolve repeated time with the earlier offset. Test Dec→Jan rollover, leap-day valid/invalid years, DST gap, repeated offset, and TestClock-controlled current date.
 
 - [ ] **Step 2: Add migration**
 
@@ -42,7 +42,7 @@ Normalize amount to integer milligrams. `DayBoundary.current(now,{localTime,time
 
 - [ ] **Step 4: Run and commit**
 
-Run: `pnpm --filter carneloot-bot test -- FoodAmount.test.ts FoodDateTime.test.ts DayBoundary.test.ts`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- FoodAmount.test.ts FoodDateTime.test.ts DayBoundary.test.ts`
 Expected: all units/midnight/DST cases PASS.
 
 ```bash
@@ -54,11 +54,11 @@ git commit -m "feat(carneloot): model pet food and day boundaries"
 
 - [ ] **Step 1: Write integration failures first**
 
-Test owner-only settings, 00:00 and 23:00, status window, exact mg sums, duplicate within one minute, source-update idempotency, latest/backdated detection, no-delay success, and rollback when scheduler fails.
+Test owner-only settings, 00:00 and 23:00, status window, exact mg sums, source replay precedence, business duplicate boundaries at 59,999ms and exactly 60,000ms, latest/backdated detection, no-delay success, concurrent insert locking, and rollback when scheduler fails.
 
 - [ ] **Step 2: Define repository/scheduler ports**
 
-Repository exposes settings, latest entry, insert-if-not-duplicate, and status query. Scheduler operations: `replaceForLatest`, `cancelForPet`, both transaction-participating. Provide recording Layer for this plan.
+Repository exposes settings, latest entry, insert-if-not-duplicate, and status query. Scheduler operations: `replaceForLatest`, `cancelForPet`, both using the same externally supplied ambient PgClient transaction as repositories. Provide a recording Layer only from test modules; production Layer composition must have no export/path that can select it. Plan 11 replaces it and reruns every scheduler rollback/atomicity case against PostgreSQL JobStore.
 
 - [ ] **Step 3: Implement setting use cases**
 
@@ -66,7 +66,7 @@ Day-start update validates ownership/timezone. Delay set updates setting then, w
 
 - [ ] **Step 4: Implement `AddFood`**
 
-Inside one transaction: recheck pet access; require day-start; parse local timestamp; reject entry within absolute 1-minute window; insert with source update key; compare to latest before insert; if newest and delay set call scheduler replacement; if backdated do not alter reminder. Scheduler failure rolls back insert. Missing delay inserts food and schedules nothing.
+Inside one transaction and pet-scoped row/advisory lock: recheck pet access; require day-start; parse local timestamp. First query the exact `(source_bot_id,source_update_id,pet_id)` key: replay returns the existing successful result and performs no scheduling. Otherwise reject a business duplicate only when absolute timestamp distance is `< 60_000ms` (59,999ms rejects; exactly 60,000ms is allowed), insert, then schedule only when that newly inserted row is latest. Backdated insertion never alters the reminder. Concurrent tests prove source replay/business duplicate races produce one row and one scheduler action. Scheduler failure rolls back insert. Missing delay inserts food and schedules nothing.
 
 - [ ] **Step 5: Implement status**
 
@@ -74,7 +74,7 @@ For each accessible pet, compute current window and return typed projection with
 
 - [ ] **Step 6: Run and commit**
 
-Run: `pnpm --filter carneloot-bot test -- PetFood.integration.test.ts`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- PetFood.integration.test.ts`
 Expected: SQL, transaction, idempotency, latest/backdated cases PASS.
 
 ```bash
@@ -94,7 +94,7 @@ Steps: `pet`, `confirm`, `hour`, `timezone`; persisted state stores IDs/primitiv
 
 - [ ] **Step 3: Run and commit**
 
-Run: `pnpm --filter carneloot-bot test -- PetFood.e2e.test.ts -t configurar_inicio_dia`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- PetFood.e2e.test.ts -t configurar_inicio_dia`
 Expected: empty/midnight/invalid/restart/cancel cases PASS.
 
 ```bash
@@ -114,7 +114,7 @@ Steps: pet, action, duration, delete-confirm. Setting change uses latest food re
 
 - [ ] **Step 3: Run and commit**
 
-Run: `pnpm --filter carneloot-bot test -- PetFood.e2e.test.ts -t configurar_atraso_notificacao`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- PetFood.e2e.test.ts -t configurar_atraso_notificacao`
 Expected: define/change/delete/reschedule/restart PASS.
 
 ```bash
@@ -134,11 +134,11 @@ No pets exits. Select pet, require day start, prompt quantity/time, reject malfo
 
 - [ ] **Step 3: Implement `/status_racao` and `/colocar_racao`**
 
-Status is command handler; add-food state machine has pet and amount/time steps. Authorization is checked when options render and again during insert. Telegram reply/reaction are afterCommit best effort.
+Status is command handler; add-food state machine has pet and amount/time steps. Authorization is checked when options render and again during insert. Telegram reply/reaction use the actual conversation transition `afterCommit` field after storage commits. For non-conversation commands, the application transaction completes before Telegram output. Output is best effort: failure reports handled-output failure and never rolls back committed food/settings.
 
 - [ ] **Step 4: Run and commit**
 
-Run: `pnpm --filter carneloot-bot test -- PetFood.e2e.test.ts`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- PetFood.e2e.test.ts`
 Expected: all four commands, restart, duplicate, timezone, no-empty-message, and output-failure cases PASS.
 
 ```bash
@@ -153,4 +153,4 @@ git commit -m "feat(carneloot): add and report pet food"
 - Empty pet/config states never enter stuck conversation or send empty text.
 - Food write and schedule replacement share transaction; backdated entry leaves latest reminder unchanged.
 - Missing delay means successful food with reminders disabled.
-- Every final mutation rechecks ownership/access and uses update-derived idempotency.
+- Every final mutation rechecks ownership/access and uses a `Number.isSafeInteger`-validated update ID for source idempotency; beyond-safe update IDs remain deferred to a future tfx model change.

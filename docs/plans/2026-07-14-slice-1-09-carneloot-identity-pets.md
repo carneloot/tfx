@@ -22,20 +22,20 @@
 
 - [ ] **Step 1: Write migration/repository failing tests**
 
-Cases: Telegram bigint beyond JS safe integer round-trips as string/branded bigint; username nullable/non-unique; pet name unique per owner; timestamps update; FK/cascade policy is explicit.
+Cases: Telegram IDs at both JavaScript safe-integer boundaries are accepted and `Number.isSafeInteger` rejects unsafe generated-update values before SQL; username is nullable/non-unique; pet name is unique per owner; timestamps update; FK deletion policies are executable-tested. Arbitrary Telegram bigint/string support is deferred until tfx changes its generated update model from `number`.
 
 - [ ] **Step 2: Create fixed application schema**
 
-Carneloot domain migrations and repositories use explicitly qualified fixed schema `carneloot`; tfx schema/prefix options do not apply to application tables.
+Carneloot domain migrations and repositories use explicitly qualified fixed schema `carneloot`; tfx schema/prefix options do not apply to application tables. Migration `0001_identity_pets` also bootstraps `carneloot.app_migrations`, takes a transaction advisory lock keyed by fixed schema/application name, applies immutable numbered migrations, and records version/name/SHA-256 only after success. Concurrent migrator tests assert one ledger row.
 
 ```text
 schema carneloot
 carneloot.users(id uuid primary key, created_at timestamptz not null, updated_at timestamptz not null)
-carneloot.telegram_identities(bot_id text not null, telegram_user_id bigint not null, user_id uuid not null references carneloot.users, username text null, first_name text not null, last_name text null, private_chat_id bigint not null, created_at timestamptz not null, updated_at timestamptz not null, primary key(bot_id,telegram_user_id), unique(bot_id,user_id))
-carneloot.pets(id uuid primary key, owner_id uuid not null references carneloot.users, name text not null, name_key text not null, created_at timestamptz not null, updated_at timestamptz not null, unique(owner_id,name_key))
+carneloot.telegram_identities(bot_id text not null, telegram_user_id bigint not null, user_id uuid not null references carneloot.users(id) on delete cascade, username text null, first_name text not null, last_name text null, private_chat_id bigint not null, created_at timestamptz not null, updated_at timestamptz not null, primary key(bot_id,telegram_user_id), unique(bot_id,user_id))
+carneloot.pets(id uuid primary key, owner_id uuid not null references carneloot.users(id) on delete restrict, name text not null, name_key text not null, created_at timestamptz not null, updated_at timestamptz not null, unique(owner_id,name_key), check(octet_length(name) between 1 and 80), check(octet_length(name_key) between 1 and 80))
 ```
 
-Do not make username unique. `name_key` is trimmed, collapsed-whitespace, locale-independent lowercase; display name preserves normalized casing.
+Do not make username unique. Identity rows cascade when a user is explicitly deleted; pets restrict user deletion until an explicit domain deletion workflow removes/transfers them. `name_key` is produced by trim → collapse Unicode whitespace runs to one ASCII space → locale-independent lowercase. Apply normalization before UTF-8 byte validation; display `name` preserves normalized casing. Tests cover 80/81 ASCII bytes, multibyte values exactly at/over 80 bytes, all-whitespace/control input, and whitespace/case key collisions. PostgreSQL `octet_length` checks defend both persisted fields.
 
 - [ ] **Step 3: Implement schemas/validation**
 
@@ -43,7 +43,7 @@ Pet name: trim/collapse whitespace, 1–80 UTF-8 bytes, reject control character
 
 - [ ] **Step 4: Run and commit**
 
-Run: `pnpm --filter carneloot-bot test -- Identity.integration.test.ts Pets.integration.test.ts`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- Identity.integration.test.ts Pets.integration.test.ts`
 Expected: migration and constraints PASS.
 
 ```bash
@@ -59,7 +59,7 @@ git commit -m "feat(carneloot): add identity and pet schema"
 
 - [ ] **Step 2: Implement transactional registration upsert**
 
-Insert user+identity for first registration. On `(bot_id,telegram_user_id)` conflict update mutable profile fields only and return existing user. Concurrent first registration produces one user (delete unused speculative row or use locked two-step transaction).
+Inside one PgClient transaction, take `pg_advisory_xact_lock(hashtextextended(lockKey, 0))` with parameterized `lockKey = botId + ":" + telegramUserId`, then look up the identity. Update mutable profile fields when present; otherwise create one user followed by one identity. Never create/delete a speculative user. A two-fiber barrier test using concurrent pool transactions proves exactly one user and one identity and the same returned domain user ID.
 
 - [ ] **Step 3: Implement pet use cases**
 
@@ -67,7 +67,7 @@ Insert user+identity for first registration. On `(bot_id,telegram_user_id)` conf
 
 - [ ] **Step 4: Verify and commit**
 
-Run: `pnpm --filter carneloot-bot test -- Identity.integration.test.ts Pets.integration.test.ts`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- Identity.integration.test.ts Pets.integration.test.ts`
 Expected: repeat/concurrent registration and pet validation PASS.
 
 ```bash
@@ -87,11 +87,11 @@ If sender absent reply `Não foi possível identificar o usuário.`. Otherwise p
 
 - [ ] **Step 3: Implement middleware**
 
-Lookup by bot/user; absent account replies `Por favor cadastre-se primeiro utilizando /cadastrar` and returns handled domain rejection. Declaration has no infrastructure requirement; Live Layer requires `UserRepository`.
+Lookup by bot/user after rejecting non-safe Telegram user/chat IDs at update ingress; absent account replies `Por favor cadastre-se primeiro utilizando /cadastrar` and returns handled domain rejection. Declaration has no infrastructure requirement; Live Layer requires `UserRepository`.
 
 - [ ] **Step 4: Run and commit**
 
-Run: `pnpm --filter carneloot-bot check && pnpm --filter carneloot-bot test -- IdentityPets.e2e.test.ts`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot check && pnpm --filter carneloot-bot test -- IdentityPets.e2e.test.ts`
 Expected: registration/access scenarios PASS.
 
 ```bash
@@ -107,7 +107,7 @@ New owner: `/adicionar_pet` → `Qual o nome do seu pet?` → `Rex` → `Pet cad
 
 - [ ] **Step 2: Declare/implement AddPet conversation**
 
-Single `name` step uses message-text PetName codec. Handler rechecks CurrentUser, writes through use case inside storage-controlled transaction, completes with post-commit success reply. `/cancelar` exits/removes keyboard.
+Single `name` step uses message-text PetName codec. `CurrentUser` is request context, not authorization proof: final mutation passes only persisted primitive user/pet IDs and the repository re-queries current identity and ownership in its transaction. Handler writes through the use case, then completes with a conversation transition `afterCommit` success reply. `/cancelar` exits/removes keyboard.
 
 - [ ] **Step 3: Implement list handler**
 
@@ -115,7 +115,7 @@ Format deterministic numbered Portuguese list. Future cared-pet label seam belon
 
 - [ ] **Step 4: Run and commit**
 
-Run: `pnpm --filter carneloot-bot test -- IdentityPets.e2e.test.ts`
+Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot test -- IdentityPets.e2e.test.ts`
 Expected: all transcripts, restart, cancellation, and duplicate update PASS against PostgreSQL conversation/dedup Layers.
 
 ```bash
@@ -126,7 +126,7 @@ git commit -m "feat(carneloot): add and list owned pets"
 ## Acceptance criteria
 
 - Repeat `/cadastrar` refreshes profile and preserves user/pets.
-- Telegram IDs are PostgreSQL bigint; username nullable/non-unique.
+- Current tfx update IDs are JS `number`: ingress requires `Number.isSafeInteger`, then PostgreSQL stores those safe values as bigint. Beyond-safe bigint/string support is explicitly deferred to a future tfx model change; username remains nullable/non-unique.
 - Pet names are safely normalized and unique per owner.
 - Unregistered access receives exact registration guidance.
 - Handlers contain no SQL and import only public tfx APIs.
