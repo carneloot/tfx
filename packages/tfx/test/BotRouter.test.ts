@@ -1,10 +1,13 @@
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Schema } from 'effect';
 import {
 	Bot,
 	BotBuilder,
 	BotGroup,
 	BotRouter,
 	Command,
+	Conversation,
+	ConversationBuilder,
+	ConversationInput,
 	Conversations,
 	MemoryConversationStorage,
 	MessageContext,
@@ -31,6 +34,29 @@ const account = BotGroup.make('account').add(
 );
 const pets = BotGroup.make('pets').add(Command.make('list', { name: 'pets' }));
 const bot = Bot.make('declared').add(account).add(pets);
+const conversationDeclaration = Conversation.make('counter', {
+	version: 1,
+	startup: Schema.Number,
+	initialStep: 'count',
+	initialize: (value) => value,
+	steps: {
+		count: Conversation.step('count', {
+			state: Schema.Number,
+			input: ConversationInput.text(Schema.NumberFromString),
+		}),
+	},
+});
+let resumed = 0;
+const builtConversation = ConversationBuilder.done(
+	ConversationBuilder.make(conversationDeclaration).step('count', {
+		enter: () => Effect.void,
+		onInput: (_state, input) =>
+			Effect.sync(() => {
+				resumed = input;
+				return ConversationBuilder.complete();
+			}),
+	}),
+);
 const infrastructure = Layer.mergeAll(
 	Middleware.layer(),
 	MemoryConversationStorage.layer,
@@ -152,6 +178,60 @@ describe('public BotRouter', () => {
 			_tag: 'HandledWithOutputFailure',
 			error: 'conversation-output-failed',
 		});
+	});
+
+	it('starts, resumes, and cancels conversations through public services', async () => {
+		resumed = 0;
+		const handlers = BotBuilder.buildGroup(bot, 'account', (value) =>
+			value.handle('start', () =>
+				Effect.gen(function* () {
+					const update = yield* UpdateContext.UpdateContext;
+					yield* (yield* Conversations.Conversations)
+						.start(builtConversation, 0, {
+							scope: {
+								botId: 'declared',
+								chatId: update.chatId!,
+								userId: update.userId!,
+							},
+						})
+						.pipe(Effect.orDie);
+				}),
+			),
+		);
+		const router = await Effect.runPromise(
+			build([handlers], {
+				conversations: [builtConversation],
+				cancel: () =>
+					Effect.gen(function* () {
+						const update = yield* UpdateContext.UpdateContext;
+						yield* (yield* Conversations.Conversations).cancelCurrent({
+							botId: 'declared',
+							chatId: update.chatId!,
+							userId: update.userId!,
+						});
+					}),
+			}) as Effect.Effect<BotRouter.Router, never, never>,
+		);
+		expect(
+			await Effect.runPromise(
+				router.route(commandUpdate(20, '/start') as never),
+			),
+		).toEqual({ _tag: 'Handled' });
+		expect(
+			await Effect.runPromise(
+				router.route({
+					...commandUpdate(21, '4'),
+					message: { ...commandUpdate(21, '4').message, entities: [] },
+				} as never),
+			),
+		).toEqual({ _tag: 'Handled' });
+		expect(resumed).toBe(4);
+		await Effect.runPromise(router.route(commandUpdate(22, '/start') as never));
+		expect(
+			await Effect.runPromise(
+				router.route(commandUpdate(23, '/cancelar') as never),
+			),
+		).toEqual({ _tag: 'Handled' });
 	});
 
 	it('permanently rejects unhandled callbacks', async () => {
