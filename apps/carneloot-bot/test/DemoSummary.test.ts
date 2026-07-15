@@ -10,11 +10,11 @@ describe('demo summary', () => {
 				pets: 1,
 				foodEntries: 1,
 				reminderEvents: 1,
-				reminderStatus: 'scheduled',
-				deliveryOutcome: 'not-materialized',
+				reminderStatus: 'completed',
+				deliveryOutcome: 'sent',
 			}),
 		).toBe(
-			'users=1 pets=1 food_entries=1 reminder_events=1 reminder_status=scheduled delivery_outcome=not-materialized',
+			'users=1 pets=1 food_entries=1 reminder_events=1 reminder_status=completed delivery_outcome=sent',
 		);
 	});
 });

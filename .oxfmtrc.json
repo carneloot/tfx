@@ -39,6 +39,8 @@
 		"convex/_generated/**",
 		"*.lock",
 		".env*",
+		"**/.env*",
+		"apps/carneloot-bot/.env.example",
 		"src/routeTree.gen.ts",
 		"convex.json",
 		".specs/**",

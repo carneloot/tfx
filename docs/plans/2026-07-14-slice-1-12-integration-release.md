@@ -153,7 +153,7 @@ Expected: every real-PostgreSQL suite executes and passes. Release validation fa
 Run: `bun x vitest run packages/tfx/test packages/postgres/test apps/carneloot-bot/test`
 Expected: PASS against PostgreSQL 17.
 
-- [ ] **Step 4: Package/export inspection**
+- [x] **Step 4: Package/export inspection**
 
 Run `pnpm --filter tfx pack --pack-destination dist-pack` and same for `@tfx/postgres`. Inspect tarballs: declared public subpaths and the generated Telegram runtime asset required by the facade are present; broad raw/internal source subpaths remain inaccessible through package exports; private tests and Testcontainers are absent. Install both packed tarballs into temporary Node and Bun consumers, import every public subpath, and execute one facade call through fake HttpClient. Keep Changesets as a dry run only: no publish or deployment.
 
@@ -166,7 +166,7 @@ Review against design sections 4–10, 14, and Slice 1 checklist. Require no SQL
 Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot demo:test`
 Expected: transcript completes and reports one user, one pet, one food entry, one scheduled/completed reminder with persisted delivery outcome.
 
-- [ ] **Step 7: Commit review fixes separately if needed**
+- [x] **Step 7: Commit review fixes separately if needed**
 
 Start review from a clean tree. After applying fixes, inspect and stage only review changes:
 

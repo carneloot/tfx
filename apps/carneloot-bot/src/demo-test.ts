@@ -9,6 +9,7 @@ import * as UpdateDelivery from 'tfx/UpdateDelivery';
 import type { AppConfigService } from './Config.js';
 import * as DemoSummary from './DemoSummary.js';
 import * as Layers from './Layers.js';
+import * as Program from './Program.js';
 
 if (
 	process.env.TEST_DATABASE_URL === undefined &&
@@ -45,7 +46,7 @@ const config: AppConfigService = {
 	pollingRetryDelayMillis: 100,
 	dispatchCapacity: 8,
 	dispatchConcurrency: 2,
-	jobIdleMillis: 10_000,
+	jobIdleMillis: 10,
 	jobLeaseMillis: 30_000,
 	jobHeartbeatMillis: 10_000,
 	dedupLeaseMillis: 30_000,
@@ -115,6 +116,22 @@ const program = Effect.scoped(
 				);
 		}
 		const db = yield* Effect.provide(PgClient.PgClient, context);
+		// Parameterize scheduled reminder to due-now only after transcript commits.
+		yield* db`UPDATE tfx_demo_test.case_jobs SET run_at=now() WHERE declaration='feeding-reminder' AND status='scheduled'`;
+		const awaitReminder = (remaining: number): Effect.Effect<void, Error> =>
+			Effect.flatMap(
+				db<{
+					status: string;
+				}>`SELECT status FROM carneloot.notification_events LIMIT 1`,
+				(rows) =>
+					rows[0]?.status === 'completed'
+						? Effect.void
+						: remaining === 0
+							? Effect.fail(new Error('demo reminder did not complete'))
+							: Effect.andThen(Effect.sleep(10), awaitReminder(remaining - 1)),
+			);
+		yield* awaitReminder(200);
+		yield* Effect.provide(Program.releaseSmokeHealth, context);
 		const [counts] = yield* db<{
 			users: number;
 			pets: number;
@@ -127,18 +144,23 @@ const program = Effect.scoped(
 		const [delivery] = yield* db<{
 			status: 'sent' | 'unknown' | 'failed';
 		}>`SELECT status FROM carneloot.notification_deliveries LIMIT 1`;
-		if (!counts || !event)
+		if (!counts || !event || !delivery)
 			return yield* Effect.fail(new Error('demo persisted summary missing'));
-		yield* Console.log(
-			DemoSummary.format({
-				users: counts.users,
-				pets: counts.pets,
-				foodEntries: counts.food_entries,
-				reminderEvents: counts.reminder_events,
-				reminderStatus: event.status,
-				deliveryOutcome: delivery?.status ?? 'not-materialized',
-			}),
-		);
+		const summary = DemoSummary.format({
+			users: counts.users,
+			pets: counts.pets,
+			foodEntries: counts.food_entries,
+			reminderEvents: counts.reminder_events,
+			reminderStatus: event.status,
+			deliveryOutcome: delivery.status,
+		});
+		const expected =
+			'users=1 pets=1 food_entries=1 reminder_events=1 reminder_status=completed delivery_outcome=sent';
+		if (summary !== expected)
+			return yield* Effect.fail(
+				new Error(`demo persisted summary mismatch: ${summary}`),
+			);
+		yield* Console.log(summary);
 	}),
 ) as Effect.Effect<void, unknown, never>;
 BunRuntime.runMain(Effect.provide(program, postgres));

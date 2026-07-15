@@ -38,6 +38,7 @@ jobs:
       - run: pnpm test:unit
       - run: pnpm test:integration
       - run: pnpm build
+      - run: pnpm check:packed:consumers
       - run: pnpm --filter carneloot-bot demo:test
 
   bun:

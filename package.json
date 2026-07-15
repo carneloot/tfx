@@ -9,6 +9,8 @@
 		"test:integration": "vitest run --config vitest.integration.config.ts --reporter verbose",
 		"test:tfx:bun": "corepack pnpm --filter tfx test:bun",
 		"check:tfx:package": "corepack pnpm --filter tfx build && corepack pnpm --filter tfx check:package",
+		"check:packed": "node scripts/check-packed-package.ts",
+		"check:packed:consumers": "bash scripts/check-packed.sh",
 		"lint": "oxlint --disable-nested-config --ignore-pattern '.repos/**' .",
 		"lint:fix": "oxlint --disable-nested-config --ignore-pattern '.repos/**' --fix .",
 		"format": "oxfmt --check .",
