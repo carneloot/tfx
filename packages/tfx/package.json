@@ -9,18 +9,31 @@
     "bun": "1.3.14"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./Telegram": "./src/Telegram.ts",
+    "./TelegramError": "./src/TelegramError.ts",
+    "./TelegramSchemas": "./src/TelegramSchemas.ts"
   },
   "files": [
-    "dist"
+    "dist",
+    "src/internal/telegram/generated"
   ],
   "publishConfig": {
     "access": "public",
     "exports": {
-      ".": "./dist/index.js"
+      ".": "./dist/index.js",
+      "./Telegram": "./dist/Telegram.js",
+      "./TelegramError": "./dist/TelegramError.js",
+      "./TelegramSchemas": "./dist/TelegramSchemas.js"
     }
   },
   "peerDependencies": {
     "effect": "4.0.0-beta.98"
+  },
+  "scripts": {
+    "telegram:generate": "node scripts/generate-telegram.ts",
+    "telegram:check": "node scripts/check-generated.ts",
+    "check": "tsc -b ../../tsconfig.json --pretty false",
+    "test": "vitest run --root ../.."
   }
 }

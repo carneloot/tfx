@@ -24,3 +24,7 @@ mise exec -- pnpm test:integration
 ```
 
 Slice 1 release validation uses `pnpm pack` dry runs only. Changesets version and publish public packages in later release work; the private application is excluded.
+
+## Telegram API generation provenance
+
+`tfx` generation uses Photon Telegram OpenAPI at `.repos/telegram-api/specs/telegram-bot-api.openapi.json`, pinned as submodule commit `80e0bd5d3d3155985c1a4281aec729b73e294055`. Telegram API usage remains subject to Telegram review and terms. Photon repository has no root license file while its generated package metadata says MIT. Maintainer approval and licensing resolution are required before publishing derived generated output to npm; this gate does not block local implementation or demos.

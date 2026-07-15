@@ -13,3 +13,6 @@
 [submodule ".repos/carneloot-bot"]
 	path = .repos/carneloot-bot
 	url = https://github.com/carneloot/carneloot-bot
+[submodule ".repos/telegram-api"]
+	path = .repos/telegram-api
+	url = https://github.com/photon-hq/telegram-api
