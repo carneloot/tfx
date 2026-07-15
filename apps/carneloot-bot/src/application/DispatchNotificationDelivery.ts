@@ -105,10 +105,7 @@ export const execute = (
 			return;
 		}
 		const pets = yield* PetRepository;
-		const pet =
-			pets.findById === undefined
-				? undefined
-				: yield* pets.findById(payload.petId);
+		const pet = yield* pets.findById(payload.petId);
 		if (pet === undefined || pet.ownerId !== event.ownerUserId) {
 			yield* notifications.cancelEvent(payload.eventId, now);
 			return;

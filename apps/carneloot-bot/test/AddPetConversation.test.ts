@@ -59,6 +59,7 @@ describe('AddPetConversation', () => {
 	it('persists primitive owner state and commits one pet before success output', async () => {
 		let inserts = 0;
 		const petLayer = Layer.succeed(PetRepository, {
+			findById: () => Effect.die('unused'),
 			addOwned: (_owner, name) =>
 				Effect.sync(() => ({
 					id: '00000000-0000-4000-8000-000000000002' as never,
@@ -123,6 +124,7 @@ describe('AddPetConversation', () => {
 		replies.length = 0;
 		let inserts = 0;
 		const petLayer = Layer.succeed(PetRepository, {
+			findById: () => Effect.die('unused'),
 			addOwned: () => {
 				inserts++;
 				return Effect.fail(new PetNameAlreadyExists({ message: 'duplicate' }));
@@ -165,6 +167,7 @@ describe('AddPetConversation', () => {
 	it('rejects corrupt persisted identity state before mutation', async () => {
 		let inserts = 0;
 		const petLayer = Layer.succeed(PetRepository, {
+			findById: () => Effect.die('unused'),
 			addOwned: () => {
 				inserts++;
 				return Effect.die('must not run');

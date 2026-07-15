@@ -48,6 +48,7 @@ const run = async (names: ReadonlyArray<string>) => {
 		Effect.provideService(MessageContext, context),
 		Effect.provide(
 			Layer.succeed(PetRepository, {
+				findById: () => Effect.die('unused'),
 				addOwned: () => Effect.die('unused'),
 				listOwned: () => Effect.succeed(pets),
 			}),

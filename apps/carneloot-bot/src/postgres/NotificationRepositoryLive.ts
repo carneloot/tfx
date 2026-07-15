@@ -371,6 +371,18 @@ export const layer: Layer.Layer<
 					protect(
 						sql.withTransaction(
 							Effect.gen(function* () {
+								const events = yield* sql<{
+									status:
+										| 'scheduled'
+										| 'dispatching'
+										| 'completed'
+										| 'cancelled';
+								}>`SELECT status FROM carneloot.notification_events WHERE id=${eventId}::uuid FOR UPDATE`;
+								const event = events[0];
+								if (event === undefined)
+									return yield* Effect.fail(
+										error('NotFound', 'Notification event does not exist'),
+									);
 								const rows = yield* sql<{
 									pending: number;
 									sending: number;
@@ -379,19 +391,28 @@ export const layer: Layer.Layer<
 									earliest_retry_at: Date | null;
 									earliest_sending_lease_expiry: Date | null;
 								}>`SELECT count(*) FILTER (WHERE status='pending')::int pending,count(*) FILTER (WHERE status='sending')::int sending,count(*) FILTER (WHERE status='failed' AND retryable=true)::int retryable_failed,count(*) FILTER (WHERE status='sent' OR status='unknown' OR (status='failed' AND retryable=false))::int terminal,min(retry_at) FILTER (WHERE status='failed' AND retryable=true) earliest_retry_at,min(sending_lease_expires_at) FILTER (WHERE status='sending') earliest_sending_lease_expiry FROM carneloot.notification_deliveries WHERE event_id=${eventId}::uuid`;
-								const row = rows[0]!;
-								const completed =
+								const row = rows[0];
+								if (row === undefined)
+									return yield* Effect.fail(
+										error(
+											'InvariantViolation',
+											'Missing delivery aggregate row',
+										),
+									);
+								const canComplete =
+									(event.status === 'scheduled' ||
+										event.status === 'dispatching') &&
 									row.pending === 0 &&
 									row.sending === 0 &&
 									row.retryable_failed === 0;
-								if (completed)
+								if (canComplete)
 									yield* sql`UPDATE carneloot.notification_events SET status='completed',completed_at=${new Date(now)},cancelled_at=NULL,updated_at=${new Date(now)} WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching')`;
 								return {
 									pending: row.pending,
 									sending: row.sending,
 									retryableFailed: row.retryable_failed,
 									terminal: row.terminal,
-									completed,
+									completed: event.status === 'completed' || canComplete,
 									earliestRetryAt: timestamp(row.earliest_retry_at),
 									earliestSendingLeaseExpiry: timestamp(
 										row.earliest_sending_lease_expiry,

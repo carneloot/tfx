@@ -227,6 +227,7 @@ const harness = (): Harness => {
 		findByTelegram: () => Effect.succeed(current),
 	};
 	const pets: PetRepositoryService = {
+		findById: () => Effect.die('unused'),
 		addOwned: () => Effect.die('unused'),
 		listOwned: () => Effect.succeed([pet]),
 	};
@@ -563,6 +564,7 @@ describe('pet food conversation transcripts', () => {
 	it('does not create state when no pets exist', async () => {
 		const h = harness();
 		const emptyPets: PetRepositoryService = {
+			findById: () => Effect.die('unused'),
 			addOwned: () => Effect.die('unused'),
 			listOwned: () => Effect.succeed([]),
 		};

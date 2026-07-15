@@ -125,6 +125,7 @@ const provide = <A, E, R>(
 		Effect.provideService(MessageContext, messageContext),
 		Effect.provideService(Telegram, {} as never),
 		Effect.provideService(PetRepository, {
+			findById: () => Effect.die('unused'),
 			addOwned: () => Effect.die('unused'),
 			listOwned: () => Effect.succeed(pets),
 		}),

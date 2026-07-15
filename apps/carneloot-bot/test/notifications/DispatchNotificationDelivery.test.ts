@@ -1,4 +1,4 @@
-import { Effect, Fiber, Layer, Schema } from 'effect';
+import { Deferred, Effect, Fiber, Layer, Schema } from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { Telegram } from 'tfx/Telegram';
 import {
@@ -26,6 +26,7 @@ import { PetName } from '../../src/domain/Pet.js';
 import { NotificationRecipients } from '../../src/ports/NotificationRecipients.js';
 import {
 	NotificationRepository,
+	NotificationRepositoryError,
 	type NotificationRepositoryService,
 } from '../../src/ports/NotificationRepository.js';
 import {
@@ -107,16 +108,38 @@ describe('Telegram delivery classification', () => {
 	});
 });
 
+interface HarnessOptions {
+	readonly attemptCount?: number;
+	readonly reachable?: boolean;
+	readonly latest?: boolean;
+	readonly eventStatus?: 'scheduled' | 'completed' | 'cancelled';
+	readonly initialState?: 'pending' | 'sending' | 'failed' | 'sent' | 'unknown';
+	readonly finalize?: 'success' | 'false' | 'error';
+}
 const harness = (
 	send: Effect.Effect<{ readonly message_id: number }, TelegramError>,
+	options: HarnessOptions = {},
 ) => {
-	let state: 'pending' | 'sending' | 'sent' | 'failed' | 'unknown' = 'pending';
+	let state:
+		| 'pending'
+		| 'sending'
+		| 'sent'
+		| 'failed'
+		| 'permanent'
+		| 'unknown' = options.initialState ?? 'pending';
 	let calls = 0;
+	let lastError: unknown;
+	let lastRetryAt: number | null = null;
+	let cancelled = false;
 	const repository: NotificationRepositoryService = {
 		createEvent: () => Effect.die('unused'),
 		cancelActiveForPet: () => Effect.die('unused'),
 		reviveCancelledEvent: () => Effect.die('unused'),
-		cancelEvent: () => Effect.succeed(true),
+		cancelEvent: () =>
+			Effect.sync(() => {
+				cancelled = true;
+				return true;
+			}),
 		attachJob: () => Effect.die('unused'),
 		getDispatchContext: () =>
 			Effect.succeed({
@@ -127,7 +150,7 @@ const harness = (
 				petId,
 				foodEntryId,
 				scheduledFor: 0,
-				status: 'scheduled',
+				status: options.eventStatus ?? 'scheduled',
 				dedupeKey: 'key',
 				jobId: null,
 				createdAt: 0,
@@ -135,7 +158,11 @@ const harness = (
 				completedAt: null,
 				cancelledAt: null,
 			}),
-		materializeRecipients: () => Effect.succeed([]),
+		materializeRecipients: (_eventId, recipients) =>
+			Effect.sync(() => {
+				if (recipients[0]?._tag === 'Unreachable') state = 'permanent';
+				return [];
+			}),
 		recoverExpired: () => Effect.succeed(0),
 		claimNext: () =>
 			state === 'pending'
@@ -152,7 +179,7 @@ const harness = (
 								channel: 'telegram',
 								status: 'sending',
 								attemptGeneration: 1,
-								attemptCount: 1,
+								attemptCount: options.attemptCount ?? 1,
 								sendingStartedAt: 0,
 								sendingLeaseExpiresAt: 30_000,
 								retryAt: null,
@@ -170,17 +197,27 @@ const harness = (
 					})
 				: Effect.succeed(undefined),
 		finalizeSent: () =>
+			options.finalize === 'error'
+				? Effect.fail(
+						new NotificationRepositoryError({
+							reason: 'PersistenceFailure',
+							message: 'finalization failed',
+						}),
+					)
+				: Effect.sync(() => {
+						if (options.finalize !== 'false') state = 'sent';
+						return options.finalize !== 'false';
+					}),
+		finalizeFailed: (_token, error, retryable, retryAt) =>
 			Effect.sync(() => {
-				state = 'sent';
+				lastError = error;
+				lastRetryAt = retryAt;
+				state = retryable ? 'failed' : 'permanent';
 				return true;
 			}),
-		finalizeFailed: (_token, _error, retryable) =>
+		finalizeUnknown: (_token, error) =>
 			Effect.sync(() => {
-				state = retryable ? 'failed' : 'sent';
-				return true;
-			}),
-		finalizeUnknown: () =>
-			Effect.sync(() => {
+				lastError = error;
 				state = 'unknown';
 				return true;
 			}),
@@ -190,9 +227,13 @@ const harness = (
 				pending: state === 'pending' ? 1 : 0,
 				sending: state === 'sending' ? 1 : 0,
 				retryableFailed: state === 'failed' ? 1 : 0,
-				terminal: state === 'sent' || state === 'unknown' ? 1 : 0,
-				completed: state === 'sent' || state === 'unknown',
-				earliestRetryAt: state === 'failed' ? 2_000 : null,
+				terminal:
+					state === 'sent' || state === 'unknown' || state === 'permanent'
+						? 1
+						: 0,
+				completed:
+					state === 'sent' || state === 'unknown' || state === 'permanent',
+				earliestRetryAt: state === 'failed' ? (lastRetryAt ?? 2_000) : null,
 				earliestSendingLeaseExpiry: state === 'sending' ? 30_000 : null,
 			}),
 	};
@@ -212,7 +253,12 @@ const harness = (
 		clearReminderDelay: () => Effect.die('unused'),
 		latestEntry: () =>
 			Effect.succeed({
-				id: foodEntryId,
+				id:
+					options.latest === false
+						? Schema.decodeUnknownSync(FoodEntryId)(
+								'00000000-0000-4000-8000-000000000099',
+							)
+						: foodEntryId,
 				petId,
 				recordedBy: ownerId,
 				amountMg: 1_000 as never,
@@ -233,13 +279,26 @@ const harness = (
 		Layer.succeed(NotificationRepository, repository),
 		Layer.succeed(NotificationRecipients, {
 			resolveOwner: () =>
-				Effect.succeed({
-					_tag: 'Reachable',
-					recipientUserId: ownerId,
-					recipientChatId: chatId,
-					recipientRole: owner,
-					channel: 'telegram',
-				}),
+				Effect.succeed(
+					options.reachable === false
+						? {
+								_tag: 'Unreachable' as const,
+								recipientUserId: ownerId,
+								recipientRole: owner,
+								channel: 'telegram' as const,
+								error: {
+									code: 'MissingTelegramIdentity',
+									message: 'No identity',
+								},
+							}
+						: {
+								_tag: 'Reachable' as const,
+								recipientUserId: ownerId,
+								recipientChatId: chatId,
+								recipientRole: owner,
+								channel: 'telegram' as const,
+							},
+				),
 		}),
 		Layer.succeed(PetFoodRepository, food),
 		Layer.succeed(PetRepository, {
@@ -262,7 +321,14 @@ const harness = (
 		} as never),
 		TestClock.layer(),
 	);
-	return { layer, state: () => state, calls: () => calls };
+	return {
+		layer,
+		state: () => state,
+		calls: () => calls,
+		lastError: () => lastError,
+		lastRetryAt: () => lastRetryAt,
+		cancelled: () => cancelled,
+	};
 };
 
 describe('delivery dispatcher', () => {
@@ -296,6 +362,114 @@ describe('delivery dispatcher', () => {
 		});
 	});
 
+	it('finalizes definitive permanent failures without retry', async () => {
+		for (const reason of [
+			new InvalidRequestError({
+				errorCode: 400,
+				description: 'bad token:secret',
+			}),
+			new ForbiddenError({
+				errorCode: 403,
+				description: 'forbidden token:secret',
+			}),
+			new AuthenticationError({
+				errorCode: 401,
+				description: 'auth token:secret',
+			}),
+			new ChatMigrationError({
+				errorCode: 400,
+				description: 'move token:secret',
+				migrateToChatId: 3,
+			}),
+		]) {
+			const h = harness(Effect.fail(telegramError(reason)));
+			await Effect.runPromise(
+				Effect.provide(Dispatch.execute(payload), h.layer),
+			);
+			expect(h.state()).toBe('permanent');
+			expect(h.lastRetryAt()).toBeNull();
+			expect(JSON.stringify(h.lastError())).not.toContain('token:secret');
+		}
+	});
+
+	it('uses the exact fallback for internal/conflict and makes attempt eight permanent', async () => {
+		for (const reason of [
+			new InternalTelegramError({ errorCode: 500, description: 'internal' }),
+			new ConflictError({ errorCode: 409, description: 'conflict' }),
+		]) {
+			const h = harness(Effect.fail(telegramError(reason)));
+			const result = await Effect.runPromise(
+				Effect.provide(Effect.result(Dispatch.execute(payload)), h.layer),
+			);
+			expect(result).toMatchObject({
+				_tag: 'Failure',
+				failure: { _tag: 'FeedingReminderRetryError', retryAfter: 30_000 },
+			});
+			expect(h.lastRetryAt()).toBe(30_000);
+		}
+		const final = harness(
+			Effect.fail(
+				telegramError(
+					new InternalTelegramError({ errorCode: 500, description: 'last' }),
+				),
+			),
+			{ attemptCount: 8 },
+		);
+		await Effect.runPromise(
+			Effect.provide(Dispatch.execute(payload), final.layer),
+		);
+		expect(final.state()).toBe('permanent');
+	});
+
+	it('audits unreachable recipients and cancels stale latest food without Telegram', async () => {
+		const unreachable = harness(Effect.succeed({ message_id: 1 }), {
+			reachable: false,
+		});
+		await Effect.runPromise(
+			Effect.provide(Dispatch.execute(payload), unreachable.layer),
+		);
+		expect(unreachable.calls()).toBe(0);
+		expect(unreachable.state()).toBe('permanent');
+		const stale = harness(Effect.succeed({ message_id: 1 }), { latest: false });
+		await Effect.runPromise(
+			Effect.provide(Dispatch.execute(payload), stale.layer),
+		);
+		expect(stale.calls()).toBe(0);
+		expect(stale.cancelled()).toBe(true);
+	});
+
+	it('uses earliest future retry and active sending lease delays', async () => {
+		for (const [initialState, retryAfter] of [
+			['failed', 2_000],
+			['sending', 30_000],
+		] as const) {
+			const h = harness(Effect.succeed({ message_id: 1 }), { initialState });
+			const result = await Effect.runPromise(
+				Effect.provide(Effect.result(Dispatch.execute(payload)), h.layer),
+			);
+			expect(result).toMatchObject({
+				_tag: 'Failure',
+				failure: { _tag: 'FeedingReminderRetryError', retryAfter },
+			});
+			expect(h.calls()).toBe(0);
+		}
+	});
+
+	it.each(['false', 'error'] as const)(
+		'retries at the lease fence when finalization returns %s',
+		async (finalize) => {
+			const h = harness(Effect.succeed({ message_id: 7 }), { finalize });
+			const result = await Effect.runPromise(
+				Effect.provide(Effect.result(Dispatch.execute(payload)), h.layer),
+			);
+			expect(result).toMatchObject({
+				_tag: 'Failure',
+				failure: { _tag: 'FeedingReminderRetryError', retryAfter: 30_000 },
+			});
+			expect(h.state()).toBe('sending');
+		},
+	);
+
 	it('marks ambiguous network outcomes unknown and never resends', async () => {
 		const h = harness(
 			Effect.fail(telegramError(new NetworkError({ message: 'network' }))),
@@ -306,12 +480,15 @@ describe('delivery dispatcher', () => {
 		expect(h.state()).toBe('unknown');
 	});
 	it('preserves interruption with a committed sending fence', async () => {
-		const h = harness(Effect.never);
+		const started = Deferred.makeUnsafe<void>();
+		const h = harness(
+			Effect.andThen(Deferred.succeed(started, undefined), Effect.never),
+		);
 		await Effect.runPromise(
 			Effect.provide(
 				Effect.gen(function* () {
 					const fiber = yield* Effect.forkChild(Dispatch.execute(payload));
-					yield* Effect.yieldNow;
+					yield* Deferred.await(started);
 					yield* Fiber.interrupt(fiber);
 				}),
 				h.layer,

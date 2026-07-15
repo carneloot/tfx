@@ -33,6 +33,7 @@ const profile = {
 };
 let insertions = 0;
 const pets = Layer.succeed(PetRepository, {
+	findById: () => Effect.die('unused'),
 	addOwned: (_ownerId, name) => {
 		insertions++;
 		return name === 'Rex'

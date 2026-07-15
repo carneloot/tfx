@@ -148,6 +148,10 @@ else
 					1_005,
 					100,
 				);
+				const cancelledSummary = yield* repository.summarizeAndComplete(
+					first.id,
+					1_006,
+				);
 				return {
 					first,
 					repeated,
@@ -161,6 +165,7 @@ else
 					context,
 					materializeCancelled,
 					claimCancelled,
+					cancelledSummary,
 				};
 			});
 			const result = await Effect.runPromise(Effect.provide(program, layer));
@@ -186,6 +191,7 @@ else
 					failure: { reason: 'Conflict' },
 				},
 				claimCancelled: undefined,
+				cancelledSummary: { completed: false },
 			});
 		});
 

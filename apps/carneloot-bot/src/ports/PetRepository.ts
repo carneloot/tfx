@@ -10,7 +10,7 @@ import type { PetId, UserId } from '../domain/Ids.js';
 import type { Pet, PetName } from '../domain/Pet.js';
 
 export interface PetRepositoryService {
-	readonly findById?: (
+	readonly findById: (
 		petId: PetId,
 	) => Effect.Effect<Pet | undefined, DomainPersistenceError>;
 	readonly addOwned: (
