@@ -156,6 +156,15 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							Effect.raceFirst(execution, monitor),
 						);
 						const finishedAt = yield* Clock.currentTimeMillis;
+						const afterExecution = yield* store.get(running.id);
+						if (afterExecution?.cancellationRequested) {
+							yield* store.finalize(
+								claim.token,
+								JobOutcome.cancelled,
+								finishedAt,
+							);
+							return yield* store.get(running.id);
+						}
 						if (Exit.isSuccess(exit))
 							yield* store.finalize(
 								claim.token,
