@@ -1,20 +1,20 @@
 {
-  "extends": "./tsconfig.base.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "types": ["node", "vitest/globals"]
-  },
-  "include": [
-    "packages/*/test/**/*.ts",
-    "packages/*/type-test/**/*.ts",
-    "apps/*/test/**/*.ts",
-    "apps/*/type-test/**/*.ts",
-    "vitest.config.ts",
-    "vitest.integration.config.ts"
-  ],
-  "references": [
-    { "path": "./packages/tfx" },
-    { "path": "./packages/postgres" },
-    { "path": "./apps/carneloot-bot" }
-  ]
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"types": ["node", "vitest/globals"]
+	},
+	"include": [
+		"packages/*/test/**/*.ts",
+		"packages/*/type-test/**/*.ts",
+		"apps/*/test/**/*.ts",
+		"apps/*/type-test/**/*.ts",
+		"vitest.config.ts",
+		"vitest.integration.config.ts"
+	],
+	"references": [
+		{ "path": "./packages/tfx" },
+		{ "path": "./packages/postgres" },
+		{ "path": "./apps/carneloot-bot" }
+	]
 }

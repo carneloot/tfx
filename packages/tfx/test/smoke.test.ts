@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest"
-import { packageName } from "../src/index.js"
+import { describe, expect, it } from 'vitest';
 
-describe("tfx package", () => {
-  it("loads", () => expect(packageName).toBe("tfx"))
-})
+import { packageName } from '../src/index.js';
+
+describe('tfx package', () => {
+	it('loads', () => expect(packageName).toBe('tfx'));
+});

@@ -1,8 +1,8 @@
 {
-  "files": [],
-  "references": [
-    { "path": "packages/tfx" },
-    { "path": "packages/postgres" },
-    { "path": "apps/carneloot-bot" }
-  ]
+	"files": [],
+	"references": [
+		{ "path": "packages/tfx" },
+		{ "path": "packages/postgres" },
+		{ "path": "apps/carneloot-bot" }
+	]
 }

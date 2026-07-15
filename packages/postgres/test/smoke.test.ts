@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest"
-import { packageName } from "@tfx/postgres"
+import { packageName } from '@tfx/postgres';
+import { describe, expect, it } from 'vitest';
 
-describe("@tfx/postgres package", () => {
-  it("loads", () => expect(packageName).toBe("@tfx/postgres"))
-})
+describe('@tfx/postgres package', () => {
+	it('loads', () => expect(packageName).toBe('@tfx/postgres'));
+});

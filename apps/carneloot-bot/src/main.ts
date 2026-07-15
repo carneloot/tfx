@@ -1,1 +1,1 @@
-export const packageName = "carneloot-bot" as const
+export const packageName = 'carneloot-bot' as const;

@@ -1,1 +1,1 @@
-export const packageName = "@tfx/postgres" as const
+export const packageName = '@tfx/postgres' as const;

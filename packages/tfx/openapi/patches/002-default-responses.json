@@ -1,626 +1,626 @@
 [
-  {
-    "op": "replace",
-    "path": "/components/schemas/ChecklistTasksAdded/properties/checklist_message/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/ChecklistTasksDone/properties/checklist_message/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/GiveawayCompleted/properties/giveaway_message/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/MaybeInaccessibleMessage/oneOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/Message/properties/reply_to_message/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/Message/properties/pinned_message/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/Message/properties/checklist_tasks_done/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/Message/properties/checklist_tasks_added/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/Message/properties/giveaway_completed/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/Message/properties/poll_option_added/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/Message/properties/poll_option_deleted/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/Message/properties/suggested_post_approved/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/Message/properties/suggested_post_approval_failed/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/Message/properties/suggested_post_declined/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/Message/properties/suggested_post_paid/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/Message/properties/suggested_post_refunded/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/PollOptionAdded/properties/poll_message/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/PollOptionDeleted/properties/poll_message/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichBlock/oneOf/7",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichBlock/oneOf/8",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichBlock/oneOf/10",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichBlock/oneOf/11",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichBlock/oneOf/13",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichBlockBlockQuotation/properties/blocks/items",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichBlockCollage/properties/blocks/items",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichBlockDetails/properties/blocks/items",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichBlockList/properties/items/items",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichBlockListItem/properties/blocks/items",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichBlockSlideshow/properties/blocks/items",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/1",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/2",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/3",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/4",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/5",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/6",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/7",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/8",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/9",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/10",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/13",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/14",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/15",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/16",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/17",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/18",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/19",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/20",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/22",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/23",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichText/oneOf/24",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextAnchorLink/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextBankCardNumber/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextBold/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextBotCommand/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextCashtag/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextCode/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextDateTime/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextEmailAddress/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextHashtag/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextItalic/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextMarked/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextMention/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextPhoneNumber/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextReference/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextReferenceLink/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextSpoiler/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextStrikethrough/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextSubscript/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextSuperscript/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextTextMention/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextUnderline/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/RichTextUrl/properties/text/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/SuggestedPostApprovalFailed/properties/suggested_post_message/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/SuggestedPostApproved/properties/suggested_post_message/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/SuggestedPostDeclined/properties/suggested_post_message/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/SuggestedPostPaid/properties/suggested_post_message/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  },
-  {
-    "op": "replace",
-    "path": "/components/schemas/SuggestedPostRefunded/properties/suggested_post_message/allOf/0",
-    "value": {
-      "type": "object",
-      "additionalProperties": true
-    }
-  }
+	{
+		"op": "replace",
+		"path": "/components/schemas/ChecklistTasksAdded/properties/checklist_message/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/ChecklistTasksDone/properties/checklist_message/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/GiveawayCompleted/properties/giveaway_message/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/MaybeInaccessibleMessage/oneOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/Message/properties/reply_to_message/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/Message/properties/pinned_message/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/Message/properties/checklist_tasks_done/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/Message/properties/checklist_tasks_added/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/Message/properties/giveaway_completed/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/Message/properties/poll_option_added/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/Message/properties/poll_option_deleted/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/Message/properties/suggested_post_approved/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/Message/properties/suggested_post_approval_failed/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/Message/properties/suggested_post_declined/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/Message/properties/suggested_post_paid/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/Message/properties/suggested_post_refunded/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/PollOptionAdded/properties/poll_message/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/PollOptionDeleted/properties/poll_message/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichBlock/oneOf/7",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichBlock/oneOf/8",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichBlock/oneOf/10",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichBlock/oneOf/11",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichBlock/oneOf/13",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichBlockBlockQuotation/properties/blocks/items",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichBlockCollage/properties/blocks/items",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichBlockDetails/properties/blocks/items",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichBlockList/properties/items/items",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichBlockListItem/properties/blocks/items",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichBlockSlideshow/properties/blocks/items",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/1",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/2",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/3",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/4",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/5",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/6",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/7",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/8",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/9",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/10",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/13",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/14",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/15",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/16",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/17",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/18",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/19",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/20",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/22",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/23",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichText/oneOf/24",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextAnchorLink/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextBankCardNumber/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextBold/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextBotCommand/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextCashtag/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextCode/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextDateTime/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextEmailAddress/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextHashtag/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextItalic/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextMarked/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextMention/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextPhoneNumber/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextReference/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextReferenceLink/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextSpoiler/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextStrikethrough/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextSubscript/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextSuperscript/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextTextMention/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextUnderline/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/RichTextUrl/properties/text/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/SuggestedPostApprovalFailed/properties/suggested_post_message/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/SuggestedPostApproved/properties/suggested_post_message/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/SuggestedPostDeclined/properties/suggested_post_message/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/SuggestedPostPaid/properties/suggested_post_message/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	},
+	{
+		"op": "replace",
+		"path": "/components/schemas/SuggestedPostRefunded/properties/suggested_post_message/allOf/0",
+		"value": {
+			"type": "object",
+			"additionalProperties": true
+		}
+	}
 ]
