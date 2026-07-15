@@ -2,6 +2,7 @@ import * as Clock from 'effect/Clock';
 import * as Deferred from 'effect/Deferred';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
+import * as Semaphore from 'effect/Semaphore';
 
 import type { CompletedOutcome } from './DispatchOutcome.js';
 import {
@@ -17,27 +18,10 @@ interface Row {
 	waiters: Array<Deferred.Deferred<ObservedCompletion>>;
 	released: boolean;
 }
-class Mutex {
-	private tail = Promise.resolve();
-	acquire() {
-		let release!: () => void;
-		const next = new Promise<void>((r) => {
-			release = r;
-		});
-		const previous = this.tail;
-		this.tail = previous.then(() => next);
-		return previous.then(() => release);
-	}
-}
-const make = (): UpdateDeduplicatorService => {
+const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 	const rows = new Map<number, Row>();
-	const mutex = new Mutex();
-	const locked = <A>(f: () => A) =>
-		Effect.acquireUseRelease(
-			Effect.promise(() => mutex.acquire()),
-			() => Effect.sync(f),
-			(release) => Effect.sync(release),
-		);
+	const semaphore = yield* Semaphore.make(1);
+	const locked = <A>(f: () => A) => semaphore.withPermit(Effect.sync(f));
 	return {
 		diagnostics: { mode: 'memory', backend: 'memory' },
 		claim: (updateId, options = {}) =>
@@ -135,8 +119,8 @@ const make = (): UpdateDeduplicatorService => {
 				return true;
 			}),
 	};
-};
+});
 export const layerMemory: Layer.Layer<UpdateDeduplicator> = Layer.effect(
 	UpdateDeduplicator,
-	Effect.sync(make),
+	make,
 );

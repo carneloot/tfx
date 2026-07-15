@@ -1,4 +1,4 @@
-import { Effect } from 'effect';
+import { Deferred, Effect } from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
@@ -87,6 +87,53 @@ describe('MemoryConversationStorage', () => {
 				);
 				expect(results.filter((r) => r._tag === 'Applied')).toHaveLength(1);
 				expect(runs).toBe(1);
+			}),
+		);
+	});
+
+	it('uses independent permits for different conversation scopes', async () => {
+		await run(
+			Effect.gen(function* () {
+				const storage = yield* ConversationStorage;
+				const other = { ...scope, chatId: 2 };
+				for (const current of [scope, other])
+					yield* storage.create(
+						{
+							scope: current,
+							conversationId: 'flow',
+							version: 1,
+							step: 'one',
+							state: 0,
+							lastUpdateId: undefined,
+							expiresAt: undefined,
+						},
+						'fail',
+					);
+				const firstStarted = yield* Deferred.make<void>();
+				const secondStarted = yield* Deferred.make<void>();
+				const transition = (
+					current: typeof scope,
+					own: Deferred.Deferred<void>,
+					peer: Deferred.Deferred<void>,
+				) =>
+					storage.transition(current, 1, 0, () =>
+						Effect.gen(function* () {
+							yield* Deferred.succeed(own, undefined);
+							yield* Deferred.await(peer);
+							return {
+								value: undefined,
+								mutation: { _tag: 'Persist' as const, step: 'one', state: 1 },
+							};
+						}),
+					);
+				const results = yield* Effect.all(
+					[
+						transition(scope, firstStarted, secondStarted),
+						transition(other, secondStarted, firstStarted),
+					],
+					{ concurrency: 'unbounded' },
+				);
+				expect(results.every((result) => result._tag === 'Applied')).toBe(true);
 			}),
 		);
 	});

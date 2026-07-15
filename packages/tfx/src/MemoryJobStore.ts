@@ -1,5 +1,6 @@
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
+import * as Semaphore from 'effect/Semaphore';
 
 import {
 	JobStore,
@@ -7,27 +8,11 @@ import {
 	type JobRecord,
 	type JobStoreService,
 } from './JobStore.js';
-class Mutex {
-	private tail = Promise.resolve();
-	acquire() {
-		let release!: () => void;
-		const next = new Promise<void>((r) => {
-			release = r;
-		});
-		const previous = this.tail;
-		this.tail = previous.then(() => next);
-		return previous.then(() => release);
-	}
-}
-const make = (): JobStoreService => {
+const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 	const records = new Map<string, JobRecord>();
-	const mutex = new Mutex();
-	const locked = <A, E>(effect: () => Effect.Effect<A, E>) =>
-		Effect.acquireUseRelease(
-			Effect.promise(() => mutex.acquire()),
-			effect,
-			(release) => Effect.sync(release),
-		);
+	const semaphore = yield* Semaphore.make(1);
+	const locked = <A, E, R>(effect: () => Effect.Effect<A, E, R>) =>
+		semaphore.withPermit(Effect.suspend(effect));
 	const update = (record: JobRecord) => {
 		const frozen = Object.freeze(record);
 		records.set(record.id, frozen);
@@ -275,8 +260,5 @@ const make = (): JobStoreService => {
 				);
 			}),
 	};
-};
-export const layer: Layer.Layer<JobStore> = Layer.effect(
-	JobStore,
-	Effect.sync(make),
-);
+});
+export const layer: Layer.Layer<JobStore> = Layer.effect(JobStore, make);

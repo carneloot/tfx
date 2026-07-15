@@ -38,6 +38,24 @@ describe('UpdateDeduplicator', () => {
 			}),
 		);
 	});
+	it('allows exactly one acquired generation under parallel contention', async () => {
+		await run(
+			Effect.gen(function* () {
+				const dedup = yield* UpdateDeduplicator;
+				const claims = yield* Effect.all(
+					Array.from({ length: 16 }, () => dedup.claim(99)),
+					{ concurrency: 'unbounded' },
+				);
+				expect(
+					claims.filter((claim) => claim._tag === 'Acquired'),
+				).toHaveLength(1);
+				expect(
+					claims.filter((claim) => claim._tag === 'InProgress'),
+				).toHaveLength(15);
+			}),
+		);
+	});
+
 	it('fences expiry takeover, heartbeat, release, and stale owners', async () => {
 		await run(
 			Effect.gen(function* () {

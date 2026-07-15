@@ -33,6 +33,20 @@ describe('MemoryJobStore', () => {
 			}),
 		);
 	});
+	it('allows exactly one claimant under parallel contention', async () => {
+		await run(
+			Effect.gen(function* () {
+				const store = yield* JobStore;
+				yield* store.schedule(request());
+				const claims = yield* Effect.all(
+					Array.from({ length: 16 }, () => store.claimForMigration(0, 10)),
+					{ concurrency: 'unbounded' },
+				);
+				expect(claims.filter((claim) => claim !== undefined)).toHaveLength(1);
+			}),
+		);
+	});
+
 	it('uses two fenced phases and exact attempt accounting', async () => {
 		await run(
 			Effect.gen(function* () {

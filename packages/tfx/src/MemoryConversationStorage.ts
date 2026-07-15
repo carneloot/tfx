@@ -1,6 +1,7 @@
 import * as Clock from 'effect/Clock';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
+import * as Semaphore from 'effect/Semaphore';
 
 import {
 	ConversationStorage,
@@ -11,42 +12,29 @@ import {
 } from './ConversationStorage.js';
 import { key, type Scope } from './internal/conversation/Scope.js';
 
-class Mutex {
-	private tail: Promise<void> = Promise.resolve();
-	acquire(): Promise<() => void> {
-		let release!: () => void;
-		const next = new Promise<void>((resolve) => {
-			release = resolve;
-		});
-		const previous = this.tail;
-		this.tail = previous.then(() => next);
-		return previous.then(() => release);
-	}
-}
 const withLock = <A, E, R>(
-	mutex: Mutex,
+	lock: Effect.Effect<Semaphore.Semaphore>,
 	effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> =>
-	Effect.acquireUseRelease(
-		Effect.promise(() => mutex.acquire()),
-		() => effect,
-		(release) => Effect.sync(release),
-	);
+	Effect.flatMap(lock, (semaphore) => semaphore.withPermit(effect));
 
 export const layer: Layer.Layer<ConversationStorage> = Layer.effect(
 	ConversationStorage,
-	Effect.sync(() => {
+	Effect.gen(function* () {
 		const rows = new Map<string, ConversationRow>();
-		const locks = new Map<string, Mutex>();
-		const mutex = (scope: Scope) => {
-			const k = key(scope);
-			let value = locks.get(k);
-			if (value === undefined) {
-				value = new Mutex();
-				locks.set(k, value);
-			}
-			return value;
-		};
+		const locks = new Map<string, Semaphore.Semaphore>();
+		const lockRegistry = yield* Semaphore.make(1);
+		const mutex = (scope: Scope): Effect.Effect<Semaphore.Semaphore> =>
+			lockRegistry.withPermit(
+				Effect.gen(function* () {
+					const k = key(scope);
+					const existing = locks.get(k);
+					if (existing !== undefined) return existing;
+					const created = yield* Semaphore.make(1);
+					locks.set(k, created);
+					return created;
+				}),
+			);
 		const service: ConversationStorageService = {
 			load: (scope) =>
 				withLock(
