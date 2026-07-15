@@ -37,6 +37,8 @@ export const set = (access: PetFoodAccess, delayInput: unknown) =>
 				const latest = yield* repository.latestEntry(access.petId);
 				if (latest !== undefined)
 					yield* scheduler.replaceForLatest({
+						botId: access.botId,
+						ownerUserId: access.ownerId,
 						petId: access.petId,
 						foodEntryId: latest.id,
 						runAt: latest.fedAt + delay,
@@ -59,7 +61,10 @@ export const remove = (access: PetFoodAccess) =>
 					access.petId,
 					now,
 				);
-				yield* scheduler.cancelForPet(access.petId);
+				yield* scheduler.cancelForPet({
+					botId: access.botId,
+					petId: access.petId,
+				});
 				return settings;
 			}),
 		);

@@ -136,6 +136,8 @@ export const execute = (
 				const isLatest = latest?.id === entry.id;
 				if (isLatest && settings.reminderDelayMs !== null)
 					yield* scheduler.replaceForLatest({
+						botId: access.botId,
+						ownerUserId: access.ownerId,
 						petId: access.petId,
 						foodEntryId: entry.id,
 						runAt: entry.fedAt + settings.reminderDelayMs,

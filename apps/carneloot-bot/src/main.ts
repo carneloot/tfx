@@ -21,6 +21,8 @@ export * as UserRepositoryLive from './postgres/UserRepositoryLive.js';
 export * as PetRepositoryLive from './postgres/PetRepositoryLive.js';
 export * as PetFoodRepositoryLive from './postgres/PetFoodRepositoryLive.js';
 export * as NotificationRepositoryLive from './postgres/NotificationRepositoryLive.js';
+export * as ReminderSchedulerLive from './postgres/ReminderSchedulerLive.js';
+export * as FeedingReminderJob from './jobs/FeedingReminderJob.js';
 export * as AppMigrator from './postgres/AppMigrator.js';
 export * as Declaration from './bot/Declaration.js';
 export * as AccountHandlers from './bot/AccountHandlers.js';

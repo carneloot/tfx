@@ -2,13 +2,15 @@ import { Data } from 'effect';
 import * as Context from 'effect/Context';
 import type * as Effect from 'effect/Effect';
 
-import type { PetId } from '../domain/Ids.js';
+import type { BotId, PetId, UserId } from '../domain/Ids.js';
 import type { FoodEntryId } from '../domain/pet-food/PetFood.js';
 
 export class ReminderSchedulerError extends Data.TaggedError(
 	'ReminderSchedulerError',
 )<{ readonly message: string; readonly cause?: unknown }> {}
 export interface ReminderSchedule {
+	readonly botId: BotId;
+	readonly ownerUserId: UserId;
 	readonly petId: PetId;
 	readonly foodEntryId: FoodEntryId;
 	readonly runAt: number;
@@ -23,9 +25,10 @@ export interface ReminderSchedulerService {
 		schedule: ReminderSchedule,
 	) => Effect.Effect<void, ReminderSchedulerError>;
 	/** Same ambient-transaction, persistence-only contract as replaceForLatest. */
-	readonly cancelForPet: (
-		petId: PetId,
-	) => Effect.Effect<void, ReminderSchedulerError>;
+	readonly cancelForPet: (request: {
+		readonly botId: BotId;
+		readonly petId: PetId;
+	}) => Effect.Effect<void, ReminderSchedulerError>;
 }
 export class ReminderScheduler extends Context.Service<
 	ReminderScheduler,
