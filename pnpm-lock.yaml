@@ -65,6 +65,10 @@ importers:
       tfx:
         specifier: workspace:^
         version: link:../../packages/tfx
+    devDependencies:
+      '@effect/platform-node':
+        specifier: 4.0.0-beta.98
+        version: 4.0.0-beta.98(effect@4.0.0-beta.98)(ioredis@5.11.1)
 
   packages/postgres:
     dependencies:
