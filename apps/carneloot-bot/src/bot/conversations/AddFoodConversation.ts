@@ -10,6 +10,7 @@ import {
 } from 'tfx';
 
 import * as AddFood from '../../application/AddFood.js';
+import { authorize } from '../../application/PetFoodAccess.js';
 import {
 	BotId,
 	PetId,
@@ -120,6 +121,12 @@ export const built = ConversationBuilder.done(
 							);
 							if (pet === undefined)
 								return yield* stay('Por favor, escolha uma opção');
+							yield* authorize({
+								ownerId: state.ownerId,
+								botId: state.botId,
+								telegramUserId: state.telegramUserId,
+								petId: pet.id,
+							});
 							const settings = yield* (yield* PetFoodRepository).getSettings(
 								pet.id,
 							);

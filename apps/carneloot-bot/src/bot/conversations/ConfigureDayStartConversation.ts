@@ -9,6 +9,7 @@ import {
 } from 'tfx';
 
 import * as ConfigureDayStart from '../../application/ConfigureDayStart.js';
+import { authorize } from '../../application/PetFoodAccess.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../domain/Ids.js';
 import { IanaTimeZone, LocalTime } from '../../domain/pet-food/FoodDateTime.js';
 import { PetName } from '../../domain/Pet.js';
@@ -94,6 +95,12 @@ export const built = ConversationBuilder.done(
 						Effect.gen(function* () {
 							const pet = state.pets.find((item) => item.name === value);
 							if (pet === undefined) return yield* invalid;
+							yield* authorize({
+								ownerId: state.ownerId,
+								botId: state.botId,
+								telegramUserId: state.telegramUserId,
+								petId: pet.id,
+							});
 							const settings = yield* (yield* PetFoodRepository).getSettings(
 								pet.id,
 							);

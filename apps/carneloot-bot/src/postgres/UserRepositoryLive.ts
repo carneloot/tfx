@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Clock from 'effect/Clock';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
@@ -112,10 +113,11 @@ export const layer: Layer.Layer<
 									profile.botId,
 									profile.telegramUserId,
 								);
-								const now = new Date();
+								const now = yield* Clock.currentTimeMillis;
+								const timestamp = new Date(now);
 								if (existing[0] !== undefined) {
-									yield* sql`UPDATE carneloot.telegram_identities SET username=${profile.username},first_name=${profile.firstName},last_name=${profile.lastName},private_chat_id=${profile.privateChatId},updated_at=${now} WHERE bot_id=${profile.botId} AND telegram_user_id=${profile.telegramUserId}`;
-									yield* sql`UPDATE carneloot.users SET updated_at=${now} WHERE id=${existing[0].id as string}::uuid`;
+									yield* sql`UPDATE carneloot.telegram_identities SET username=${profile.username},first_name=${profile.firstName},last_name=${profile.lastName},private_chat_id=${profile.privateChatId},updated_at=${timestamp} WHERE bot_id=${profile.botId} AND telegram_user_id=${profile.telegramUserId}`;
+									yield* sql`UPDATE carneloot.users SET updated_at=${timestamp} WHERE id=${existing[0].id as string}::uuid`;
 									const refreshed = yield* select(
 										sql,
 										profile.botId,
@@ -124,8 +126,8 @@ export const layer: Layer.Layer<
 									return yield* decode(refreshed[0]);
 								}
 								const id = crypto.randomUUID();
-								yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${id}::uuid,${now},${now})`;
-								yield* sql`INSERT INTO carneloot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${profile.botId},${profile.telegramUserId},${id}::uuid,${profile.username},${profile.firstName},${profile.lastName},${profile.privateChatId},${now},${now})`;
+								yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${id}::uuid,${timestamp},${timestamp})`;
+								yield* sql`INSERT INTO carneloot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${profile.botId},${profile.telegramUserId},${id}::uuid,${profile.username},${profile.firstName},${profile.lastName},${profile.privateChatId},${timestamp},${timestamp})`;
 								const created = yield* select(
 									sql,
 									profile.botId,

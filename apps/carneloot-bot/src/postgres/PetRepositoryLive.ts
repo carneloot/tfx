@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Clock from 'effect/Clock';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
@@ -80,10 +81,11 @@ export const layer: Layer.Layer<
 					.withTransaction(
 						Effect.gen(function* () {
 							yield* assertOwner(ownerId);
-							const now = new Date();
+							const now = yield* Clock.currentTimeMillis;
+							const timestamp = new Date(now);
 							const rows = yield* sql<
 								Record<string, unknown>
-							>`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${ownerId}::uuid,${name},${petNameKey(name)},${now},${now}) RETURNING *`;
+							>`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${ownerId}::uuid,${name},${petNameKey(name)},${timestamp},${timestamp}) RETURNING *`;
 							return yield* decode(rows[0]);
 						}),
 					)

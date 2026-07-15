@@ -9,6 +9,7 @@ import {
 } from 'tfx';
 
 import * as ConfigureReminderDelay from '../../application/ConfigureReminderDelay.js';
+import { authorize } from '../../application/PetFoodAccess.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../domain/Ids.js';
 import { ReminderDelayMs } from '../../domain/pet-food/PetFood.js';
 import { PetName } from '../../domain/Pet.js';
@@ -128,6 +129,12 @@ export const built = ConversationBuilder.done(
 						Effect.gen(function* () {
 							const pet = state.pets.find((item) => item.name === value);
 							if (pet === undefined) return yield* invalidChoice;
+							yield* authorize({
+								ownerId: state.ownerId,
+								botId: state.botId,
+								telegramUserId: state.telegramUserId,
+								petId: pet.id,
+							});
 							const repository = yield* PetFoodRepository;
 							const settings = yield* repository.getSettings(pet.id);
 							return ConversationBuilder.to('action', {

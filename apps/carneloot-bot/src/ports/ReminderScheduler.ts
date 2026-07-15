@@ -14,9 +14,15 @@ export interface ReminderSchedule {
 	readonly runAt: number;
 }
 export interface ReminderSchedulerService {
+	/**
+	 * Implementations must use the ambient PgClient transaction and perform
+	 * persistence only. External side effects are forbidden before commit.
+	 * Plan 10 supplies only a test SQL recorder; Plan 11 supplies durable SQL.
+	 */
 	readonly replaceForLatest: (
 		schedule: ReminderSchedule,
 	) => Effect.Effect<void, ReminderSchedulerError>;
+	/** Same ambient-transaction, persistence-only contract as replaceForLatest. */
 	readonly cancelForPet: (
 		petId: PetId,
 	) => Effect.Effect<void, ReminderSchedulerError>;

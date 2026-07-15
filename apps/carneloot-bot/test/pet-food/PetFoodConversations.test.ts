@@ -10,6 +10,7 @@ import { UpdateContext } from 'tfx/UpdateContext';
 import { describe, expect, it } from 'vitest';
 
 import * as CancelConversation from '../../src/bot/CancelConversation.js';
+import * as AddFood from '../../src/bot/conversations/AddFoodConversation.js';
 import * as DayStart from '../../src/bot/conversations/ConfigureDayStartConversation.js';
 import * as Reminder from '../../src/bot/conversations/ConfigureReminderDelayConversation.js';
 import { CurrentUser } from '../../src/bot/CurrentUser.js';
@@ -94,6 +95,7 @@ const startup = {
 interface Harness {
 	replies: Array<string>;
 	settings: { value: PetFoodSettings | undefined };
+	settingsReads: { value: number };
 	dayMutations: Array<readonly [string, string]>;
 	delayMutations: Array<number>;
 	scheduler: Array<string>;
@@ -117,6 +119,7 @@ interface Harness {
 const harness = (): Harness => {
 	const replies: Array<string> = [];
 	const settings: Harness['settings'] = { value: undefined };
+	const settingsReads = { value: 0 };
 	const dayMutations: Array<readonly [string, string]> = [];
 	const delayMutations: Array<number> = [];
 	const scheduler: Array<string> = [];
@@ -157,7 +160,11 @@ const harness = (): Harness => {
 			authorizationFails.value
 				? Effect.fail(new PetAccessDenied({ message: 'denied' }))
 				: Effect.succeed(pet),
-		getSettings: () => Effect.succeed(settings.value),
+		getSettings: () =>
+			Effect.sync(() => {
+				settingsReads.value++;
+				return settings.value;
+			}),
 		setDayStart: (_id, dayStart, timeZone, now) =>
 			Effect.sync(() => {
 				dayMutations.push([dayStart, timeZone]);
@@ -249,6 +256,7 @@ const harness = (): Harness => {
 	return {
 		replies,
 		settings,
+		settingsReads,
 		dayMutations,
 		delayMutations,
 		scheduler,
@@ -265,7 +273,7 @@ const withFreshConversations = <A, E, R>(
 	effect: Effect.Effect<A, E, R | Conversations>,
 ) => Effect.provide(effect, Layer.fresh(ConversationsLive.layer));
 const resume = (
-	built: typeof DayStart.built | typeof Reminder.built,
+	built: typeof DayStart.built | typeof Reminder.built | typeof AddFood.built,
 	input: string,
 	updateId: number,
 ) =>
@@ -464,6 +472,60 @@ describe('pet food conversation transcripts', () => {
 		);
 		expect(result._tag).toBe('Failure');
 		expect(failed.delayMutations).toEqual([7_200_000]);
+	});
+
+	it('authorizes every selected pet before reading settings', async () => {
+		for (const selection of [
+			DayStart.built.implementations.pet.onInput(startup, 'Rex'),
+			Reminder.built.implementations.pet.onInput(startup, 'Rex'),
+			AddFood.built.implementations.pet.onInput(
+				{
+					...startup,
+					updateId: 1,
+					messageChatId: privateChatId,
+					messageId: 1,
+				},
+				'Rex',
+			),
+		] as ReadonlyArray<Effect.Effect<unknown, unknown, unknown>>) {
+			const h = harness();
+			h.authorizationFails.value = true;
+			const result = await run(
+				Effect.provide(Effect.result(selection), h.layer),
+			);
+			expect(result).toMatchObject({
+				_tag: 'Failure',
+				failure: { _tag: 'PetAccessDenied' },
+			});
+			expect(h.settingsReads.value).toBe(0);
+		}
+	});
+
+	it('resumes AddFood through a fresh service and cancels persisted state', async () => {
+		const h = harness();
+		h.settings.value = {
+			petId,
+			dayStart: '00:00' as never,
+			timeZone: 'UTC' as never,
+			reminderDelayMs: null,
+			createdAt: 0,
+			updatedAt: 0,
+		};
+		await run(
+			Effect.provide(
+				Effect.gen(function* () {
+					yield* withFreshConversations(PetFoodHandlers.startAddFood);
+					yield* resume(AddFood.built, 'Rex', 1);
+					const storage = yield* ConversationStorage;
+					expect((yield* storage.load(scope))?.step).toBe('amount');
+					yield* withFreshConversations(CancelConversation.cancelCurrent);
+					expect(yield* storage.load(scope)).toBeUndefined();
+				}),
+				h.layer,
+			),
+		);
+		expect(h.replies).toContain('Conversa cancelada.');
+		expect(h.removeKeyboardReplies.filter(Boolean)).toHaveLength(1);
 	});
 
 	it('repeating starts replace state and cancellation removes both flows', async () => {

@@ -1,5 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { Effect, Layer, Redacted, Schema } from 'effect';
+import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
 import { BotId, TelegramChatId, TelegramUserId } from '../src/domain/Ids.js';
@@ -72,12 +73,13 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 			yield* migrate;
 			const users = yield* UserRepository;
 			const pets = yield* PetRepository;
+			yield* TestClock.setTime(1_000);
 			const first = yield* users.registerTelegramProfile(profile);
-			yield* pets.addOwned(
+			const createdPet = yield* pets.addOwned(
 				first.user.id,
 				Schema.decodeUnknownSync(PetName)('Persistente'),
 			);
-			yield* Effect.sleep('2 millis');
+			yield* TestClock.setTime(2_000);
 			const refreshed = yield* users.registerTelegramProfile({
 				...profile,
 				username: null,
@@ -93,14 +95,19 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 				first,
 				refreshed,
 				shared,
+				createdPet,
 				pets: yield* pets.listOwned(first.user.id),
 			};
 		});
-		const result = await Effect.runPromise(Effect.provide(program, adapters));
-		expect(result.refreshed.user.id).toBe(result.first.user.id);
-		expect(result.refreshed.user.updatedAt).toBeGreaterThan(
-			result.first.user.updatedAt,
+		const result = await Effect.runPromise(
+			Effect.provide(program, Layer.merge(adapters, TestClock.layer())),
 		);
+		expect(result.refreshed.user.id).toBe(result.first.user.id);
+		expect(result.first.user.createdAt).toBe(1_000);
+		expect(result.first.user.updatedAt).toBe(1_000);
+		expect(result.createdPet.createdAt).toBe(1_000);
+		expect(result.createdPet.updatedAt).toBe(1_000);
+		expect(result.refreshed.user.updatedAt).toBe(2_000);
 		expect(result.refreshed.profile).toMatchObject({
 			username: null,
 			firstName: 'Ana Maria',
