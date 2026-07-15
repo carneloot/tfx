@@ -17,6 +17,7 @@ jobs:
       - run: pnpm build
       - run: pnpm check
       - run: pnpm test:unit
+      - run: pnpm test:integration
 
   bun:
     runs-on: ubuntu-latest
