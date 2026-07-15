@@ -63,14 +63,14 @@ Drive public runtime with fake Telegram and real PostgreSQL:
 /cadastrar after username/name change
 /adicionar_pet → Rex
 /listar_pets
-/configurar_inicio_dia → Rex → 0h → America/Sao_Paulo
-/configurar_atraso_notificacao → Rex → 8 horas
+/configurar_inicio_dia → Rex → Alterar → 0h → America/Sao_Paulo
+/configurar_atraso_notificacao → Rex → Definir → 8 horas
 /status_racao
 /colocar_racao → Rex → 50g
 /status_racao
 ```
 
-Assert exact Portuguese requests, profile refresh, one pet, midnight settings, 50,000mg row, reminder event/job, and status line.
+Assert exact Portuguese requests—including the declared action-selection prompts `Início do dia não configurado. Envie Alterar.` and `Notificações desativadas. Envie Definir.`—profile refresh, one pet, midnight settings, 50,000mg row, reminder event/job, and status line.
 
 - [ ] **Step 2: Add failure/correction scenarios**
 

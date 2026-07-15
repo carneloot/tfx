@@ -40,6 +40,7 @@ export default defineConfig({
 			'packages/postgres/test/integration-config.test.ts',
 			...postgresIntegrationSuites,
 			'apps/**/*.integration.test.ts',
+			'apps/**/*.e2e.test.ts',
 		],
 		passWithNoTests: false,
 	},
