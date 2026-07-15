@@ -2,7 +2,6 @@
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import * as HttpClientError from "effect/unstable/http/HttpClientError";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 var APIResponseError = Schema.Struct({ ok: Schema.Literal(false).annotate({ description: "In case of an unsuccessful request, 'ok' equals false" }), description: Schema.String.annotate({ description: "A human-readable description of the result" }), error_code: Schema.Number.annotate({ description: "An Integer error code. Its contents are subject to change in the future." }).check(Schema.isInt()), parameters: Schema.optionalKey(Schema.Struct({ migrate_to_chat_id: Schema.optionalKey(Schema.Number.annotate({ description: "*Optional*. The group has been migrated to a supergroup with the specified identifier. This number may have more than 32 significant bits and some programming languages may have difficulty/silent defects in interpreting it. But it has at most 52 significant bits, so a signed 64-bit integer or double-precision float type are safe for storing this identifier." }).check(Schema.isInt())), retry_after: Schema.optionalKey(Schema.Number.annotate({ description: "*Optional*. In case of exceeding flood control, the number of seconds left to wait before the request can be repeated" }).check(Schema.isInt())) }).annotate({ description: "Describes why a request was unsuccessful." })) }).annotate({ description: "In case of an unsuccessful request, 'ok' equals false and the error is explained in the 'description'." });
@@ -2173,14 +2172,19 @@ var VerifyUserRequestJson = Schema.Struct({ user_id: Schema.Number.annotate({ de
 var VerifyUserRequestFormUrlEncoded = Schema.Struct({ user_id: Schema.Number.annotate({ description: "Unique identifier of the target user" }).check(Schema.isInt()), custom_description: Schema.optionalKey(Schema.String.annotate({ description: "Custom description for the verification; 0-70 characters. Must be empty if the organization isn't allowed to provide a custom verification description." }).check(Schema.isMinLength(0)).check(Schema.isMaxLength(70))) });
 var VerifyUser200 = Schema.Struct({ ok: Schema.Literal(true), result: Schema.Literal(true) });
 var VerifyUserdefault = TelegramErrorResponse;
+var containsUpload = (value, seen = new Set) => {
+  if (typeof Blob === "function" && value instanceof Blob)
+    return true;
+  if (typeof File === "function" && value instanceof File)
+    return true;
+  if (typeof value !== "object" || value === null || seen.has(value))
+    return false;
+  seen.add(value);
+  return Object.values(value).some((item) => containsUpload(item, seen));
+};
+var bodyTelegramPayload = (payload) => containsUpload(payload) ? HttpClientRequest.bodyFormDataRecord(payload) : HttpClientRequest.bodyJsonUnsafe(payload);
 var make = (httpClient, options = {}) => {
-  const unexpectedStatus = (response) => Effect.flatMap(Effect.orElseSucceed(response.json, () => "Unexpected status code"), (description) => Effect.fail(new HttpClientError.HttpClientError({
-    reason: new HttpClientError.StatusCodeError({
-      request: response.request,
-      response,
-      description: typeof description === "string" ? description : JSON.stringify(description)
-    })
-  })));
+  const unexpectedStatus = (response) => Effect.flatMap(HttpClientResponse.schemaBodyJson(APIResponseError)(response), (cause) => Effect.fail(TelegramApiError("APIResponseError", cause, response)));
   const withResponse = (config) => (f) => {
     const withOptionalResponse = config?.includeResponse ? (response) => Effect.map(f(response), (a) => [a, response]) : (response) => f(response);
     return options?.transformClient ? (request) => Effect.flatMap(Effect.flatMap(options.transformClient(httpClient), (client) => client.execute(request)), withOptionalResponse) : (request) => Effect.flatMap(httpClient.execute(request), withOptionalResponse);
@@ -2189,51 +2193,51 @@ var make = (httpClient, options = {}) => {
   const decodeError = (tag, schema) => (response) => Effect.flatMap(HttpClientResponse.schemaBodyJson(schema)(response), (cause) => Effect.fail(TelegramApiError(tag, cause, response)));
   return {
     httpClient,
-    addStickerToSet: (options2) => HttpClientRequest.post(`/addStickerToSet`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    addStickerToSet: (options2) => HttpClientRequest.post(`/addStickerToSet`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(AddStickerToSet200),
       orElse: unexpectedStatus
     }))),
-    answerCallbackQuery: (options2) => HttpClientRequest.post(`/answerCallbackQuery`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    answerCallbackQuery: (options2) => HttpClientRequest.post(`/answerCallbackQuery`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(AnswerCallbackQuery200),
       orElse: unexpectedStatus
     }))),
-    answerChatJoinRequestQuery: (options2) => HttpClientRequest.post(`/answerChatJoinRequestQuery`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    answerChatJoinRequestQuery: (options2) => HttpClientRequest.post(`/answerChatJoinRequestQuery`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(AnswerChatJoinRequestQuery200),
       orElse: unexpectedStatus
     }))),
-    answerGuestQuery: (options2) => HttpClientRequest.post(`/answerGuestQuery`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    answerGuestQuery: (options2) => HttpClientRequest.post(`/answerGuestQuery`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(AnswerGuestQuery200),
       orElse: unexpectedStatus
     }))),
-    answerInlineQuery: (options2) => HttpClientRequest.post(`/answerInlineQuery`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    answerInlineQuery: (options2) => HttpClientRequest.post(`/answerInlineQuery`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(AnswerInlineQuery200),
       orElse: unexpectedStatus
     }))),
-    answerPreCheckoutQuery: (options2) => HttpClientRequest.post(`/answerPreCheckoutQuery`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    answerPreCheckoutQuery: (options2) => HttpClientRequest.post(`/answerPreCheckoutQuery`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(AnswerPreCheckoutQuery200),
       orElse: unexpectedStatus
     }))),
-    answerShippingQuery: (options2) => HttpClientRequest.post(`/answerShippingQuery`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    answerShippingQuery: (options2) => HttpClientRequest.post(`/answerShippingQuery`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(AnswerShippingQuery200),
       orElse: unexpectedStatus
     }))),
-    answerWebAppQuery: (options2) => HttpClientRequest.post(`/answerWebAppQuery`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    answerWebAppQuery: (options2) => HttpClientRequest.post(`/answerWebAppQuery`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(AnswerWebAppQuery200),
       orElse: unexpectedStatus
     }))),
-    approveChatJoinRequest: (options2) => HttpClientRequest.post(`/approveChatJoinRequest`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    approveChatJoinRequest: (options2) => HttpClientRequest.post(`/approveChatJoinRequest`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(ApproveChatJoinRequest200),
       orElse: unexpectedStatus
     }))),
-    approveSuggestedPost: (options2) => HttpClientRequest.post(`/approveSuggestedPost`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    approveSuggestedPost: (options2) => HttpClientRequest.post(`/approveSuggestedPost`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(ApproveSuggestedPost200),
       orElse: unexpectedStatus
     }))),
-    banChatMember: (options2) => HttpClientRequest.post(`/banChatMember`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    banChatMember: (options2) => HttpClientRequest.post(`/banChatMember`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(BanChatMember200),
       orElse: unexpectedStatus
     }))),
-    banChatSenderChat: (options2) => HttpClientRequest.post(`/banChatSenderChat`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    banChatSenderChat: (options2) => HttpClientRequest.post(`/banChatSenderChat`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(BanChatSenderChat200),
       orElse: unexpectedStatus
     }))),
@@ -2241,163 +2245,163 @@ var make = (httpClient, options = {}) => {
       "2xx": decodeSuccess(Close200),
       orElse: unexpectedStatus
     }))),
-    closeForumTopic: (options2) => HttpClientRequest.post(`/closeForumTopic`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    closeForumTopic: (options2) => HttpClientRequest.post(`/closeForumTopic`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(CloseForumTopic200),
       orElse: unexpectedStatus
     }))),
-    closeGeneralForumTopic: (options2) => HttpClientRequest.post(`/closeGeneralForumTopic`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    closeGeneralForumTopic: (options2) => HttpClientRequest.post(`/closeGeneralForumTopic`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(CloseGeneralForumTopic200),
       orElse: unexpectedStatus
     }))),
-    convertGiftToStars: (options2) => HttpClientRequest.post(`/convertGiftToStars`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    convertGiftToStars: (options2) => HttpClientRequest.post(`/convertGiftToStars`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(ConvertGiftToStars200),
       orElse: unexpectedStatus
     }))),
-    copyMessage: (options2) => HttpClientRequest.post(`/copyMessage`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    copyMessage: (options2) => HttpClientRequest.post(`/copyMessage`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(CopyMessage200),
       orElse: unexpectedStatus
     }))),
-    copyMessages: (options2) => HttpClientRequest.post(`/copyMessages`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    copyMessages: (options2) => HttpClientRequest.post(`/copyMessages`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(CopyMessages200),
       orElse: unexpectedStatus
     }))),
-    createChatInviteLink: (options2) => HttpClientRequest.post(`/createChatInviteLink`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    createChatInviteLink: (options2) => HttpClientRequest.post(`/createChatInviteLink`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(CreateChatInviteLink200),
       orElse: unexpectedStatus
     }))),
-    createChatSubscriptionInviteLink: (options2) => HttpClientRequest.post(`/createChatSubscriptionInviteLink`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    createChatSubscriptionInviteLink: (options2) => HttpClientRequest.post(`/createChatSubscriptionInviteLink`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(CreateChatSubscriptionInviteLink200),
       orElse: unexpectedStatus
     }))),
-    createForumTopic: (options2) => HttpClientRequest.post(`/createForumTopic`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    createForumTopic: (options2) => HttpClientRequest.post(`/createForumTopic`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(CreateForumTopic200),
       orElse: unexpectedStatus
     }))),
-    createInvoiceLink: (options2) => HttpClientRequest.post(`/createInvoiceLink`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    createInvoiceLink: (options2) => HttpClientRequest.post(`/createInvoiceLink`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(CreateInvoiceLink200),
       orElse: unexpectedStatus
     }))),
-    createNewStickerSet: (options2) => HttpClientRequest.post(`/createNewStickerSet`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    createNewStickerSet: (options2) => HttpClientRequest.post(`/createNewStickerSet`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(CreateNewStickerSet200),
       orElse: unexpectedStatus
     }))),
-    declineChatJoinRequest: (options2) => HttpClientRequest.post(`/declineChatJoinRequest`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    declineChatJoinRequest: (options2) => HttpClientRequest.post(`/declineChatJoinRequest`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeclineChatJoinRequest200),
       orElse: unexpectedStatus
     }))),
-    declineSuggestedPost: (options2) => HttpClientRequest.post(`/declineSuggestedPost`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    declineSuggestedPost: (options2) => HttpClientRequest.post(`/declineSuggestedPost`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeclineSuggestedPost200),
       orElse: unexpectedStatus
     }))),
-    deleteAllMessageReactions: (options2) => HttpClientRequest.post(`/deleteAllMessageReactions`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteAllMessageReactions: (options2) => HttpClientRequest.post(`/deleteAllMessageReactions`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteAllMessageReactions200),
       orElse: unexpectedStatus
     }))),
-    deleteBusinessMessages: (options2) => HttpClientRequest.post(`/deleteBusinessMessages`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteBusinessMessages: (options2) => HttpClientRequest.post(`/deleteBusinessMessages`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteBusinessMessages200),
       orElse: unexpectedStatus
     }))),
-    deleteChatPhoto: (options2) => HttpClientRequest.post(`/deleteChatPhoto`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteChatPhoto: (options2) => HttpClientRequest.post(`/deleteChatPhoto`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteChatPhoto200),
       orElse: unexpectedStatus
     }))),
-    deleteChatStickerSet: (options2) => HttpClientRequest.post(`/deleteChatStickerSet`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteChatStickerSet: (options2) => HttpClientRequest.post(`/deleteChatStickerSet`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteChatStickerSet200),
       orElse: unexpectedStatus
     }))),
-    deleteForumTopic: (options2) => HttpClientRequest.post(`/deleteForumTopic`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteForumTopic: (options2) => HttpClientRequest.post(`/deleteForumTopic`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteForumTopic200),
       orElse: unexpectedStatus
     }))),
-    deleteMessage: (options2) => HttpClientRequest.post(`/deleteMessage`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteMessage: (options2) => HttpClientRequest.post(`/deleteMessage`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteMessage200),
       orElse: unexpectedStatus
     }))),
-    deleteMessageReaction: (options2) => HttpClientRequest.post(`/deleteMessageReaction`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteMessageReaction: (options2) => HttpClientRequest.post(`/deleteMessageReaction`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteMessageReaction200),
       orElse: unexpectedStatus
     }))),
-    deleteMessages: (options2) => HttpClientRequest.post(`/deleteMessages`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteMessages: (options2) => HttpClientRequest.post(`/deleteMessages`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteMessages200),
       orElse: unexpectedStatus
     }))),
-    deleteMyCommands: (options2) => HttpClientRequest.post(`/deleteMyCommands`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteMyCommands: (options2) => HttpClientRequest.post(`/deleteMyCommands`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteMyCommands200),
       orElse: unexpectedStatus
     }))),
-    deleteStickerFromSet: (options2) => HttpClientRequest.post(`/deleteStickerFromSet`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteStickerFromSet: (options2) => HttpClientRequest.post(`/deleteStickerFromSet`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteStickerFromSet200),
       orElse: unexpectedStatus
     }))),
-    deleteStickerSet: (options2) => HttpClientRequest.post(`/deleteStickerSet`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteStickerSet: (options2) => HttpClientRequest.post(`/deleteStickerSet`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteStickerSet200),
       orElse: unexpectedStatus
     }))),
-    deleteStory: (options2) => HttpClientRequest.post(`/deleteStory`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteStory: (options2) => HttpClientRequest.post(`/deleteStory`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteStory200),
       orElse: unexpectedStatus
     }))),
-    deleteWebhook: (options2) => HttpClientRequest.post(`/deleteWebhook`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    deleteWebhook: (options2) => HttpClientRequest.post(`/deleteWebhook`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(DeleteWebhook200),
       orElse: unexpectedStatus
     }))),
-    editChatInviteLink: (options2) => HttpClientRequest.post(`/editChatInviteLink`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    editChatInviteLink: (options2) => HttpClientRequest.post(`/editChatInviteLink`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(EditChatInviteLink200),
       orElse: unexpectedStatus
     }))),
-    editChatSubscriptionInviteLink: (options2) => HttpClientRequest.post(`/editChatSubscriptionInviteLink`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    editChatSubscriptionInviteLink: (options2) => HttpClientRequest.post(`/editChatSubscriptionInviteLink`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(EditChatSubscriptionInviteLink200),
       orElse: unexpectedStatus
     }))),
-    editForumTopic: (options2) => HttpClientRequest.post(`/editForumTopic`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    editForumTopic: (options2) => HttpClientRequest.post(`/editForumTopic`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(EditForumTopic200),
       orElse: unexpectedStatus
     }))),
-    editGeneralForumTopic: (options2) => HttpClientRequest.post(`/editGeneralForumTopic`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    editGeneralForumTopic: (options2) => HttpClientRequest.post(`/editGeneralForumTopic`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(EditGeneralForumTopic200),
       orElse: unexpectedStatus
     }))),
-    editMessageCaption: (options2) => HttpClientRequest.post(`/editMessageCaption`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    editMessageCaption: (options2) => HttpClientRequest.post(`/editMessageCaption`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(EditMessageCaption200),
       orElse: unexpectedStatus
     }))),
-    editMessageChecklist: (options2) => HttpClientRequest.post(`/editMessageChecklist`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    editMessageChecklist: (options2) => HttpClientRequest.post(`/editMessageChecklist`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(EditMessageChecklist200),
       orElse: unexpectedStatus
     }))),
-    editMessageLiveLocation: (options2) => HttpClientRequest.post(`/editMessageLiveLocation`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    editMessageLiveLocation: (options2) => HttpClientRequest.post(`/editMessageLiveLocation`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(EditMessageLiveLocation200),
       orElse: unexpectedStatus
     }))),
-    editMessageMedia: (options2) => HttpClientRequest.post(`/editMessageMedia`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    editMessageMedia: (options2) => HttpClientRequest.post(`/editMessageMedia`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(EditMessageMedia200),
       orElse: unexpectedStatus
     }))),
-    editMessageReplyMarkup: (options2) => HttpClientRequest.post(`/editMessageReplyMarkup`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    editMessageReplyMarkup: (options2) => HttpClientRequest.post(`/editMessageReplyMarkup`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(EditMessageReplyMarkup200),
       orElse: unexpectedStatus
     }))),
-    editMessageText: (options2) => HttpClientRequest.post(`/editMessageText`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    editMessageText: (options2) => HttpClientRequest.post(`/editMessageText`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(EditMessageText200),
       orElse: unexpectedStatus
     }))),
-    editStory: (options2) => HttpClientRequest.post(`/editStory`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    editStory: (options2) => HttpClientRequest.post(`/editStory`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(EditStory200),
       orElse: unexpectedStatus
     }))),
-    editUserStarSubscription: (options2) => HttpClientRequest.post(`/editUserStarSubscription`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    editUserStarSubscription: (options2) => HttpClientRequest.post(`/editUserStarSubscription`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(EditUserStarSubscription200),
       orElse: unexpectedStatus
     }))),
-    exportChatInviteLink: (options2) => HttpClientRequest.post(`/exportChatInviteLink`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    exportChatInviteLink: (options2) => HttpClientRequest.post(`/exportChatInviteLink`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(ExportChatInviteLink200),
       orElse: unexpectedStatus
     }))),
-    forwardMessage: (options2) => HttpClientRequest.post(`/forwardMessage`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    forwardMessage: (options2) => HttpClientRequest.post(`/forwardMessage`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(ForwardMessage200),
       orElse: unexpectedStatus
     }))),
-    forwardMessages: (options2) => HttpClientRequest.post(`/forwardMessages`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    forwardMessages: (options2) => HttpClientRequest.post(`/forwardMessages`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(ForwardMessages200),
       orElse: unexpectedStatus
     }))),
@@ -2405,47 +2409,47 @@ var make = (httpClient, options = {}) => {
       "2xx": decodeSuccess(GetAvailableGifts200),
       orElse: unexpectedStatus
     }))),
-    getBusinessAccountGifts: (options2) => HttpClientRequest.post(`/getBusinessAccountGifts`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getBusinessAccountGifts: (options2) => HttpClientRequest.post(`/getBusinessAccountGifts`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetBusinessAccountGifts200),
       orElse: unexpectedStatus
     }))),
-    getBusinessAccountStarBalance: (options2) => HttpClientRequest.post(`/getBusinessAccountStarBalance`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getBusinessAccountStarBalance: (options2) => HttpClientRequest.post(`/getBusinessAccountStarBalance`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetBusinessAccountStarBalance200),
       orElse: unexpectedStatus
     }))),
-    getBusinessConnection: (options2) => HttpClientRequest.post(`/getBusinessConnection`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getBusinessConnection: (options2) => HttpClientRequest.post(`/getBusinessConnection`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetBusinessConnection200),
       orElse: unexpectedStatus
     }))),
-    getChat: (options2) => HttpClientRequest.post(`/getChat`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getChat: (options2) => HttpClientRequest.post(`/getChat`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetChat200),
       orElse: unexpectedStatus
     }))),
-    getChatAdministrators: (options2) => HttpClientRequest.post(`/getChatAdministrators`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getChatAdministrators: (options2) => HttpClientRequest.post(`/getChatAdministrators`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetChatAdministrators200),
       orElse: unexpectedStatus
     }))),
-    getChatGifts: (options2) => HttpClientRequest.post(`/getChatGifts`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getChatGifts: (options2) => HttpClientRequest.post(`/getChatGifts`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetChatGifts200),
       orElse: unexpectedStatus
     }))),
-    getChatMember: (options2) => HttpClientRequest.post(`/getChatMember`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getChatMember: (options2) => HttpClientRequest.post(`/getChatMember`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetChatMember200),
       orElse: unexpectedStatus
     }))),
-    getChatMemberCount: (options2) => HttpClientRequest.post(`/getChatMemberCount`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getChatMemberCount: (options2) => HttpClientRequest.post(`/getChatMemberCount`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetChatMemberCount200),
       orElse: unexpectedStatus
     }))),
-    getChatMenuButton: (options2) => HttpClientRequest.post(`/getChatMenuButton`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getChatMenuButton: (options2) => HttpClientRequest.post(`/getChatMenuButton`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetChatMenuButton200),
       orElse: unexpectedStatus
     }))),
-    getCustomEmojiStickers: (options2) => HttpClientRequest.post(`/getCustomEmojiStickers`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getCustomEmojiStickers: (options2) => HttpClientRequest.post(`/getCustomEmojiStickers`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetCustomEmojiStickers200),
       orElse: unexpectedStatus
     }))),
-    getFile: (options2) => HttpClientRequest.post(`/getFile`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getFile: (options2) => HttpClientRequest.post(`/getFile`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetFile200),
       orElse: unexpectedStatus
     }))),
@@ -2453,15 +2457,15 @@ var make = (httpClient, options = {}) => {
       "2xx": decodeSuccess(GetForumTopicIconStickers200),
       orElse: unexpectedStatus
     }))),
-    getGameHighScores: (options2) => HttpClientRequest.post(`/getGameHighScores`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getGameHighScores: (options2) => HttpClientRequest.post(`/getGameHighScores`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetGameHighScores200),
       orElse: unexpectedStatus
     }))),
-    getManagedBotAccessSettings: (options2) => HttpClientRequest.post(`/getManagedBotAccessSettings`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getManagedBotAccessSettings: (options2) => HttpClientRequest.post(`/getManagedBotAccessSettings`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetManagedBotAccessSettings200),
       orElse: unexpectedStatus
     }))),
-    getManagedBotToken: (options2) => HttpClientRequest.post(`/getManagedBotToken`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getManagedBotToken: (options2) => HttpClientRequest.post(`/getManagedBotToken`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetManagedBotToken200),
       orElse: unexpectedStatus
     }))),
@@ -2469,23 +2473,23 @@ var make = (httpClient, options = {}) => {
       "2xx": decodeSuccess(GetMe200),
       orElse: unexpectedStatus
     }))),
-    getMyCommands: (options2) => HttpClientRequest.post(`/getMyCommands`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getMyCommands: (options2) => HttpClientRequest.post(`/getMyCommands`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetMyCommands200),
       orElse: unexpectedStatus
     }))),
-    getMyDefaultAdministratorRights: (options2) => HttpClientRequest.post(`/getMyDefaultAdministratorRights`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getMyDefaultAdministratorRights: (options2) => HttpClientRequest.post(`/getMyDefaultAdministratorRights`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetMyDefaultAdministratorRights200),
       orElse: unexpectedStatus
     }))),
-    getMyDescription: (options2) => HttpClientRequest.post(`/getMyDescription`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getMyDescription: (options2) => HttpClientRequest.post(`/getMyDescription`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetMyDescription200),
       orElse: unexpectedStatus
     }))),
-    getMyName: (options2) => HttpClientRequest.post(`/getMyName`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getMyName: (options2) => HttpClientRequest.post(`/getMyName`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetMyName200),
       orElse: unexpectedStatus
     }))),
-    getMyShortDescription: (options2) => HttpClientRequest.post(`/getMyShortDescription`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getMyShortDescription: (options2) => HttpClientRequest.post(`/getMyShortDescription`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetMyShortDescription200),
       orElse: unexpectedStatus
     }))),
@@ -2493,35 +2497,35 @@ var make = (httpClient, options = {}) => {
       "2xx": decodeSuccess(GetMyStarBalance200),
       orElse: unexpectedStatus
     }))),
-    getStarTransactions: (options2) => HttpClientRequest.post(`/getStarTransactions`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getStarTransactions: (options2) => HttpClientRequest.post(`/getStarTransactions`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetStarTransactions200),
       orElse: unexpectedStatus
     }))),
-    getStickerSet: (options2) => HttpClientRequest.post(`/getStickerSet`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getStickerSet: (options2) => HttpClientRequest.post(`/getStickerSet`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetStickerSet200),
       orElse: unexpectedStatus
     }))),
-    getUpdates: (options2) => HttpClientRequest.post(`/getUpdates`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getUpdates: (options2) => HttpClientRequest.post(`/getUpdates`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetUpdates200),
       orElse: unexpectedStatus
     }))),
-    getUserChatBoosts: (options2) => HttpClientRequest.post(`/getUserChatBoosts`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getUserChatBoosts: (options2) => HttpClientRequest.post(`/getUserChatBoosts`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetUserChatBoosts200),
       orElse: unexpectedStatus
     }))),
-    getUserGifts: (options2) => HttpClientRequest.post(`/getUserGifts`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getUserGifts: (options2) => HttpClientRequest.post(`/getUserGifts`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetUserGifts200),
       orElse: unexpectedStatus
     }))),
-    getUserPersonalChatMessages: (options2) => HttpClientRequest.post(`/getUserPersonalChatMessages`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getUserPersonalChatMessages: (options2) => HttpClientRequest.post(`/getUserPersonalChatMessages`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetUserPersonalChatMessages200),
       orElse: unexpectedStatus
     }))),
-    getUserProfileAudios: (options2) => HttpClientRequest.post(`/getUserProfileAudios`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getUserProfileAudios: (options2) => HttpClientRequest.post(`/getUserProfileAudios`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetUserProfileAudios200),
       orElse: unexpectedStatus
     }))),
-    getUserProfilePhotos: (options2) => HttpClientRequest.post(`/getUserProfilePhotos`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    getUserProfilePhotos: (options2) => HttpClientRequest.post(`/getUserProfilePhotos`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetUserProfilePhotos200),
       orElse: unexpectedStatus
     }))),
@@ -2529,15 +2533,15 @@ var make = (httpClient, options = {}) => {
       "2xx": decodeSuccess(GetWebhookInfo200),
       orElse: unexpectedStatus
     }))),
-    giftPremiumSubscription: (options2) => HttpClientRequest.post(`/giftPremiumSubscription`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    giftPremiumSubscription: (options2) => HttpClientRequest.post(`/giftPremiumSubscription`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GiftPremiumSubscription200),
       orElse: unexpectedStatus
     }))),
-    hideGeneralForumTopic: (options2) => HttpClientRequest.post(`/hideGeneralForumTopic`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    hideGeneralForumTopic: (options2) => HttpClientRequest.post(`/hideGeneralForumTopic`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(HideGeneralForumTopic200),
       orElse: unexpectedStatus
     }))),
-    leaveChat: (options2) => HttpClientRequest.post(`/leaveChat`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    leaveChat: (options2) => HttpClientRequest.post(`/leaveChat`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(LeaveChat200),
       orElse: unexpectedStatus
     }))),
@@ -2545,31 +2549,31 @@ var make = (httpClient, options = {}) => {
       "2xx": decodeSuccess(LogOut200),
       orElse: unexpectedStatus
     }))),
-    pinChatMessage: (options2) => HttpClientRequest.post(`/pinChatMessage`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    pinChatMessage: (options2) => HttpClientRequest.post(`/pinChatMessage`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(PinChatMessage200),
       orElse: unexpectedStatus
     }))),
-    postStory: (options2) => HttpClientRequest.post(`/postStory`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    postStory: (options2) => HttpClientRequest.post(`/postStory`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(PostStory200),
       orElse: unexpectedStatus
     }))),
-    promoteChatMember: (options2) => HttpClientRequest.post(`/promoteChatMember`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    promoteChatMember: (options2) => HttpClientRequest.post(`/promoteChatMember`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(PromoteChatMember200),
       orElse: unexpectedStatus
     }))),
-    readBusinessMessage: (options2) => HttpClientRequest.post(`/readBusinessMessage`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    readBusinessMessage: (options2) => HttpClientRequest.post(`/readBusinessMessage`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(ReadBusinessMessage200),
       orElse: unexpectedStatus
     }))),
-    refundStarPayment: (options2) => HttpClientRequest.post(`/refundStarPayment`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    refundStarPayment: (options2) => HttpClientRequest.post(`/refundStarPayment`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(RefundStarPayment200),
       orElse: unexpectedStatus
     }))),
-    removeBusinessAccountProfilePhoto: (options2) => HttpClientRequest.post(`/removeBusinessAccountProfilePhoto`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    removeBusinessAccountProfilePhoto: (options2) => HttpClientRequest.post(`/removeBusinessAccountProfilePhoto`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(RemoveBusinessAccountProfilePhoto200),
       orElse: unexpectedStatus
     }))),
-    removeChatVerification: (options2) => HttpClientRequest.post(`/removeChatVerification`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    removeChatVerification: (options2) => HttpClientRequest.post(`/removeChatVerification`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(RemoveChatVerification200),
       orElse: unexpectedStatus
     }))),
@@ -2577,335 +2581,335 @@ var make = (httpClient, options = {}) => {
       "2xx": decodeSuccess(RemoveMyProfilePhoto200),
       orElse: unexpectedStatus
     }))),
-    removeUserVerification: (options2) => HttpClientRequest.post(`/removeUserVerification`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    removeUserVerification: (options2) => HttpClientRequest.post(`/removeUserVerification`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(RemoveUserVerification200),
       orElse: unexpectedStatus
     }))),
-    reopenForumTopic: (options2) => HttpClientRequest.post(`/reopenForumTopic`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    reopenForumTopic: (options2) => HttpClientRequest.post(`/reopenForumTopic`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(ReopenForumTopic200),
       orElse: unexpectedStatus
     }))),
-    reopenGeneralForumTopic: (options2) => HttpClientRequest.post(`/reopenGeneralForumTopic`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    reopenGeneralForumTopic: (options2) => HttpClientRequest.post(`/reopenGeneralForumTopic`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(ReopenGeneralForumTopic200),
       orElse: unexpectedStatus
     }))),
-    replaceManagedBotToken: (options2) => HttpClientRequest.post(`/replaceManagedBotToken`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    replaceManagedBotToken: (options2) => HttpClientRequest.post(`/replaceManagedBotToken`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(ReplaceManagedBotToken200),
       orElse: unexpectedStatus
     }))),
-    replaceStickerInSet: (options2) => HttpClientRequest.post(`/replaceStickerInSet`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    replaceStickerInSet: (options2) => HttpClientRequest.post(`/replaceStickerInSet`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(ReplaceStickerInSet200),
       orElse: unexpectedStatus
     }))),
-    repostStory: (options2) => HttpClientRequest.post(`/repostStory`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    repostStory: (options2) => HttpClientRequest.post(`/repostStory`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(RepostStory200),
       orElse: unexpectedStatus
     }))),
-    restrictChatMember: (options2) => HttpClientRequest.post(`/restrictChatMember`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    restrictChatMember: (options2) => HttpClientRequest.post(`/restrictChatMember`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(RestrictChatMember200),
       orElse: unexpectedStatus
     }))),
-    revokeChatInviteLink: (options2) => HttpClientRequest.post(`/revokeChatInviteLink`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    revokeChatInviteLink: (options2) => HttpClientRequest.post(`/revokeChatInviteLink`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(RevokeChatInviteLink200),
       orElse: unexpectedStatus
     }))),
-    savePreparedInlineMessage: (options2) => HttpClientRequest.post(`/savePreparedInlineMessage`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    savePreparedInlineMessage: (options2) => HttpClientRequest.post(`/savePreparedInlineMessage`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SavePreparedInlineMessage200),
       orElse: unexpectedStatus
     }))),
-    savePreparedKeyboardButton: (options2) => HttpClientRequest.post(`/savePreparedKeyboardButton`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    savePreparedKeyboardButton: (options2) => HttpClientRequest.post(`/savePreparedKeyboardButton`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SavePreparedKeyboardButton200),
       orElse: unexpectedStatus
     }))),
-    sendAnimation: (options2) => HttpClientRequest.post(`/sendAnimation`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendAnimation: (options2) => HttpClientRequest.post(`/sendAnimation`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendAnimation200),
       orElse: unexpectedStatus
     }))),
-    sendAudio: (options2) => HttpClientRequest.post(`/sendAudio`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendAudio: (options2) => HttpClientRequest.post(`/sendAudio`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendAudio200),
       orElse: unexpectedStatus
     }))),
-    sendChatAction: (options2) => HttpClientRequest.post(`/sendChatAction`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendChatAction: (options2) => HttpClientRequest.post(`/sendChatAction`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendChatAction200),
       orElse: unexpectedStatus
     }))),
-    sendChatJoinRequestWebApp: (options2) => HttpClientRequest.post(`/sendChatJoinRequestWebApp`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendChatJoinRequestWebApp: (options2) => HttpClientRequest.post(`/sendChatJoinRequestWebApp`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendChatJoinRequestWebApp200),
       orElse: unexpectedStatus
     }))),
-    sendChecklist: (options2) => HttpClientRequest.post(`/sendChecklist`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendChecklist: (options2) => HttpClientRequest.post(`/sendChecklist`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendChecklist200),
       orElse: unexpectedStatus
     }))),
-    sendContact: (options2) => HttpClientRequest.post(`/sendContact`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendContact: (options2) => HttpClientRequest.post(`/sendContact`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendContact200),
       orElse: unexpectedStatus
     }))),
-    sendDice: (options2) => HttpClientRequest.post(`/sendDice`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendDice: (options2) => HttpClientRequest.post(`/sendDice`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendDice200),
       orElse: unexpectedStatus
     }))),
-    sendDocument: (options2) => HttpClientRequest.post(`/sendDocument`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendDocument: (options2) => HttpClientRequest.post(`/sendDocument`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendDocument200),
       orElse: unexpectedStatus
     }))),
-    sendGame: (options2) => HttpClientRequest.post(`/sendGame`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendGame: (options2) => HttpClientRequest.post(`/sendGame`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendGame200),
       orElse: unexpectedStatus
     }))),
-    sendGift: (options2) => HttpClientRequest.post(`/sendGift`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendGift: (options2) => HttpClientRequest.post(`/sendGift`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendGift200),
       orElse: unexpectedStatus
     }))),
-    sendInvoice: (options2) => HttpClientRequest.post(`/sendInvoice`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendInvoice: (options2) => HttpClientRequest.post(`/sendInvoice`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendInvoice200),
       orElse: unexpectedStatus
     }))),
-    sendLivePhoto: (options2) => HttpClientRequest.post(`/sendLivePhoto`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendLivePhoto: (options2) => HttpClientRequest.post(`/sendLivePhoto`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendLivePhoto200),
       orElse: unexpectedStatus
     }))),
-    sendLocation: (options2) => HttpClientRequest.post(`/sendLocation`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendLocation: (options2) => HttpClientRequest.post(`/sendLocation`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendLocation200),
       orElse: unexpectedStatus
     }))),
-    sendMediaGroup: (options2) => HttpClientRequest.post(`/sendMediaGroup`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendMediaGroup: (options2) => HttpClientRequest.post(`/sendMediaGroup`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendMediaGroup200),
       orElse: unexpectedStatus
     }))),
-    sendMessage: (options2) => HttpClientRequest.post(`/sendMessage`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendMessage: (options2) => HttpClientRequest.post(`/sendMessage`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendMessage200),
       orElse: unexpectedStatus
     }))),
-    sendMessageDraft: (options2) => HttpClientRequest.post(`/sendMessageDraft`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendMessageDraft: (options2) => HttpClientRequest.post(`/sendMessageDraft`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendMessageDraft200),
       orElse: unexpectedStatus
     }))),
-    sendPaidMedia: (options2) => HttpClientRequest.post(`/sendPaidMedia`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendPaidMedia: (options2) => HttpClientRequest.post(`/sendPaidMedia`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendPaidMedia200),
       orElse: unexpectedStatus
     }))),
-    sendPhoto: (options2) => HttpClientRequest.post(`/sendPhoto`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendPhoto: (options2) => HttpClientRequest.post(`/sendPhoto`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendPhoto200),
       orElse: unexpectedStatus
     }))),
-    sendPoll: (options2) => HttpClientRequest.post(`/sendPoll`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendPoll: (options2) => HttpClientRequest.post(`/sendPoll`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendPoll200),
       orElse: unexpectedStatus
     }))),
-    sendRichMessage: (options2) => HttpClientRequest.post(`/sendRichMessage`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendRichMessage: (options2) => HttpClientRequest.post(`/sendRichMessage`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendRichMessage200),
       orElse: unexpectedStatus
     }))),
-    sendRichMessageDraft: (options2) => HttpClientRequest.post(`/sendRichMessageDraft`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendRichMessageDraft: (options2) => HttpClientRequest.post(`/sendRichMessageDraft`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendRichMessageDraft200),
       orElse: unexpectedStatus
     }))),
-    sendSticker: (options2) => HttpClientRequest.post(`/sendSticker`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendSticker: (options2) => HttpClientRequest.post(`/sendSticker`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendSticker200),
       orElse: unexpectedStatus
     }))),
-    sendVenue: (options2) => HttpClientRequest.post(`/sendVenue`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendVenue: (options2) => HttpClientRequest.post(`/sendVenue`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendVenue200),
       orElse: unexpectedStatus
     }))),
-    sendVideo: (options2) => HttpClientRequest.post(`/sendVideo`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendVideo: (options2) => HttpClientRequest.post(`/sendVideo`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendVideo200),
       orElse: unexpectedStatus
     }))),
-    sendVideoNote: (options2) => HttpClientRequest.post(`/sendVideoNote`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendVideoNote: (options2) => HttpClientRequest.post(`/sendVideoNote`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendVideoNote200),
       orElse: unexpectedStatus
     }))),
-    sendVoice: (options2) => HttpClientRequest.post(`/sendVoice`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    sendVoice: (options2) => HttpClientRequest.post(`/sendVoice`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SendVoice200),
       orElse: unexpectedStatus
     }))),
-    setBusinessAccountBio: (options2) => HttpClientRequest.post(`/setBusinessAccountBio`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setBusinessAccountBio: (options2) => HttpClientRequest.post(`/setBusinessAccountBio`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetBusinessAccountBio200),
       orElse: unexpectedStatus
     }))),
-    setBusinessAccountGiftSettings: (options2) => HttpClientRequest.post(`/setBusinessAccountGiftSettings`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setBusinessAccountGiftSettings: (options2) => HttpClientRequest.post(`/setBusinessAccountGiftSettings`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetBusinessAccountGiftSettings200),
       orElse: unexpectedStatus
     }))),
-    setBusinessAccountName: (options2) => HttpClientRequest.post(`/setBusinessAccountName`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setBusinessAccountName: (options2) => HttpClientRequest.post(`/setBusinessAccountName`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetBusinessAccountName200),
       orElse: unexpectedStatus
     }))),
-    setBusinessAccountProfilePhoto: (options2) => HttpClientRequest.post(`/setBusinessAccountProfilePhoto`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setBusinessAccountProfilePhoto: (options2) => HttpClientRequest.post(`/setBusinessAccountProfilePhoto`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetBusinessAccountProfilePhoto200),
       orElse: unexpectedStatus
     }))),
-    setBusinessAccountUsername: (options2) => HttpClientRequest.post(`/setBusinessAccountUsername`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setBusinessAccountUsername: (options2) => HttpClientRequest.post(`/setBusinessAccountUsername`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetBusinessAccountUsername200),
       orElse: unexpectedStatus
     }))),
-    setChatAdministratorCustomTitle: (options2) => HttpClientRequest.post(`/setChatAdministratorCustomTitle`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setChatAdministratorCustomTitle: (options2) => HttpClientRequest.post(`/setChatAdministratorCustomTitle`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetChatAdministratorCustomTitle200),
       orElse: unexpectedStatus
     }))),
-    setChatDescription: (options2) => HttpClientRequest.post(`/setChatDescription`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setChatDescription: (options2) => HttpClientRequest.post(`/setChatDescription`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetChatDescription200),
       orElse: unexpectedStatus
     }))),
-    setChatMemberTag: (options2) => HttpClientRequest.post(`/setChatMemberTag`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setChatMemberTag: (options2) => HttpClientRequest.post(`/setChatMemberTag`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetChatMemberTag200),
       orElse: unexpectedStatus
     }))),
-    setChatMenuButton: (options2) => HttpClientRequest.post(`/setChatMenuButton`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setChatMenuButton: (options2) => HttpClientRequest.post(`/setChatMenuButton`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetChatMenuButton200),
       orElse: unexpectedStatus
     }))),
-    setChatPermissions: (options2) => HttpClientRequest.post(`/setChatPermissions`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setChatPermissions: (options2) => HttpClientRequest.post(`/setChatPermissions`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetChatPermissions200),
       orElse: unexpectedStatus
     }))),
-    setChatPhoto: (options2) => HttpClientRequest.post(`/setChatPhoto`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setChatPhoto: (options2) => HttpClientRequest.post(`/setChatPhoto`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetChatPhoto200),
       orElse: unexpectedStatus
     }))),
-    setChatStickerSet: (options2) => HttpClientRequest.post(`/setChatStickerSet`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setChatStickerSet: (options2) => HttpClientRequest.post(`/setChatStickerSet`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetChatStickerSet200),
       orElse: unexpectedStatus
     }))),
-    setChatTitle: (options2) => HttpClientRequest.post(`/setChatTitle`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setChatTitle: (options2) => HttpClientRequest.post(`/setChatTitle`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetChatTitle200),
       orElse: unexpectedStatus
     }))),
-    setCustomEmojiStickerSetThumbnail: (options2) => HttpClientRequest.post(`/setCustomEmojiStickerSetThumbnail`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setCustomEmojiStickerSetThumbnail: (options2) => HttpClientRequest.post(`/setCustomEmojiStickerSetThumbnail`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetCustomEmojiStickerSetThumbnail200),
       orElse: unexpectedStatus
     }))),
-    setGameScore: (options2) => HttpClientRequest.post(`/setGameScore`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setGameScore: (options2) => HttpClientRequest.post(`/setGameScore`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetGameScore200),
       orElse: unexpectedStatus
     }))),
-    setManagedBotAccessSettings: (options2) => HttpClientRequest.post(`/setManagedBotAccessSettings`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setManagedBotAccessSettings: (options2) => HttpClientRequest.post(`/setManagedBotAccessSettings`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetManagedBotAccessSettings200),
       orElse: unexpectedStatus
     }))),
-    setMessageReaction: (options2) => HttpClientRequest.post(`/setMessageReaction`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setMessageReaction: (options2) => HttpClientRequest.post(`/setMessageReaction`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetMessageReaction200),
       orElse: unexpectedStatus
     }))),
-    setMyCommands: (options2) => HttpClientRequest.post(`/setMyCommands`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setMyCommands: (options2) => HttpClientRequest.post(`/setMyCommands`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetMyCommands200),
       orElse: unexpectedStatus
     }))),
-    setMyDefaultAdministratorRights: (options2) => HttpClientRequest.post(`/setMyDefaultAdministratorRights`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setMyDefaultAdministratorRights: (options2) => HttpClientRequest.post(`/setMyDefaultAdministratorRights`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetMyDefaultAdministratorRights200),
       orElse: unexpectedStatus
     }))),
-    setMyDescription: (options2) => HttpClientRequest.post(`/setMyDescription`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setMyDescription: (options2) => HttpClientRequest.post(`/setMyDescription`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetMyDescription200),
       orElse: unexpectedStatus
     }))),
-    setMyName: (options2) => HttpClientRequest.post(`/setMyName`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setMyName: (options2) => HttpClientRequest.post(`/setMyName`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetMyName200),
       orElse: unexpectedStatus
     }))),
-    setMyProfilePhoto: (options2) => HttpClientRequest.post(`/setMyProfilePhoto`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setMyProfilePhoto: (options2) => HttpClientRequest.post(`/setMyProfilePhoto`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetMyProfilePhoto200),
       orElse: unexpectedStatus
     }))),
-    setMyShortDescription: (options2) => HttpClientRequest.post(`/setMyShortDescription`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setMyShortDescription: (options2) => HttpClientRequest.post(`/setMyShortDescription`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetMyShortDescription200),
       orElse: unexpectedStatus
     }))),
-    setPassportDataErrors: (options2) => HttpClientRequest.post(`/setPassportDataErrors`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setPassportDataErrors: (options2) => HttpClientRequest.post(`/setPassportDataErrors`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetPassportDataErrors200),
       orElse: unexpectedStatus
     }))),
-    setStickerEmojiList: (options2) => HttpClientRequest.post(`/setStickerEmojiList`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setStickerEmojiList: (options2) => HttpClientRequest.post(`/setStickerEmojiList`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetStickerEmojiList200),
       orElse: unexpectedStatus
     }))),
-    setStickerKeywords: (options2) => HttpClientRequest.post(`/setStickerKeywords`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setStickerKeywords: (options2) => HttpClientRequest.post(`/setStickerKeywords`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetStickerKeywords200),
       orElse: unexpectedStatus
     }))),
-    setStickerMaskPosition: (options2) => HttpClientRequest.post(`/setStickerMaskPosition`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setStickerMaskPosition: (options2) => HttpClientRequest.post(`/setStickerMaskPosition`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetStickerMaskPosition200),
       orElse: unexpectedStatus
     }))),
-    setStickerPositionInSet: (options2) => HttpClientRequest.post(`/setStickerPositionInSet`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setStickerPositionInSet: (options2) => HttpClientRequest.post(`/setStickerPositionInSet`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetStickerPositionInSet200),
       orElse: unexpectedStatus
     }))),
-    setStickerSetThumbnail: (options2) => HttpClientRequest.post(`/setStickerSetThumbnail`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setStickerSetThumbnail: (options2) => HttpClientRequest.post(`/setStickerSetThumbnail`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetStickerSetThumbnail200),
       orElse: unexpectedStatus
     }))),
-    setStickerSetTitle: (options2) => HttpClientRequest.post(`/setStickerSetTitle`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setStickerSetTitle: (options2) => HttpClientRequest.post(`/setStickerSetTitle`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetStickerSetTitle200),
       orElse: unexpectedStatus
     }))),
-    setUserEmojiStatus: (options2) => HttpClientRequest.post(`/setUserEmojiStatus`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setUserEmojiStatus: (options2) => HttpClientRequest.post(`/setUserEmojiStatus`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetUserEmojiStatus200),
       orElse: unexpectedStatus
     }))),
-    setWebhook: (options2) => HttpClientRequest.post(`/setWebhook`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    setWebhook: (options2) => HttpClientRequest.post(`/setWebhook`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(SetWebhook200),
       orElse: unexpectedStatus
     }))),
-    stopMessageLiveLocation: (options2) => HttpClientRequest.post(`/stopMessageLiveLocation`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    stopMessageLiveLocation: (options2) => HttpClientRequest.post(`/stopMessageLiveLocation`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(StopMessageLiveLocation200),
       orElse: unexpectedStatus
     }))),
-    stopPoll: (options2) => HttpClientRequest.post(`/stopPoll`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    stopPoll: (options2) => HttpClientRequest.post(`/stopPoll`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(StopPoll200),
       orElse: unexpectedStatus
     }))),
-    transferBusinessAccountStars: (options2) => HttpClientRequest.post(`/transferBusinessAccountStars`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    transferBusinessAccountStars: (options2) => HttpClientRequest.post(`/transferBusinessAccountStars`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(TransferBusinessAccountStars200),
       orElse: unexpectedStatus
     }))),
-    transferGift: (options2) => HttpClientRequest.post(`/transferGift`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    transferGift: (options2) => HttpClientRequest.post(`/transferGift`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(TransferGift200),
       orElse: unexpectedStatus
     }))),
-    unbanChatMember: (options2) => HttpClientRequest.post(`/unbanChatMember`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    unbanChatMember: (options2) => HttpClientRequest.post(`/unbanChatMember`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(UnbanChatMember200),
       orElse: unexpectedStatus
     }))),
-    unbanChatSenderChat: (options2) => HttpClientRequest.post(`/unbanChatSenderChat`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    unbanChatSenderChat: (options2) => HttpClientRequest.post(`/unbanChatSenderChat`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(UnbanChatSenderChat200),
       orElse: unexpectedStatus
     }))),
-    unhideGeneralForumTopic: (options2) => HttpClientRequest.post(`/unhideGeneralForumTopic`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    unhideGeneralForumTopic: (options2) => HttpClientRequest.post(`/unhideGeneralForumTopic`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(UnhideGeneralForumTopic200),
       orElse: unexpectedStatus
     }))),
-    unpinAllChatMessages: (options2) => HttpClientRequest.post(`/unpinAllChatMessages`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    unpinAllChatMessages: (options2) => HttpClientRequest.post(`/unpinAllChatMessages`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(UnpinAllChatMessages200),
       orElse: unexpectedStatus
     }))),
-    unpinAllForumTopicMessages: (options2) => HttpClientRequest.post(`/unpinAllForumTopicMessages`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    unpinAllForumTopicMessages: (options2) => HttpClientRequest.post(`/unpinAllForumTopicMessages`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(UnpinAllForumTopicMessages200),
       orElse: unexpectedStatus
     }))),
-    unpinAllGeneralForumTopicMessages: (options2) => HttpClientRequest.post(`/unpinAllGeneralForumTopicMessages`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    unpinAllGeneralForumTopicMessages: (options2) => HttpClientRequest.post(`/unpinAllGeneralForumTopicMessages`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(UnpinAllGeneralForumTopicMessages200),
       orElse: unexpectedStatus
     }))),
-    unpinChatMessage: (options2) => HttpClientRequest.post(`/unpinChatMessage`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    unpinChatMessage: (options2) => HttpClientRequest.post(`/unpinChatMessage`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(UnpinChatMessage200),
       orElse: unexpectedStatus
     }))),
-    upgradeGift: (options2) => HttpClientRequest.post(`/upgradeGift`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    upgradeGift: (options2) => HttpClientRequest.post(`/upgradeGift`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(UpgradeGift200),
       orElse: unexpectedStatus
     }))),
-    uploadStickerFile: (options2) => HttpClientRequest.post(`/uploadStickerFile`).pipe(HttpClientRequest.bodyFormData(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    uploadStickerFile: (options2) => HttpClientRequest.post(`/uploadStickerFile`).pipe(bodyTelegramPayload(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(UploadStickerFile200),
       orElse: unexpectedStatus
     }))),
-    verifyChat: (options2) => HttpClientRequest.post(`/verifyChat`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    verifyChat: (options2) => HttpClientRequest.post(`/verifyChat`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(VerifyChat200),
       orElse: unexpectedStatus
     }))),
-    verifyUser: (options2) => HttpClientRequest.post(`/verifyUser`).pipe(HttpClientRequest.bodyUrlParams(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
+    verifyUser: (options2) => HttpClientRequest.post(`/verifyUser`).pipe(HttpClientRequest.bodyJsonUnsafe(options2.payload), withResponse(options2.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(VerifyUser200),
       orElse: unexpectedStatus
     })))

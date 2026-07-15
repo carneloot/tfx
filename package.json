@@ -12,6 +12,8 @@
     "test": "vitest run",
     "test:unit": "vitest run --exclude '**/*.integration.test.ts' --exclude '**/*.e2e.test.ts'",
     "test:integration": "vitest run --config vitest.integration.config.ts --reporter verbose",
+    "test:tfx:bun": "corepack pnpm --filter tfx test:bun",
+    "check:tfx:package": "corepack pnpm --filter tfx build && corepack pnpm --filter tfx check:package",
     "clean": "tsc -b tsconfig.json --clean",
     "changeset": "changeset",
     "release:version": "changeset version",

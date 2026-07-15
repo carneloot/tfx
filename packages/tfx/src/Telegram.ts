@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Redacted from "effect/Redacted"
 import * as HttpClient from "effect/unstable/http/HttpClient"
+import * as HttpClientError from "effect/unstable/http/HttpClientError"
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest"
 import { make as makeGenerated } from "./internal/telegram/generated/TelegramApi.runtime.js"
 import type { TelegramApi } from "./internal/telegram/generated/TelegramApi.types.js"
@@ -21,33 +22,22 @@ export type TelegramService = { readonly [Method in keyof TelegramApi]: DirectOp
 
 export class Telegram extends Context.Service<Telegram, TelegramService>()("tfx/Telegram") {}
 
-const findFailureEnvelope = (value: unknown, seen = new Set<unknown>()): TelegramFailureEnvelope | undefined => {
-  if (typeof value === "string") {
-    const start = value.indexOf('{"ok":false')
-    if (start >= 0) try { return findFailureEnvelope(JSON.parse(value.slice(start))) } catch { return undefined }
-    return undefined
-  }
-  if (typeof value !== "object" || value === null || seen.has(value)) return undefined
-  seen.add(value)
-  const record = value as Record<string, unknown>
-  if (record.ok === false && typeof record.error_code === "number") return record as unknown as TelegramFailureEnvelope
-  for (const nested of Object.values(record)) {
-    const found = findFailureEnvelope(nested, seen)
-    if (found) return found
-  }
-  return undefined
-}
-
 const mapGeneratedError = (method: string, cause: unknown): TelegramError => {
-  const failure = findFailureEnvelope(cause)
-  if (failure) return fromEnvelope(method, failure)
-  const tag = typeof cause === "object" && cause !== null ? (cause as { _tag?: unknown })._tag : undefined
-  const message = safeMessage(cause)
-  const reason = tag === "RequestError" || tag === "TransportError" || message.toLowerCase().includes("network")
-    ? new NetworkError({ message })
-    : tag === "SchemaError" || message.toLowerCase().includes("decode") || message.toLowerCase().includes("parse")
-    ? new InvalidResponseError({ message })
-    : new UnknownError({ message })
+  const tagged = typeof cause === "object" && cause !== null ? cause as { readonly _tag?: unknown; readonly cause?: unknown } : undefined
+  if (tagged?._tag === "APIResponseError") return fromEnvelope(method, tagged.cause as TelegramFailureEnvelope)
+
+  if (HttpClientError.isHttpClientError(cause)) {
+    const reason = cause.reason._tag === "TransportError"
+      ? new NetworkError({ message: "Telegram network request failed" })
+      : cause.reason._tag === "DecodeError" || cause.reason._tag === "EmptyBodyError"
+      ? new InvalidResponseError({ message: "Telegram response could not be decoded" })
+      : new UnknownError({ message: "Telegram HTTP request failed" })
+    return new TelegramError({ module: "Telegram", method, reason })
+  }
+
+  const reason = tagged?._tag === "SchemaError"
+    ? new InvalidResponseError({ message: "Telegram response did not match expected schema" })
+    : new UnknownError({ message: safeMessage("Unknown Telegram client failure") })
   return new TelegramError({ module: "Telegram", method, reason })
 }
 

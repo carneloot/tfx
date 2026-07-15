@@ -6,38 +6,53 @@ import type * as HttpClientRequest from "effect/unstable/http/HttpClientRequest"
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse"
 import { make } from "../src/Telegram.js"
 
-const run = (body: unknown, inspect?: (request: HttpClientRequest.HttpClientRequest) => void) => {
+const success = { ok: true, result: { message_id: 7, date: 1, chat: { id: 42, type: "private" } } }
+const run = (body: unknown, inspect?: (request: HttpClientRequest.HttpClientRequest) => void, status = 200, raw = false) => {
   const client = HttpClient.make((request) => {
     inspect?.(request)
-    return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })))
+    const responseBody = raw ? String(body) : JSON.stringify(body)
+    return Effect.succeed(HttpClientResponse.fromWeb(request, new Response(responseBody, { status, headers: { "content-type": "application/json" } })))
   })
   return <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>) => Effect.runPromise(Effect.provideService(effect, HttpClient.HttpClient, client))
 }
 
+const expectJson = (expected: object) => (request: HttpClientRequest.HttpClientRequest) => {
+  expect(request.body._tag).toBe("Uint8Array")
+  expect(request.headers["content-type"]).toContain("application/json")
+  if (request.body._tag === "Uint8Array") expect(JSON.parse(new TextDecoder().decode(request.body.body))).toEqual(expected)
+}
+
 describe("Telegram", () => {
-  it("injects redacted token and strips successful envelope", async () => {
-    let url = ""
-    const execute = run({ ok: true, result: { message_id: 7, date: 1, chat: { id: 42, type: "private" } } }, (request) => {
-      url = request.url
-      expect(request.body._tag).toBe("Uint8Array")
-      expect(request.headers["content-type"]).toContain("application/x-www-form-urlencoded")
+  it("sends sendMessage as JSON and strips successful envelope", async () => {
+    const payload = { chat_id: 42, text: "oi" }
+    const execute = run(success, (request) => {
+      expect(request.url).toBe("https://api.telegram.org/bot123456:secret/sendMessage")
+      expectJson(payload)(request)
     })
-    const result = await execute(Effect.flatMap(make(Redacted.make("123456:secret")), (telegram) => telegram.sendMessage({ chat_id: 42, text: "oi" })))
-    expect(result).toMatchObject({ message_id: 7 })
-    expect(url).toBe("https://api.telegram.org/bot123456:secret/sendMessage")
+    await expect(execute(Effect.flatMap(make(Redacted.make("123456:secret")), (telegram) => telegram.sendMessage(payload)))).resolves.toMatchObject({ message_id: 7 })
   })
-  it("supports file IDs and uploaded blobs", async () => {
-    for (const document of ["file-id", new Blob(["data"])]) {
-      const execute = run({ ok: true, result: { message_id: 8, date: 1, chat: { id: 1, type: "private" } } }, (request) => {
-        expect(request.url).toBe("https://api.telegram.org/bot1:x/sendDocument")
-        expect(request.body._tag).toBe("FormData")
-      })
-      const result = await execute(Effect.flatMap(make(Redacted.make("1:x")), (telegram) => telegram.sendDocument({ chat_id: 1, document })))
-      expect(result).toMatchObject({ message_id: 8 })
-    }
+  it.each(["file-id", "https://example.com/document.pdf"])("sends document string %s as JSON", async (document) => {
+    const payload = { chat_id: 42, document }
+    const execute = run(success, expectJson(payload))
+    await execute(Effect.flatMap(make(Redacted.make("1:x")), (telegram) => telegram.sendDocument(payload)))
   })
-  it("maps Telegram failure envelopes", async () => {
-    const execute = run({ ok: false, error_code: 429, description: "slow", parameters: { retry_after: 2 } })
-    await expect(execute(Effect.flatMap(make(Redacted.make("1:x")), (telegram) => telegram.getUpdates()))).rejects.toMatchObject({ _tag: "TelegramError", reason: { _tag: "RateLimitError" } })
+  it("sends Blob uploads as multipart form data", async () => {
+    const execute = run(success, (request) => {
+      expect(request.body._tag).toBe("FormData")
+      expect(request.headers["content-type"]).toBeUndefined()
+      if (request.body._tag === "FormData") {
+        expect(request.body.formData.get("chat_id")).toBe("42")
+        expect(request.body.formData.get("document")).toBeInstanceOf(Blob)
+      }
+    })
+    await execute(Effect.flatMap(make(Redacted.make("1:x")), (telegram) => telegram.sendDocument({ chat_id: 42, document: new Blob(["data"]) })))
+  })
+  it.each([[400, "InvalidRequestError"], [401, "AuthenticationError"], [403, "ForbiddenError"], [409, "ConflictError"], [429, "RateLimitError"], [500, "InternalTelegramError"]] as const)("maps HTTP %i Telegram envelope", async (status, tag) => {
+    const execute = run({ ok: false, error_code: status, description: "safe", parameters: { retry_after: 2 } }, undefined, status)
+    await expect(execute(Effect.flatMap(make(Redacted.make("1:x")), (telegram) => telegram.getUpdates()))).rejects.toMatchObject({ reason: { _tag: tag } })
+  })
+  it.each([["not json", true], [{ ok: true }, false]])("maps malformed JSON/success envelopes to InvalidResponseError", async (body, raw) => {
+    const execute = run(body, undefined, 200, raw)
+    await expect(execute(Effect.flatMap(make(Redacted.make("1:x")), (telegram) => telegram.getMe()))).rejects.toMatchObject({ reason: { _tag: "InvalidResponseError" } })
   })
 })

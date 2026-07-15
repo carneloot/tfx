@@ -35,6 +35,8 @@
     "telegram:check": "node scripts/check-generated.ts",
     "build": "tsc -b ../../tsconfig.packages.json && node scripts/copy-telegram-runtime.ts",
     "check": "tsc -b ../../tsconfig.json --pretty false",
-    "test": "vitest run --root ../.."
+    "test": "vitest run --root ../..",
+    "test:bun": "bun test test/Telegram.test.ts test/TelegramError.test.ts",
+    "check:package": "node scripts/check-package.ts"
   }
 }

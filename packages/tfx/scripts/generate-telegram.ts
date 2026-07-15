@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
-import { dirname, resolve } from "node:path"
+import { basename, dirname, resolve } from "node:path"
 
 const root = resolve(import.meta.dirname, "../../..")
 const generatedDir = resolve(root, "packages/tfx/src/internal/telegram/generated")
@@ -19,8 +20,34 @@ if (required.size > 0) throw new Error(`required Telegram operations missing: ${
 
 const patches = ["001-server.json", "002-default-responses.json", "003-input-files.json"]
 const args = ["exec", "openapigen", "--spec", spec, "--name", "TelegramApi", "--format", "httpclient", ...patches.flatMap((name) => ["--patch", resolve(root, "packages/tfx/openapi/patches", name)])]
-const output = execFileSync("corepack", ["pnpm", ...args], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
-const normalized = output.replace(/[ \t]+$/gm, "").replace(/\n*$/, "\n")
+const generated = spawnSync("corepack", ["pnpm", ...args], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
+if (generated.status !== 0) throw new Error(generated.stderr || `openapigen exited ${generated.status}`)
+const normalizeLines = (value: string) => value.replace(/[ \t]+$/gm, "").replace(/\n*$/, "\n")
+const warnings = normalizeLines(generated.stderr).trim().split("\n").filter(Boolean)
+const warningAllowlist = new Set<string>([])
+const unexpectedWarnings = warnings.filter((warning) => !warningAllowlist.has(warning))
+if (unexpectedWarnings.length > 0) throw new Error(`unexpected openapigen warnings:\n${unexpectedWarnings.join("\n")}`)
+
+const multipartFieldNames = new Set<string>()
+for (const pathItem of Object.values(document.paths) as Array<Record<string, any>>) {
+  for (const operation of Object.values(pathItem)) {
+    const properties = operation.requestBody?.content?.["application/json"]?.schema?.properties ?? {}
+    for (const [name, schema] of Object.entries(properties) as Array<[string, any]>) {
+      if (schema.format === "binary" || schema.$ref?.endsWith("/InputFile") || /upload|InputFile/i.test(schema.description ?? "")) multipartFieldNames.add(name)
+    }
+  }
+}
+
+let normalized = normalizeLines(generated.stdout)
+normalized = normalized.replaceAll("HttpClientRequest.bodyUrlParams(options.payload as any)", "HttpClientRequest.bodyJsonUnsafe(options.payload as any)")
+normalized = normalized.replaceAll("HttpClientRequest.bodyFormData(options.payload as any)", "bodyTelegramPayload(options.payload as any)")
+const unexpectedStatusPattern = /  const unexpectedStatus = \(response: HttpClientResponse\.HttpClientResponse\) =>[\s\S]*?\n  const withResponse =/
+if (!unexpectedStatusPattern.test(normalized)) throw new Error("could not replace unexpected status decoder")
+normalized = normalized.replace(unexpectedStatusPattern, `  const unexpectedStatus = (response: HttpClientResponse.HttpClientResponse) =>\n    Effect.flatMap(\n      HttpClientResponse.schemaBodyJson(APIResponseError)(response),\n      (cause) => Effect.fail(TelegramApiError(\"APIResponseError\", cause, response))\n    )\n  const withResponse =`)
+const makeMarker = "export const make = (\n"
+const helper = `const containsUpload = (value: unknown, seen = new Set<unknown>()): boolean => {\n  if (typeof Blob === \"function\" && value instanceof Blob) return true\n  if (typeof File === \"function\" && value instanceof File) return true\n  if (typeof value !== \"object\" || value === null || seen.has(value)) return false\n  seen.add(value)\n  return Object.values(value).some((item) => containsUpload(item, seen))\n}\nconst bodyTelegramPayload = (payload: Record<string, unknown>) => containsUpload(payload)\n  ? HttpClientRequest.bodyFormDataRecord(payload)\n  : HttpClientRequest.bodyJsonUnsafe(payload)\n\n`
+if (!normalized.includes(makeMarker)) throw new Error("could not insert Telegram request body helper")
+normalized = normalized.replace(makeMarker, helper + makeMarker)
 const full = `// @ts-nocheck -- generated from pinned Photon OpenAPI; do not edit\n${normalized}`
 const target = process.argv[2] ? resolve(process.argv[2]) : resolve(generatedDir, "TelegramApi.ts")
 writeFileSync(target, full)
@@ -28,7 +55,11 @@ writeFileSync(target, full)
 const types = [...full.matchAll(/^export type [^\n]+$/gm)].map(([line]) => line)
   .filter((line) => !line.startsWith("export type WithOptionalResponse"))
   .map((line) => line.replaceAll("Schema.Json", "Json"))
-  .map((line) => line.startsWith("export type SendDocumentRequestFormData =") ? line.replace('readonly "document": string', 'readonly "document": string | Blob') : line)
+  .map((line) => {
+    if (!line.includes("RequestFormData =")) return line
+    for (const field of multipartFieldNames) line = line.replaceAll(`readonly "${field}": string`, `readonly "${field}": string | Blob`)
+    return line
+  })
 const interfaceStart = full.indexOf("export interface TelegramApi {")
 const interfaceEnd = full.indexOf("\n}\n\nexport interface TelegramApiError", interfaceStart)
 if (interfaceStart < 0 || interfaceEnd < 0) throw new Error("could not extract TelegramApi interface")
@@ -44,3 +75,8 @@ const runtimeTarget = resolve(dirname(target), "TelegramApi.runtime.js")
 execFileSync("bun", ["build", target, "--outfile", runtimeTarget, "--target=node", "--format=esm", "--external=effect", "--external=effect/*"], { cwd: root, stdio: "inherit" })
 writeFileSync(runtimeTarget, readFileSync(runtimeTarget, "utf8").replace(/^\/\/ .*TelegramApi\.ts$/m, "// generated TelegramApi runtime"))
 writeFileSync(resolve(dirname(target), "TelegramApi.runtime.d.ts"), `// generated runtime bridge; do not edit\nimport type * as Effect from "effect/Effect"\nimport type * as Schema from "effect/Schema"\nimport type * as HttpClient from "effect/unstable/http/HttpClient"\nimport type { TelegramApi, BotCommand as BotCommandType, Message as MessageType, Update as UpdateType, User as UserType } from "./TelegramApi.types.js"\nexport declare const make: (client: HttpClient.HttpClient, options?: { readonly transformClient?: ((client: HttpClient.HttpClient) => Effect.Effect<HttpClient.HttpClient>) | undefined }) => TelegramApi\nexport declare const BotCommand: Schema.Schema<BotCommandType>\nexport declare const Message: Schema.Schema<MessageType>\nexport declare const Update: Schema.Schema<UpdateType>\nexport declare const User: Schema.Schema<UserType>\n`)
+
+const manifestFiles = [spec, ...patches.map((name) => resolve(root, "packages/tfx/openapi/patches", name))]
+const manifest = manifestFiles.map((file) => `${createHash("sha256").update(readFileSync(file)).digest("hex")}  ${basename(file)}`).join("\n") + "\n"
+const manifestTarget = resolve(root, "packages/tfx/openapi/telegram-sources.sha256")
+if (!process.argv[2]) writeFileSync(manifestTarget, manifest)
