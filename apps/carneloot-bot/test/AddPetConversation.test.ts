@@ -48,6 +48,11 @@ describe('AddPetConversation', () => {
 			const conversations = yield* Conversations;
 			const scope = { botId: 'carneloot', chatId: 1, userId: 2 };
 			yield* conversations.start(AddPetConversation.built, ownerId, { scope });
+			const invalid = yield* conversations.resume(
+				AddPetConversation.built,
+				'Rex\u0000',
+				{ scope, updateId: 9 },
+			);
 			const first = yield* conversations.resume(
 				AddPetConversation.built,
 				' Rex ',
@@ -58,7 +63,7 @@ describe('AddPetConversation', () => {
 				' Rex ',
 				{ scope, updateId: 10 },
 			);
-			return { first, duplicate };
+			return { invalid, first, duplicate };
 		});
 		const dependencies = Layer.merge(
 			petLayer,
@@ -69,16 +74,20 @@ describe('AddPetConversation', () => {
 			Layer.merge(MemoryConversationStorage.layer, dependencies),
 		) as Effect.Effect<
 			{
+				readonly invalid: { readonly _tag: string };
 				readonly first: { readonly _tag: string };
 				readonly duplicate: { readonly _tag: string };
 			},
 			unknown
 		>;
 		const result = await Effect.runPromise(executable);
+		expect(result.invalid._tag).toBe('Applied');
 		expect(result.first._tag).toBe('Applied');
 		expect(result.duplicate._tag).toBe('Missing');
 		expect(inserts).toBe(1);
 		expect(replies).toEqual([
+			'Qual o nome do seu pet?',
+			'Nome de pet inválido.',
 			'Qual o nome do seu pet?',
 			'Pet cadastrado com sucesso!',
 		]);

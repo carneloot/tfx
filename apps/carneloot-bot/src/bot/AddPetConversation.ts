@@ -37,11 +37,27 @@ export const built = ConversationBuilder.done(
 			}).pipe(Effect.mapError((error): unknown => error)),
 		onInput: (state, name) =>
 			Effect.gen(function* () {
-				yield* AddPet.execute(state.ownerId, name);
 				const context = yield* MessageContext.MessageContext;
-				return ConversationBuilder.complete({
-					afterCommit: context.reply('Pet cadastrado com sucesso!'),
-				});
+				return yield* AddPet.execute(state.ownerId, name).pipe(
+					Effect.as(
+						ConversationBuilder.complete({
+							afterCommit: context.reply('Pet cadastrado com sucesso!'),
+						}),
+					),
+					Effect.catchTag('PetNameAlreadyExists', () =>
+						Effect.succeed(
+							ConversationBuilder.stay({
+								afterCommit: context.reply('Já existe um pet com esse nome.'),
+							}),
+						),
+					),
+				);
 			}),
+		onInvalid: () =>
+			Effect.map(MessageContext.MessageContext, (context) =>
+				ConversationBuilder.stay({
+					afterCommit: context.reply('Nome de pet inválido.'),
+				}),
+			),
 	}),
 );
