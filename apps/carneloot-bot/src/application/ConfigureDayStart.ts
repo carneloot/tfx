@@ -3,7 +3,7 @@ import * as Clock from 'effect/Clock';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
-import { DomainPersistenceError } from '../domain/DomainError.js';
+import { InvalidDomainInput } from '../domain/DomainError.js';
 import { IanaTimeZone, LocalTime } from '../domain/pet-food/FoodDateTime.js';
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { authorize, type PetFoodAccess } from './PetFoodAccess.js';
@@ -19,7 +19,7 @@ export const execute = (
 		).pipe(
 			Effect.mapError(
 				(cause) =>
-					new DomainPersistenceError({
+					new InvalidDomainInput({
 						message: 'Invalid day start',
 						cause,
 					}),
@@ -30,7 +30,7 @@ export const execute = (
 		).pipe(
 			Effect.mapError(
 				(cause) =>
-					new DomainPersistenceError({ message: 'Invalid time zone', cause }),
+					new InvalidDomainInput({ message: 'Invalid time zone', cause }),
 			),
 		);
 		const sql = yield* PgClient.PgClient;

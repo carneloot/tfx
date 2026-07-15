@@ -1,5 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import { Effect, Layer, Schema } from 'effect';
+import { Deferred, Effect, Fiber, Layer, Schema } from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
@@ -12,6 +12,7 @@ import { PetName } from '../../src/domain/Pet.js';
 import { PetRepository } from '../../src/ports/PetRepository.js';
 import {
 	ReminderScheduler,
+	ReminderSchedulerError,
 	type ReminderSchedulerService,
 } from '../../src/ports/ReminderScheduler.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
@@ -141,23 +142,68 @@ else
 			);
 		});
 
-		it('rolls back food and settings when scheduler fails', async () => {
-			const failing = Layer.succeed(ReminderScheduler, {
-				replaceForLatest: () => Effect.fail('scheduler failed'),
-				cancelForPet: () => Effect.fail('scheduler failed'),
-			} satisfies ReminderSchedulerService);
+		it('rolls back scheduler actions, food, and settings when scheduler fails', async () => {
+			const failure = new ReminderSchedulerError({
+				message: 'scheduler failed',
+			});
+			const failing: Layer.Layer<ReminderScheduler, never, PgClient.PgClient> =
+				Layer.effect(
+					ReminderScheduler,
+					Effect.map(
+						PgClient.PgClient,
+						(sql) =>
+							({
+								replaceForLatest: (schedule) =>
+									sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id,food_entry_id,run_at) VALUES ('replace',${schedule.petId}::uuid,${schedule.foodEntryId}::uuid,${new Date(schedule.runAt)})`.pipe(
+										Effect.mapError(
+											(cause) =>
+												new ReminderSchedulerError({
+													message: 'scheduler write failed',
+													cause,
+												}),
+										),
+										Effect.andThen(Effect.fail(failure)),
+									),
+								cancelForPet: (petId) =>
+									sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id) VALUES ('cancel',${petId}::uuid)`.pipe(
+										Effect.mapError(
+											(cause) =>
+												new ReminderSchedulerError({
+													message: 'scheduler write failed',
+													cause,
+												}),
+										),
+										Effect.andThen(Effect.fail(failure)),
+									),
+							}) satisfies ReminderSchedulerService,
+					),
+				);
 			const program = Effect.gen(function* () {
 				yield* TestClock.setTime(new Date('2024-01-02T12:00:00Z').getTime());
 				const { sql, access, pet } = yield* setup;
 				yield* ConfigureDayStart.execute(access, '23:00', 'UTC');
 				yield* ConfigureReminderDelay.set(access, 60_000);
+				yield* sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${pet.id}::uuid,${access.ownerId}::uuid,1000,${new Date('2024-01-02T09:00:00Z')},${access.botId},9,${new Date('2024-01-02T09:00:00Z')},${new Date('2024-01-02T09:00:00Z')})`;
+				const setDelay = yield* Effect.result(
+					ConfigureReminderDelay.set(access, 120_000),
+				);
+				expect(setDelay).toMatchObject({
+					_tag: 'Failure',
+					failure: { _tag: 'ReminderSchedulerError' },
+				});
+				expect(
+					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
+				).toHaveLength(0);
 				const result = yield* Effect.result(
 					AddFood.execute(access, '50g', '10:00', source(access.botId, 10)),
 				);
 				expect(result._tag).toBe('Failure');
 				const rows =
 					yield* sql`SELECT id FROM carneloot.pet_food_entries WHERE pet_id=${pet.id}::uuid`;
-				expect(rows).toHaveLength(0);
+				expect(rows).toHaveLength(1);
+				expect(
+					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
+				).toHaveLength(0);
 				const remove = yield* Effect.result(
 					ConfigureReminderDelay.remove(access),
 				);
@@ -166,11 +212,204 @@ else
 					reminder_delay_ms: string | null;
 				}>`SELECT reminder_delay_ms FROM carneloot.pet_food_settings WHERE pet_id=${pet.id}::uuid`;
 				expect(Number(settings[0]?.reminder_delay_ms)).toBe(60_000);
+				expect(
+					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
+				).toHaveLength(0);
 			});
 			await Effect.runPromise(
 				Effect.provide(
 					program,
 					Layer.merge(dependencies(failing), TestClock.layer()),
+				),
+			);
+		});
+
+		it('rejects cross-owner settings and returns configured/missing status projections', async () => {
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(new Date('2024-01-02T12:00:00Z').getTime());
+				const first = yield* setup;
+				const second = yield* setup;
+				const denied = yield* Effect.result(
+					ConfigureDayStart.execute(
+						{ ...second.access, petId: first.pet.id },
+						'23:00',
+						'UTC',
+					),
+				);
+				expect(denied).toMatchObject({
+					_tag: 'Failure',
+					failure: { _tag: 'PetAccessDenied' },
+				});
+				const missing = yield* GetFoodStatus.execute({
+					ownerId: first.access.ownerId,
+					botId: first.access.botId,
+					telegramUserId: first.access.telegramUserId,
+				});
+				expect(missing).toMatchObject([{ _tag: 'MissingDayStart' }]);
+				yield* ConfigureDayStart.execute(second.access, '00:00', 'UTC');
+				const zero = yield* GetFoodStatus.execute({
+					ownerId: second.access.ownerId,
+					botId: second.access.botId,
+					telegramUserId: second.access.telegramUserId,
+				});
+				expect(zero).toMatchObject([
+					{ _tag: 'Configured', totalMg: 0, latestFedAt: null },
+				]);
+				yield* ConfigureDayStart.execute(first.access, '23:00', 'UTC');
+				const windowStart = new Date('2024-01-01T23:00:00Z').getTime();
+				const windowEnd = new Date('2024-01-02T23:00:00Z').getTime();
+				for (const [fedAt, amount, update] of [
+					[windowStart - 1, 1_000, 101],
+					[windowStart, 2_000, 102],
+					[windowEnd - 1, 3_000, 103],
+					[windowEnd, 4_000, 104],
+				] as const)
+					yield* first.sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${first.pet.id}::uuid,${first.access.ownerId}::uuid,${amount},${new Date(fedAt)},${first.access.botId},${update},${new Date(fedAt)},${new Date(fedAt)})`;
+				const status = yield* GetFoodStatus.execute({
+					ownerId: first.access.ownerId,
+					botId: first.access.botId,
+					telegramUserId: first.access.telegramUserId,
+				});
+				expect(status[0]).toMatchObject({
+					_tag: 'Configured',
+					totalMg: 5_000,
+					latestFedAt: windowEnd - 1,
+					window: { start: windowStart, end: windowEnd },
+				});
+			});
+			await Effect.runPromise(
+				Effect.provide(
+					program,
+					Layer.merge(
+						dependencies(RecordingScheduler.layer),
+						TestClock.layer(),
+					),
+				),
+			);
+		});
+
+		it('serializes concurrent source replay and business duplicate claims', async () => {
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(new Date('2024-01-02T12:00:00Z').getTime());
+				const { sql, access, pet } = yield* setup;
+				yield* ConfigureDayStart.execute(access, '00:00', 'UTC');
+				// No delay: a successful insertion emits no scheduler action.
+				const noDelay = yield* AddFood.execute(
+					access,
+					'1g',
+					'08:00',
+					source(access.botId, 200),
+				);
+				expect(noDelay.replayed).toBe(false);
+				expect(
+					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
+				).toHaveLength(0);
+				yield* ConfigureReminderDelay.set(access, 120_000);
+				const sourceGate = yield* Deferred.make<void>();
+				const sourceFiber = yield* Effect.forkChild(
+					Effect.all(
+						[1, 2].map(() =>
+							Effect.andThen(
+								Deferred.await(sourceGate),
+								AddFood.execute(
+									access,
+									'2g',
+									'10:00',
+									source(access.botId, 201),
+								),
+							),
+						),
+						{ concurrency: 'unbounded' },
+					),
+				);
+				yield* Deferred.succeed(sourceGate, undefined);
+				const sameSource = yield* Fiber.join(sourceFiber);
+				expect(sameSource.filter((result) => result.replayed)).toHaveLength(1);
+				expect(new Set(sameSource.map((result) => result.entry.id)).size).toBe(
+					1,
+				);
+				const businessGate = yield* Deferred.make<void>();
+				const businessFiber = yield* Effect.forkChild(
+					Effect.all(
+						[202, 203].map((updateId) =>
+							Effect.andThen(
+								Deferred.await(businessGate),
+								Effect.result(
+									AddFood.execute(
+										access,
+										'3g',
+										'11:00',
+										source(access.botId, updateId),
+									),
+								),
+							),
+						),
+						{ concurrency: 'unbounded' },
+					),
+				);
+				yield* Deferred.succeed(businessGate, undefined);
+				const business = yield* Fiber.join(businessFiber);
+				expect(
+					business.filter((result) => result._tag === 'Success'),
+				).toHaveLength(1);
+				expect(
+					business.filter((result) => result._tag === 'Failure'),
+				).toMatchObject([{ failure: { _tag: 'DuplicateFoodEntry' } }]);
+				const actions = yield* sql<{
+					food_entry_id: string;
+					run_at: Date;
+				}>`SELECT food_entry_id,run_at FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid ORDER BY id`;
+				// Delay setting reschedules 08:00, then one action per winning 10:00/11:00 insertion.
+				expect(actions).toHaveLength(3);
+				expect(actions[1]?.food_entry_id).toBe(sameSource[0]?.entry.id);
+				expect(new Date(actions[1]!.run_at).getTime()).toBe(
+					new Date('2024-01-02T10:02:00Z').getTime(),
+				);
+			});
+			await Effect.runPromise(
+				Effect.provide(
+					program,
+					Layer.merge(
+						dependencies(RecordingScheduler.layer),
+						TestClock.layer(),
+					),
+				),
+			);
+		});
+
+		it('uses a strict one-minute business duplicate boundary', async () => {
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(new Date('2024-01-02T12:00:00Z').getTime());
+				const { sql, access, pet } = yield* setup;
+				yield* ConfigureDayStart.execute(access, '00:00', 'UTC');
+				const seed = (fedAt: number, updateId: number) =>
+					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${pet.id}::uuid,${access.ownerId}::uuid,1000,${new Date(fedAt)},${access.botId},${updateId},${new Date(fedAt)},${new Date(fedAt)})`;
+				yield* seed(new Date('2024-01-02T10:00:00.001Z').getTime(), 300);
+				const below = yield* Effect.result(
+					AddFood.execute(access, '1g', '10:01', source(access.botId, 301)),
+				);
+				expect(below).toMatchObject({
+					_tag: 'Failure',
+					failure: { _tag: 'DuplicateFoodEntry' },
+				});
+				const exactFixture = yield* setup;
+				yield* ConfigureDayStart.execute(exactFixture.access, '00:00', 'UTC');
+				yield* exactFixture.sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${exactFixture.pet.id}::uuid,${exactFixture.access.ownerId}::uuid,1000,${new Date('2024-01-02T10:00:00Z')},${exactFixture.access.botId},302,${new Date('2024-01-02T10:00:00Z')},${new Date('2024-01-02T10:00:00Z')})`;
+				const exact = yield* AddFood.execute(
+					exactFixture.access,
+					'1g',
+					'10:01',
+					source(exactFixture.access.botId, 303),
+				);
+				expect(exact.replayed).toBe(false);
+			});
+			await Effect.runPromise(
+				Effect.provide(
+					program,
+					Layer.merge(
+						dependencies(RecordingScheduler.layer),
+						TestClock.layer(),
+					),
 				),
 			);
 		});

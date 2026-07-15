@@ -3,7 +3,7 @@ import * as Clock from 'effect/Clock';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
-import { DomainPersistenceError } from '../domain/DomainError.js';
+import { InvalidDomainInput } from '../domain/DomainError.js';
 import { ReminderDelayMs } from '../domain/pet-food/PetFood.js';
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { ReminderScheduler } from '../ports/ReminderScheduler.js';
@@ -16,7 +16,7 @@ export const set = (access: PetFoodAccess, delayInput: unknown) =>
 		).pipe(
 			Effect.mapError(
 				(cause) =>
-					new DomainPersistenceError({
+					new InvalidDomainInput({
 						message: 'Invalid reminder delay',
 						cause,
 					}),

@@ -3,7 +3,7 @@ import * as Clock from 'effect/Clock';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
-import { DomainPersistenceError } from '../domain/DomainError.js';
+import { InvalidDomainInput } from '../domain/DomainError.js';
 import { BotId, TelegramChatId } from '../domain/Ids.js';
 import { FoodAmount } from '../domain/pet-food/FoodAmount.js';
 import * as FoodDateTime from '../domain/pet-food/FoodDateTime.js';
@@ -29,7 +29,7 @@ const safeMessageId = Schema.Number.check(
 	Schema.makeFilter((value) => Number.isSafeInteger(value) && value > 0),
 );
 const invalid = (message: string, cause: unknown) =>
-	new DomainPersistenceError({ message, cause });
+	new InvalidDomainInput({ message, cause });
 
 export const execute = (
 	access: PetFoodAccess,

@@ -2,6 +2,7 @@ import { Effect, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import * as AddFood from '../../src/application/AddFood.js';
+import * as ConfigureDayStart from '../../src/application/ConfigureDayStart.js';
 import * as ConfigureReminderDelay from '../../src/application/ConfigureReminderDelay.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../src/domain/Ids.js';
 
@@ -23,7 +24,10 @@ describe('pet food application validation', () => {
 					ConfigureReminderDelay.set(access, delay),
 				) as Effect.Effect<any>,
 			);
-			expect(result._tag).toBe('Failure');
+			expect(result).toMatchObject({
+				_tag: 'Failure',
+				failure: { _tag: 'InvalidDomainInput' },
+			});
 		}
 	});
 	it('rejects unsafe update id before SQL', async () => {
@@ -35,6 +39,25 @@ describe('pet food application validation', () => {
 				}),
 			) as Effect.Effect<any>,
 		);
-		expect(source._tag).toBe('Failure');
+		expect(source).toMatchObject({
+			_tag: 'Failure',
+			failure: { _tag: 'InvalidDomainInput' },
+		});
+	});
+	it('maps day-start and timezone validation to domain input errors', async () => {
+		for (const [dayStart, timeZone] of [
+			['24:00', 'UTC'],
+			['00:00', 'Not/AZone'],
+		] as const) {
+			const result = await Effect.runPromise(
+				Effect.result(
+					ConfigureDayStart.execute(access, dayStart, timeZone),
+				) as Effect.Effect<any>,
+			);
+			expect(result).toMatchObject({
+				_tag: 'Failure',
+				failure: { _tag: 'InvalidDomainInput' },
+			});
+		}
 	});
 });
