@@ -3,8 +3,15 @@
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
+	"scripts": {
+		"build": "tsc -b ../../tsconfig.packages.json",
+		"check": "tsc -b ../../tsconfig.json --pretty false",
+		"test": "vitest run --root ../.. apps/carneloot-bot/test",
+		"test:integration": "vitest run --root ../.. --config vitest.integration.config.ts apps/carneloot-bot/test/*.integration.test.ts"
+	},
 	"dependencies": {
 		"@effect/platform-bun": "4.0.0-beta.98",
+		"@effect/sql-pg": "4.0.0-beta.98",
 		"@tfx/postgres": "workspace:^",
 		"effect": "4.0.0-beta.98",
 		"tfx": "workspace:^"

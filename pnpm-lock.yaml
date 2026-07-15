@@ -53,6 +53,9 @@ importers:
       '@effect/platform-bun':
         specifier: 4.0.0-beta.98
         version: 4.0.0-beta.98(effect@4.0.0-beta.98)
+      '@effect/sql-pg':
+        specifier: 4.0.0-beta.98
+        version: 4.0.0-beta.98(effect@4.0.0-beta.98)
       '@tfx/postgres':
         specifier: workspace:^
         version: link:../../packages/postgres
