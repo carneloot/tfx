@@ -165,9 +165,21 @@ else
 						}>`SELECT i.user_id,p.id pet_id FROM carneloot.telegram_identities i JOIN carneloot.pets p ON p.owner_id=i.user_id LIMIT 1`;
 						yield* sql`INSERT INTO carneloot.pet_food_settings(pet_id,day_start,timezone,reminder_delay_ms,created_at,updated_at) VALUES (${row!.pet_id}::uuid,'00:00','UTC',1000,now(),now())`;
 						yield* sql`INSERT INTO carneloot.pet_food_entries(id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${ids.food}::uuid,${row!.pet_id}::uuid,${row!.user_id}::uuid,50000,now(),'carneloot',9001,now(),now())`;
-						yield* sql`INSERT INTO tfx_restart_e2e.case_jobs(id,declaration,payload_version,payload_json,status,attempts,max_attempts,run_at,lease_generation,cancellation_requested,created_at,updated_at) VALUES (${ids.job}::uuid,'feeding-reminder',1,${sql.json({ eventId: ids.event, botId: 'carneloot', petId: row!.pet_id, foodEntryId: ids.food })},'scheduled',0,8,now(),0,false,now(),now())`;
+						yield* sql`INSERT INTO tfx_restart_e2e.case_jobs(id,declaration,payload_version,payload_json,status,attempts,max_attempts,run_at,lease_generation,cancellation_requested,created_at,updated_at) VALUES (${ids.job}::uuid,'feeding-reminder',1,${sql.json({ eventId: ids.event, botId: 'carneloot', petId: row!.pet_id, foodEntryId: ids.food })},'scheduled',0,8,now()+interval '1 hour',0,false,now(),now())`;
 						yield* sql`INSERT INTO carneloot.notification_events(id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,created_at,updated_at) VALUES (${ids.event}::uuid,'carneloot','feeding-reminder',${row!.user_id}::uuid,${row!.pet_id}::uuid,${ids.food}::uuid,now(),'scheduled',${`restart:${ids.event}`},${ids.job}::uuid,now(),now())`;
 					}),
+					postgres,
+				),
+			);
+			// Close future-due persistence scope, then advance due boundary before
+			// constructing fresh application runtime scope.
+			await Effect.runPromise(
+				Effect.provide(
+					Effect.flatMap(
+						PgClient.PgClient,
+						(sql) =>
+							sql`UPDATE tfx_restart_e2e.case_jobs SET run_at=now() WHERE id=${ids.job}::uuid`,
+					),
 					postgres,
 				),
 			);
