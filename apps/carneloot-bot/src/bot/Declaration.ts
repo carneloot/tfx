@@ -25,5 +25,23 @@ export const pets = BotGroup.make('pets')
 			error: undefined as unknown,
 		}),
 	);
-export const Carneloot = Bot.make('carneloot').add(account).add(pets);
+export const petFood = BotGroup.make('petFood')
+	.add(
+		Command.make('configureDayStart', {
+			name: 'configurar_inicio_dia',
+			middleware: [RegisteredUser],
+			error: undefined as unknown,
+		}),
+	)
+	.add(
+		Command.make('configureReminderDelay', {
+			name: 'configurar_atraso_notificacao',
+			middleware: [RegisteredUser],
+			error: undefined as unknown,
+		}),
+	);
+export const Carneloot = Bot.make('carneloot')
+	.add(account)
+	.add(pets)
+	.add(petFood);
 export const botId = Carneloot.name;

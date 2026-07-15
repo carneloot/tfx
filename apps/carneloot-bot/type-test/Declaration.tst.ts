@@ -18,6 +18,13 @@ BotBuilder.group(Carneloot, 'pets', (handlers) =>
 		.handle('addPet', () => Effect.map(CurrentUser, () => undefined))
 		.handle('listPets', () => Effect.map(CurrentUser, () => undefined)),
 );
+BotBuilder.group(Carneloot, 'petFood', (handlers) =>
+	handlers
+		.handle('configureDayStart', () => Effect.map(CurrentUser, () => undefined))
+		.handle('configureReminderDelay', () =>
+			Effect.map(CurrentUser, () => undefined),
+		),
+);
 class Audit extends Context.Service<Audit, { readonly id: string }>()(
 	'types/Audit',
 ) {}

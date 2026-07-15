@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import * as AccountHandlers from '../src/bot/AccountHandlers.js';
 import { built } from '../src/bot/AddPetConversation.js';
 import { Carneloot } from '../src/bot/Declaration.js';
+import * as PetFoodHandlers from '../src/bot/PetFoodHandlers.js';
 import * as PetHandlers from '../src/bot/PetHandlers.js';
 import * as RegisteredUser from '../src/bot/RegisteredUser.js';
 
@@ -18,10 +19,28 @@ describe('public bot Layer construction', () => {
 				.handle('addPet', () => PetHandlers.startAddPet)
 				.handle('listPets', () => PetHandlers.listPets),
 		);
+		const petFood = BotBuilder.group(Carneloot, 'petFood', (handlers) =>
+			handlers
+				.handle(
+					'configureDayStart',
+					() => PetFoodHandlers.startConfigureDayStart,
+				)
+				.handle(
+					'configureReminderDelay',
+					() => PetFoodHandlers.startConfigureReminderDelay,
+				),
+		);
 		const middleware = Middleware.layer(RegisteredUser.live);
-		const integrated = Layer.provide(Layer.merge(account, pets), middleware);
+		const integrated = Layer.provide(
+			Layer.mergeAll(account, pets, petFood),
+			middleware,
+		);
 		expect(integrated).toBeDefined();
 		expect(built.declaration.id).toBe('add-owned-pet');
-		expect(Object.keys(Carneloot.groups)).toEqual(['account', 'pets']);
+		expect(Object.keys(Carneloot.groups)).toEqual([
+			'account',
+			'pets',
+			'petFood',
+		]);
 	});
 });
