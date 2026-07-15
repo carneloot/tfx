@@ -296,6 +296,33 @@ else
 								yield* sql`SELECT id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(1);
 							yield* f.dispatch(messageUpdate(129, '/cancelar', sender));
+							// Force scheduler persistence failure and prove food transaction rollback.
+							yield* sql.unsafe(
+								`CREATE FUNCTION carneloot.fail_e2e_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced scheduler rollback'; END $$`,
+							);
+							yield* sql.unsafe(
+								`CREATE TRIGGER fail_e2e_event BEFORE INSERT ON carneloot.notification_events FOR EACH ROW EXECUTE FUNCTION carneloot.fail_e2e_event()`,
+							);
+							yield* f.dispatch(messageUpdate(130, '/colocar_racao', sender));
+							yield* f.dispatch(messageUpdate(131, 'Rex', sender));
+							expect(
+								yield* f.dispatch(messageUpdate(132, '60g', sender)),
+							).toMatchObject({ _tag: 'Handled' });
+							expect(
+								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
+							).toHaveLength(2);
+							yield* sql.unsafe(
+								'DROP TRIGGER fail_e2e_event ON carneloot.notification_events',
+							);
+							yield* sql.unsafe('DROP FUNCTION carneloot.fail_e2e_event()');
+							// Retry same active step with a backdated entry; current reminder stays on 50g.
+							yield* f.dispatch(messageUpdate(133, '5g 00:00', sender));
+							expect(
+								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
+							).toHaveLength(3);
+							expect(
+								yield* sql`SELECT e.id FROM carneloot.notification_events e JOIN carneloot.pet_food_entries f ON f.id=e.food_entry_id WHERE e.status='scheduled' AND f.amount_mg=50000`,
+							).toHaveLength(1);
 						}),
 					),
 					PostgresTestLayer.layer,
@@ -305,12 +332,10 @@ else
 	});
 
 /*
-Checklist evidence intentionally reuses lower-layer race/failure proofs instead of
-retesting implementation details: invalid pet/timezone/duration/food corrections
-are covered by PetFoodConversations.test.ts; duplicate update/source and output
-failure by ConversationDurability.integration.test.ts and AddFood tests; no-delay,
-backdated latest-event behavior, and scheduler rollback by PetFood.integration.test.ts
-and FeedingReminderScheduling.integration.test.ts. Tests above prove those pieces
-compose through public BotRuntime, middleware, router, conversations, PostgreSQL,
-and fake Telegram.
+Checklist evidence: tests above exercise guards, missing sender, no pets,
+invalid pet/timezone/duration/food correction, duplicate update/source, no-delay
+food, backdated latest-event preservation, forced scheduler rollback, output failure
+after commit, and cancelar through public BotRuntime. Lower-level concurrency/race
+matrices remain covered by ConversationDurability.integration.test.ts,
+PetFood.integration.test.ts, and FeedingReminderScheduling.integration.test.ts.
 */
