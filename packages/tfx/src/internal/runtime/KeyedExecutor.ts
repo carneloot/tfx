@@ -3,6 +3,7 @@ import * as Effect from 'effect/Effect';
 import * as Queue from 'effect/Queue';
 import type * as Scope from 'effect/Scope';
 import * as Semaphore from 'effect/Semaphore';
+import * as Stream from 'effect/Stream';
 
 import type { PartitionKey } from '../../Partitioning.js';
 interface Task<A, E, R> {
@@ -39,21 +40,18 @@ export const make = (options: {
 					return created;
 				}),
 			);
-		const loop: Effect.Effect<never, never, Scope.Scope> = Effect.flatMap(
-			Queue.take(queue),
-			(task) =>
-				Effect.andThen(
-					Effect.forkScoped(
-						Effect.flatMap(partition(task.key), (keyPermit) =>
-							keyPermit.withPermit(
-								global.withPermit(Deferred.complete(task.result, task.effect)),
-							),
+		const intake = Stream.runForEach(Stream.fromQueue(queue), (task) =>
+			Effect.asVoid(
+				Effect.forkScoped(
+					Effect.flatMap(partition(task.key), (keyPermit) =>
+						keyPermit.withPermit(
+							global.withPermit(Deferred.complete(task.result, task.effect)),
 						),
 					),
-					loop,
 				),
+			),
 		);
-		yield* Effect.forkScoped(loop);
+		yield* Effect.forkScoped(intake);
 		return {
 			submit: (key, effect) =>
 				Effect.gen(function* () {
