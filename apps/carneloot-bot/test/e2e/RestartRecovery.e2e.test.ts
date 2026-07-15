@@ -204,6 +204,10 @@ else
 			);
 			expect(sentC.filter((text) => text.startsWith('🚨'))).toHaveLength(1);
 
+			const ambiguous = {
+				event: crypto.randomUUID(),
+				job: crypto.randomUUID(),
+			};
 			await Effect.runPromise(
 				Effect.provide(
 					Effect.gen(function* () {
@@ -212,25 +216,52 @@ else
 							user_id: string;
 							pet_id: string;
 						}>`SELECT owner_id user_id,id pet_id FROM carneloot.pets LIMIT 1`;
-						const event = crypto.randomUUID();
-						yield* sql`INSERT INTO carneloot.notification_events(id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,created_at,updated_at) VALUES (${event}::uuid,'carneloot','feeding-reminder',${base!.user_id}::uuid,${base!.pet_id}::uuid,${ids.food}::uuid,now(),'dispatching',${`ambiguous:${event}`},now(),now())`;
-						yield* sql`INSERT INTO carneloot.notification_deliveries(id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,sending_started_at,sending_lease_expires_at,retryable,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${event}::uuid,${base!.user_id}::uuid,5101,'owner','telegram','sending',1,1,now()-interval '2 seconds',now()-interval '1 second',false,now(),now())`;
+						yield* sql`INSERT INTO tfx_restart_e2e.case_jobs(id,declaration,payload_version,payload_json,status,attempts,max_attempts,run_at,lease_generation,cancellation_requested,created_at,updated_at) VALUES (${ambiguous.job}::uuid,'feeding-reminder',1,${sql.json({ eventId: ambiguous.event, botId: 'carneloot', petId: base!.pet_id, foodEntryId: ids.food })},'scheduled',0,8,now(),0,false,now(),now())`;
+						yield* sql`INSERT INTO carneloot.notification_events(id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,created_at,updated_at) VALUES (${ambiguous.event}::uuid,'carneloot','feeding-reminder',${base!.user_id}::uuid,${base!.pet_id}::uuid,${ids.food}::uuid,now(),'dispatching',${`ambiguous:${ambiguous.event}`},${ambiguous.job}::uuid,now(),now())`;
+						yield* sql`INSERT INTO carneloot.notification_deliveries(id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,sending_started_at,sending_lease_expires_at,retryable,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${ambiguous.event}::uuid,${base!.user_id}::uuid,5101,'owner','telegram','sending',1,1,now()-interval '2 seconds',now()-interval '1 second',false,now(),now())`;
 					}),
 					postgres,
 				),
 			);
 			const before = sentC.length;
-			await Effect.runPromise(Effect.scoped(Layer.build(build(sentC))));
 			await Effect.runPromise(
-				Effect.provide(
+				Effect.scoped(
 					Effect.gen(function* () {
-						const sql = yield* PgClient.PgClient;
+						const context = yield* Layer.build(
+							Layer.merge(build(sentC), postgres),
+						);
+						const sql = yield* Effect.provide(PgClient.PgClient, context);
+						const awaitTerminal = (
+							remaining: number,
+						): Effect.Effect<void, Error> =>
+							Effect.flatMap(
+								sql<{
+									status: string;
+								}>`SELECT status FROM tfx_restart_e2e.case_jobs WHERE id=${ambiguous.job}::uuid`,
+								(rows) =>
+									rows[0]?.status === 'completed'
+										? Effect.void
+										: remaining === 0
+											? Effect.fail(
+													new Error('Timed out awaiting ambiguous job'),
+												)
+											: Effect.andThen(
+													Effect.sleep(10),
+													awaitTerminal(remaining - 1),
+												),
+							);
+						yield* awaitTerminal(100);
 						expect(
-							yield* sql`SELECT id FROM carneloot.notification_deliveries WHERE status='unknown'`,
+							yield* sql`SELECT id FROM carneloot.notification_deliveries WHERE event_id=${ambiguous.event}::uuid AND status='unknown'`,
+						).toHaveLength(1);
+						expect(
+							yield* sql`SELECT id FROM carneloot.notification_events WHERE id=${ambiguous.event}::uuid AND status='completed'`,
+						).toHaveLength(1);
+						expect(
+							yield* sql`SELECT id FROM tfx_restart_e2e.case_jobs WHERE id=${ambiguous.job}::uuid AND status='completed'`,
 						).toHaveLength(1);
 					}),
-					postgres,
-				),
+				) as Effect.Effect<void, unknown, never>,
 			);
 			expect(sentC).toHaveLength(before);
 		});
