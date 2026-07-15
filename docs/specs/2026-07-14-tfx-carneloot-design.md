@@ -526,7 +526,7 @@ Stopping the polling Layer aborts the in-flight `getUpdates`, stops intake, and 
 
 `Webhook.make(options)` returns a delivery descriptor carrying the internal `UpdateSource` Layer, a yieldable `Webhook.Webhook` control service, and a platform-neutral Effect HttpApi endpoint. Application code mounts that endpoint into its existing Effect HTTP server and provides `@effect/platform-node` or `@effect/platform-bun` server Layers directly.
 
-Webhook configuration contains public base URL, route path, a `Redacted` Telegram secret token, inferred or explicit allowed-update types, optional Telegram `max_connections`, processing deadline, and bounded intake capacity. Use Telegram's `X-Telegram-Bot-Api-Secret-Token` request header and constant-time comparison. Do not place the secret in the URL path or logs.
+Webhook configuration contains public base URL, route path, a `Redacted` Telegram secret token, inferred or explicit allowed-update types, optional Telegram `max_connections`, separate HTTP request deadline and processing timeout, shutdown grace period, and bounded intake capacity. Use Telegram's `X-Telegram-Bot-Api-Secret-Token` request header and constant-time comparison. Do not place the secret in the URL path or logs.
 
 Webhook registration is explicit rather than an automatic Layer acquisition side effect. The application yields `Webhook.Webhook` and invokes `register`, which calls Telegram `setWebhook` with full public route URL, secret token, allowed-update types, optional maximum connections, and explicit `drop_pending_updates` defaulting to `false`. Layer release does not automatically delete the remote webhook because that would break restarts and rolling deployment; explicit control operations may register, inspect, or delete it.
 
@@ -540,11 +540,15 @@ For each request, the endpoint:
 4. waits on an Effect completion signal while normal deduplication, partitioning, middleware, and dispatch run;
 5. maps the terminal outcome to HTTP response.
 
-Already-completed duplicates and dispatch outcomes classified as acknowledgeable below return `2xx`. Queue saturation, processing deadline, and `RetryableFailure` return `503` so Telegram retries; `Fatal` returns `500` and marks runtime unhealthy. Secret authentication failure returns `401`; malformed non-Telegram payload returns `400` and is reported without logging private body content. The endpoint never acknowledges before enqueue and never silently drops an update.
+Already-completed duplicates and dispatch outcomes classified as acknowledgeable below return `2xx`. Queue saturation before claim, request wait timeout, processing timeout, and `RetryableFailure` return `503` so Telegram retries; `Fatal` returns `500` and marks runtime unhealthy. Secret authentication failure returns `401`; malformed non-Telegram payload returns `400` and is reported without logging private body content. The endpoint never acknowledges before enqueue and never silently drops an update.
 
-Concurrent webhook requests share the normal keyed runtime: updates for one partition execute sequentially in accepted arrival order, while unrelated partitions may execute concurrently. PostgreSQL deduplication prevents concurrent Telegram retries from executing the same `update_id` twice; without it, webhook applications accept at-least-once duplicate risk. Webhook transport provides no durable raw-update inbox in the initial design.
+Once a deduplication claim is acquired, dispatch fiber belongs to `Webhook.layer` scope rather than HTTP request scope. Request waits on completion only until `requestDeadline`; timeout or client disconnect returns/abandons response while claimed processing continues and heartbeat remains active. Retry observes `InProgress`, waits within its own deadline, and receives original outcome when available; later retry of completed claim returns `2xx`. This prevents request timeout from releasing work that may already have external effects.
 
-Scoped shutdown stops accepting requests, rejects or completes queued envelopes according to the configured deadline, and interrupts remaining dispatch fibers through normal Effect scope finalization.
+`processingTimeout` separately bounds dispatch lifetime. On processing timeout runtime interrupts fiber, releases claim as retryable using current fencing token, and wakes waiters with `503`; stale timed-out processor cannot complete newer claim generation. Queue saturation occurs before claim and returns `503` without owning work. With explicit no-op deduplicator, concurrent retries after request timeout remain accepted best-effort duplicate risk.
+
+Concurrent webhook requests share normal keyed runtime: updates for one partition execute sequentially in accepted arrival order, while unrelated partitions may execute concurrently. PostgreSQL deduplication prevents concurrent Telegram retries from executing same `update_id` twice. Webhook transport provides no durable raw-update inbox in initial design.
+
+Scoped shutdown stops accepting requests, permits active claimed fibers to finish during configured grace period, completes finished claims, then interrupts remainder and releases them as retryable with fencing tokens. If release cannot reach PostgreSQL, lease expiry permits later takeover.
 
 ### 8.4 Effect concurrency
 
@@ -841,6 +845,7 @@ Unit and integration tests cover:
 - `byChat`, `byConversationScope`, and custom partition strategies, including chat-less conversation rejection;
 - long-poll startup, webhook deletion, pending-update policy, command-menu publication, allowed-update inference, offset advancement, batch redelivery, retry classification, and scoped stop;
 - webhook registration/control, secret-header validation, HttpApi mounting, bounded intake, completion acknowledgement, HTTP outcome mapping, concurrent duplicate claims, and scoped shutdown;
+- detached claimed processing across HTTP deadline/disconnect, separate processing timeout, retry observation of in-progress/completed work, and shutdown grace/release;
 - webhook set/info/delete CLI behavior, explicit destructive flag, command-menu publication, typed exit failure, and absence of HTTP management route;
 - bounded in-progress claim waiting, lease heartbeat, expired takeover generation, stale completion/release rejection, and local interruption after claim loss;
 - explicit no-op versus durable deduplicator composition and startup diagnostic metadata;
@@ -984,7 +989,7 @@ Parity means preserving intended capability and Portuguese UX, not preserving do
 - One active bot instance initially.
 - Core tfx contains polling and webhook delivery descriptors backed by internal Layers; `BotRuntime.layer` requires exactly one descriptor and applications never provide `UpdateSource` directly.
 - Long polling publishes command menus before its first `getUpdates`, then uses one in-flight request, inferred allowed-update types, batch settlement before contiguous acknowledgement, typed retries, and scoped cancellation.
-- Webhook delivery uses an explicitly mounted HttpApi route, Telegram secret header, CLI-only remote set/info/delete operations, bounded intake, post-dispatch acknowledgement, and Effect-scoped shutdown.
+- Webhook delivery uses an explicitly mounted HttpApi route, Telegram secret header, CLI-only remote set/info/delete operations, bounded intake, detached claimed processing with separate request/processing deadlines, post-dispatch acknowledgement, and Effect-scoped shutdown.
 - One active conversation per bot/chat/user.
 - Conversation storage controls a bounded row-lock transition transaction so shared-PostgreSQL domain writes and state commit succeed or roll back together; external effects remain idempotent and Telegram outputs remain best-effort post-commit. Effect Workflow is not initial substrate.
 - Normalized update routing scope is shared by conversation lookup and partitioning; `byChat` is default, with `byConversationScope` and custom strategies available.
