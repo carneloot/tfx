@@ -1,4 +1,5 @@
 {
+	"$schema": "./node_modules/@effect/language-service/schema.json",
 	"compilerOptions": {
 		"target": "ES2024",
 		"lib": ["ES2024", "ESNext.Disposable", "DOM", "DOM.Iterable"],
@@ -12,6 +13,29 @@
 		"declarationMap": true,
 		"sourceMap": true,
 		"composite": true,
-		"skipLibCheck": false
+		"skipLibCheck": false,
+		"plugins": [
+			{
+				"name": "@effect/language-service",
+				"transform": "@effect/language-service/transform",
+				"namespaceImportPackages": ["effect", "@effect/*"],
+				"includeSuggestionsInTsc": false,
+				"ignoreEffectWarningsInTscExitCode": true,
+				"overrides": [
+					{
+						"include": [
+							"./packages/*/type-test/**/*.ts",
+							"./apps/*/type-test/**/*.ts"
+						],
+						"options": {
+							"diagnosticSeverity": {
+								"floatingEffect": "off",
+								"missingEffectError": "off"
+							}
+						}
+					}
+				]
+			}
+		]
 	}
 }

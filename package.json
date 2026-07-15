@@ -2,6 +2,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
+		"postinstall": "node scripts/setup-effect-tsgo.mjs",
 		"build": "tsc -b tsconfig.packages.json && node packages/tfx/scripts/copy-telegram-runtime.ts",
 		"check": "tsc -b tsconfig.json --pretty false",
 		"test": "vitest run",
@@ -22,10 +23,12 @@
 	},
 	"devDependencies": {
 		"@changesets/cli": "2.31.0",
+		"@effect/language-service": "^0.86.6",
 		"@effect/openapi-generator": "4.0.0-beta.98",
 		"@effect/platform-bun": "4.0.0-beta.98",
 		"@effect/platform-node": "4.0.0-beta.98",
 		"@effect/sql-pg": "4.0.0-beta.98",
+		"@effect/tsgo": "^0.16.3",
 		"@testcontainers/postgresql": "11.10.0",
 		"@types/node": "^24.0.0",
 		"@types/pg": "8.15.5",
