@@ -1,5 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import { Effect, Layer, Schema } from 'effect';
+import { Effect, Layer, Redacted, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import { BotId, TelegramChatId, TelegramUserId } from '../src/domain/Ids.js';
@@ -71,7 +71,12 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 		const program = Effect.gen(function* () {
 			yield* migrate;
 			const users = yield* UserRepository;
+			const pets = yield* PetRepository;
 			const first = yield* users.registerTelegramProfile(profile);
+			yield* pets.addOwned(
+				first.user.id,
+				Schema.decodeUnknownSync(PetName)('Persistente'),
+			);
 			yield* Effect.sleep('2 millis');
 			const refreshed = yield* users.registerTelegramProfile({
 				...profile,
@@ -84,7 +89,12 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 				...secondProfile,
 				username: 'shared',
 			});
-			return { first, refreshed, shared };
+			return {
+				first,
+				refreshed,
+				shared,
+				pets: yield* pets.listOwned(first.user.id),
+			};
 		});
 		const result = await Effect.runPromise(Effect.provide(program, adapters));
 		expect(result.refreshed.user.id).toBe(result.first.user.id);
@@ -97,6 +107,7 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 			lastName: null,
 		});
 		expect(result.shared.user.id).not.toBe(result.first.user.id);
+		expect(result.pets.map((pet) => pet.name)).toContain('Persistente');
 	});
 	it('rejects migration checksum drift without applying work', async () => {
 		const program = Effect.gen(function* () {
@@ -115,6 +126,47 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 			failure: { _tag: 'DomainPersistenceError' },
 		});
 	});
+	it.skipIf(process.env.TEST_DATABASE_URL === undefined)(
+		'refuses to certify an incompatible preexisting table without a ledger',
+		async () => {
+			const database = `carneloot_drift_${crypto.randomUUID().replaceAll('-', '')}`;
+			const admin = Effect.flatMap(
+				PgClient.PgClient,
+				(sql) => sql`CREATE DATABASE ${sql(database)}`,
+			);
+			await Effect.runPromise(Effect.provide(admin, PostgresTestLayer.layer));
+			try {
+				const url = new URL(process.env.TEST_DATABASE_URL!);
+				url.pathname = `/${database}`;
+				const isolated = PgClient.layer({ url: Redacted.make(url.toString()) });
+				const program = Effect.gen(function* () {
+					const sql = yield* PgClient.PgClient;
+					yield* sql`CREATE SCHEMA carneloot`;
+					yield* sql`CREATE TABLE carneloot.users (wrong text)`;
+					const result = yield* Effect.result(migrate);
+					const ledger = yield* sql<{
+						ledger: string | null;
+					}>`SELECT to_regclass('carneloot.app_migrations')::text ledger`;
+					return { result, ledger: ledger[0]?.ledger };
+				});
+				const result = await Effect.runPromise(
+					Effect.scoped(Effect.provide(program, isolated)),
+				);
+				expect(result.result._tag).toBe('Failure');
+				expect(result.ledger).toBeNull();
+			} finally {
+				const cleanup = Effect.flatMap(PgClient.PgClient, (sql) =>
+					Effect.andThen(
+						sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=${database}`,
+						sql`DROP DATABASE IF EXISTS ${sql(database)}`,
+					),
+				);
+				await Effect.runPromise(
+					Effect.provide(cleanup, PostgresTestLayer.layer),
+				);
+			}
+		},
+	);
 	it('preserves ownership, maps only named duplicate, and sorts', async () => {
 		const program = Effect.gen(function* () {
 			yield* migrate;
