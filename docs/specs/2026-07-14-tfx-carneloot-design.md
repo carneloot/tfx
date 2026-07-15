@@ -737,7 +737,7 @@ An event stores kind, owner, optional template and pet references, and creation 
 
 Before sending, Carneloot transactionally creates event plus pending recipient deliveries. It then sends recipients concurrently and updates each row independently: Telegram failure becomes `failed`; Telegram success plus persisted message ID becomes `sent`; Telegram success followed by an unconfirmed history write remains `pending` and recovery classifies it `unknown`. Unknown delivery is never retried automatically because Telegram may already have accepted it. No Telegram send starts if initial event/delivery transaction fails.
 
-Generic notification HTTP success counts only persisted `sent` rows. All sent returns `200`; mixed sent/failed/unknown returns `207`; no confirmed sent delivery returns `502`. Database failure after an external send cannot be reported as success.
+Generic notification response includes event ID, status (`sent`, `partial`, `failed`, or `indeterminate`), counts for sent/failed/unknown, and sanitized failure summaries. Final mapping is exact: all recipients persisted sent returns `200 sent`; at least one sent plus any failed/unknown returns `207 partial`; zero sent with known failures and no unknown returns `502 failed`; zero sent with any unknown returns `202 indeterminate`. Initial event/pending-delivery transaction failure returns `503` and sends nothing, so caller may retry safely. Post-send status-write or final reread failure never returns generic retryable database error: it contributes unknown and yields `207` or `202` because blind caller retry could duplicate accepted Telegram messages. Unexpected application defect remains `500`.
 
 Reply routing looks up sent delivery by bot/chat/replied-message identity, loads its event, and then loads owner's sent delivery for the same event. Subscriber reply forwards to owner while replying to that exact owner message. Owner-role self-reply is rejected. Feeding-reminder event carries pet identity for safe pet-food routing. Food-added events remain silent but provide per-recipient audit status.
 
@@ -755,7 +755,7 @@ Required parity:
 
 The HTTP server exposes no webhook-management endpoint. Webhook registration is never an implicit startup or Layer-acquisition side effect.
 
-`POST /api/notify` performs direct concurrent delivery and returns a typed result: `200` when every recipient succeeds, `207` with delivered/failed counts and structured failure summaries when only some recipients succeed, and `502` when no recipient succeeds because of Telegram delivery failures. Authentication, missing-template, missing-variable, and database failures retain distinct typed responses. Non-idempotent sends are not blindly retried. Notification templates and subscriptions are imported and may be provisioned administratively in PostgreSQL; feature parity does not add a Telegram command or HTTP management API for them.
+`POST /api/notify` performs direct concurrent delivery and returns notification event ID plus persisted-state outcome: `200 sent`, `207 partial`, `502 failed`, or `202 indeterminate` according to Section 10.4. Invalid API key and missing template return distinct `404`; missing template variables return `422`; initial database unavailability before sends returns `503`; unexpected defect returns `500`. Non-idempotent sends and unknown outcomes are not blindly retried. Notification templates and subscriptions are imported and may be provisioned administratively in PostgreSQL; feature parity does not add a Telegram command or HTTP management API for them.
 
 The application runs on Bun in production, while published tfx packages also support Node.js. Initial compatibility baseline is Node.js 24.x and Bun 1.3.x. CI runs package builds, type tests, and unit tests under both runtimes; PostgreSQL adapter conformance and Carneloot smoke tests also run once under each runtime. Supported versions are declared in package metadata and may be raised only through an explicit release change. The application lifecycle is one scoped Effect program that acquires server, update source, database pool, job fibers, and telemetry resources and releases them in reverse order.
 
@@ -873,7 +873,7 @@ Unit and integration tests cover:
 - job retryable/permanent/fatal outcomes, error-specific delay, attempt exhaustion/accounting, crash/lease takeover, stale fencing, cancellation, and administrative release;
 - one-step and multi-step job payload migration, persisted migration, missing/invalid/newer-version quarantine, unknown declaration, and quarantine release;
 - transactional food, reminder-job, and immediate delivery-job changes;
-- notification event/pending-delivery creation before sends, independent recipient outcomes, unknown send/history window, partial HTTP responses, exact owner-event reply correlation, and chat-scoped message identity;
+- notification event/pending-delivery creation before sends, independent recipient outcomes, unknown send/history window, exact `200`/`207`/`202`/`502` matrix, initial `503` without sends, final reread failure, exact owner-event reply correlation, and chat-scoped message identity;
 - importer validation.
 
 Use `TestClock` for timing behavior and real PostgreSQL for SQL semantics.
