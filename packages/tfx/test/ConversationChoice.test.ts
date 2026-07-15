@@ -1,0 +1,26 @@
+import { Effect, Schema } from "effect"
+import { describe, expect, it } from "vitest"
+import * as CallbackData from "../src/CallbackData.js"
+import * as ConversationChoice from "../src/ConversationChoice.js"
+import * as ConversationPrompt from "../src/ConversationPrompt.js"
+
+describe("ConversationChoice", () => {
+  it("rejects empty and duplicate reply choices before rendering", () => {
+    expect(() => ConversationChoice.make([])).toThrow("cannot be empty")
+    expect(() => ConversationChoice.make([{ label: "A", value: 1 }, { label: "A", value: 2 }])).toThrow("Duplicate")
+  })
+  it("renders immutable rows and resolves selected/cancelled", async () => {
+    const choice = ConversationChoice.make([{ label: "A", value: 1 }, { label: "B", value: 2 }], { columns: 2, cancelLabel: "Cancel" })
+    const markup = await Effect.runPromise(ConversationPrompt.choice(choice))
+    expect(markup).toMatchObject({ keyboard: [[{ text: "A" }, { text: "B" }]] })
+    expect(Object.isFrozen(markup)).toBe(true)
+    await expect(Effect.runPromise(ConversationPrompt.resolve(choice, "A"))).resolves.toEqual({ _tag: "Selected", value: 1 })
+    await expect(Effect.runPromise(ConversationPrompt.resolve(choice, "Cancel"))).resolves.toEqual({ _tag: "Cancelled" })
+  })
+  it("rejects duplicate encoded callback values", async () => {
+    const codec = CallbackData.make("choice", Schema.String)
+    const choice = ConversationChoice.make([{ label: "A", value: "same" }, { label: "B", value: "same" }], { callbackData: codec })
+    await expect(Effect.runPromise(ConversationPrompt.choice(choice) as Effect.Effect<unknown, unknown>)).rejects.toMatchObject({ reason: "DuplicateValue" })
+  })
+  it("exposes reply keyboard removal", () => expect(ConversationPrompt.removeReplyKeyboard).toEqual({ remove_keyboard: true }))
+})
