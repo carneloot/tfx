@@ -258,7 +258,7 @@ else
 							yield* sql`SELECT id FROM carneloot.notification_events WHERE id=${ambiguous.event}::uuid AND status='completed'`,
 						).toHaveLength(1);
 						expect(
-							yield* sql`SELECT id FROM tfx_restart_e2e.case_jobs WHERE id=${ambiguous.job}::uuid AND status='completed'`,
+							yield* sql`SELECT id FROM tfx_restart_e2e.case_jobs WHERE id=${ambiguous.job}::uuid AND status='completed' AND outcome_json->>'_tag'='Succeeded'`,
 						).toHaveLength(1);
 					}),
 				) as Effect.Effect<void, unknown, never>,
