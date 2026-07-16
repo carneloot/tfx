@@ -118,7 +118,7 @@ describe('UpdateDeduplicator', () => {
 		).resolves.toMatchObject({ _tag: 'RetryableFailure' });
 	});
 
-	it('delays the first dispatch heartbeat and repeats while behavior runs', async () => {
+	it('heartbeats dispatch at the configured spaced interval', async () => {
 		await Effect.runPromise(
 			Effect.gen(function* () {
 				const claimed = yield* Deferred.make<void>();
@@ -133,7 +133,10 @@ describe('UpdateDeduplicator', () => {
 							}),
 						),
 					heartbeat: () =>
-						Ref.update(heartbeatCount, (count) => count + 1).pipe(
+						Effect.sleep('5 millis').pipe(
+							Effect.andThen(
+								Ref.update(heartbeatCount, (count) => count + 1),
+							),
 							Effect.as(true),
 						),
 					complete: () => Effect.succeed(true),
@@ -155,8 +158,12 @@ describe('UpdateDeduplicator', () => {
 				yield* TestClock.adjust('9 millis');
 				expect(yield* Ref.get(heartbeatCount)).toBe(0);
 				yield* TestClock.adjust('1 millis');
+				expect(yield* Ref.get(heartbeatCount)).toBe(0);
+				yield* TestClock.adjust('5 millis');
 				expect(yield* Ref.get(heartbeatCount)).toBe(1);
 				yield* TestClock.adjust('10 millis');
+				expect(yield* Ref.get(heartbeatCount)).toBe(1);
+				yield* TestClock.adjust('5 millis');
 				expect(yield* Ref.get(heartbeatCount)).toBe(2);
 				yield* Fiber.interrupt(fiber);
 			}).pipe(Effect.provide(TestClock.layer())),
