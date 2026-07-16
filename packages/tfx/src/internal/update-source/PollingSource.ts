@@ -8,6 +8,7 @@ import { Telegram, type TelegramService } from '../../Telegram.js';
 import type { TelegramError } from '../../TelegramError.js';
 import type { Update } from '../telegram/generated/TelegramApi.types.js';
 import type { UpdateSourceService } from './UpdateSource.js';
+
 export class FatalPollingDispatchError extends Data.TaggedError(
 	'FatalPollingDispatchError',
 )<{ readonly updateId: number }> {}
@@ -31,6 +32,26 @@ export interface NormalizedPollingOptions extends Omit<
 	readonly timeout: Duration.Duration;
 	readonly retryDelay: Duration.Duration;
 }
+const retryBackoffMultipliers = [1, 2, 4, 8, 15, 30] as const;
+const retryBackoffDelay = (
+	attempt: number,
+	initial: Duration.Duration,
+): Duration.Duration =>
+	Duration.times(
+		initial,
+		retryBackoffMultipliers[
+			Math.min(attempt - 1, retryBackoffMultipliers.length - 1)
+		]!,
+	);
+const retryBackoffSchedule = <Input>(initial: Duration.Duration) =>
+	Schedule.forever.pipe(
+		Schedule.setInputType<Input>(),
+		Schedule.modifyDelay(({ attempt }) =>
+			Effect.succeed(retryBackoffDelay(attempt, initial)),
+		),
+		Schedule.jittered,
+	);
+
 const retryDelay = (
 	error: TelegramError,
 	fallback: Duration.Duration,
@@ -69,12 +90,46 @@ export const make = (
 		);
 		let offset: number | undefined;
 		let first = true;
-		const pollRetrySchedule = Schedule.forever.pipe(
-			Schedule.setInputType<TelegramError>(),
-			Schedule.modifyDelay(({ input }) =>
-				Effect.succeed(retryDelay(input, options.retryDelay) ?? Duration.zero),
+		const pollRetrySchedule = retryBackoffSchedule<TelegramError>(
+			options.retryDelay,
+		).pipe(
+			Schedule.modifyDelay(({ duration, input }) =>
+				Effect.succeed(
+					input.reason._tag === 'RateLimitError'
+						? input.reason.retryAfter
+						: duration,
+				),
+			),
+			Schedule.while(
+				({ input }) => retryDelay(input, options.retryDelay) !== undefined,
+			),
+			Schedule.tap(({ attempt, duration, input }) =>
+				Effect.logWarning('tfx.polling.request_retrying').pipe(
+					Effect.annotateLogs({
+						method: input.method,
+						reason: input.reason._tag,
+						retryAttempt: attempt,
+						retryDelayMs: Duration.toMillis(duration),
+					}),
+				),
 			),
 		);
+		const dispatchRetrySchedule = (updateId: number) =>
+			retryBackoffSchedule<DispatchOutcome.DispatchOutcome>(
+				options.retryDelay,
+			).pipe(
+				Schedule.passthrough,
+				Schedule.while(({ input }) => input._tag === 'RetryableFailure'),
+				Schedule.tap(({ attempt, duration }) =>
+					Effect.logWarning('tfx.polling.dispatch_retrying').pipe(
+						Effect.annotateLogs({
+							updateId,
+							retryAttempt: attempt,
+							retryDelayMs: Duration.toMillis(duration),
+						}),
+					),
+				),
+			);
 		const pollOnce: Effect.Effect<
 			void,
 			TelegramError | FatalPollingDispatchError
@@ -90,29 +145,17 @@ export const make = (
 							: {}),
 					}),
 				).pipe(
-					Effect.tapError((error) => {
-						const delay = retryDelay(error, options.retryDelay);
-						const log =
-							delay === undefined ? Effect.logError : Effect.logWarning;
-						return log(
-							delay === undefined
-								? 'tfx.polling.request_failed'
-								: 'tfx.polling.request_retrying',
-						).pipe(
-							Effect.annotateLogs({
-								method: error.method,
-								reason: error.reason._tag,
-								...(delay === undefined
-									? {}
-									: { retryDelayMs: Duration.toMillis(delay) }),
-							}),
-						);
-					}),
-					Effect.retry({
-						while: (error) =>
-							retryDelay(error, options.retryDelay) !== undefined,
-						schedule: pollRetrySchedule,
-					}),
+					Effect.tapError((error) =>
+						retryDelay(error, options.retryDelay) === undefined
+							? Effect.logError('tfx.polling.request_failed').pipe(
+									Effect.annotateLogs({
+										method: error.method,
+										reason: error.reason._tag,
+									}),
+								)
+							: Effect.void,
+					),
+					Effect.retry(pollRetrySchedule),
 				),
 				(updates: ReadonlyArray<Update>) => {
 					first = false;
@@ -128,10 +171,25 @@ export const make = (
 							Effect.forEach(
 								updates,
 								(update) =>
-									Effect.map(deliver(update), (outcome) => ({
-										update,
-										outcome,
-									})),
+									Effect.suspend(() => deliver(update)).pipe(
+										Effect.repeat(dispatchRetrySchedule(update.update_id)),
+										Effect.flatMap((outcome) =>
+											outcome._tag === 'Fatal'
+												? Effect.andThen(
+														Effect.logError('tfx.polling.dispatch_fatal').pipe(
+															Effect.annotateLogs({
+																updateId: update.update_id,
+															}),
+														),
+														Effect.fail(
+															new FatalPollingDispatchError({
+																updateId: update.update_id,
+															}),
+														),
+													)
+												: Effect.succeed({ update, outcome }),
+										),
+									),
 								{ concurrency: 'unbounded' },
 							),
 							(settled) => {
@@ -140,19 +198,6 @@ export const make = (
 								);
 								let acknowledged = 0;
 								for (const item of ordered) {
-									if (DispatchOutcome.isTerminal(item.outcome))
-										return Effect.andThen(
-											Effect.logError('tfx.polling.dispatch_fatal').pipe(
-												Effect.annotateLogs({
-													updateId: item.update.update_id,
-												}),
-											),
-											Effect.fail(
-												new FatalPollingDispatchError({
-													updateId: item.update.update_id,
-												}),
-											),
-										);
 									if (!DispatchOutcome.isAcknowledgeable(item.outcome)) break;
 									offset = item.update.update_id + 1;
 									acknowledged++;
