@@ -1,11 +1,15 @@
+import type * as PgClient from '@effect/sql-pg/PgClient';
 import type * as Layer from 'effect/Layer';
 import { BotRuntime } from 'tfx/BotRuntime';
 import { Conversations } from 'tfx/Conversations';
 import { JobRuntime } from 'tfx/JobRuntime';
 import { MiddlewareRegistry } from 'tfx/Middleware';
+import type { Telegram } from 'tfx/Telegram';
 import { UpdateDeduplicator } from 'tfx/UpdateDeduplicator';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
 
+import * as AppLive from '../src/AppLive.js';
+import { AppConfig } from '../src/Config.js';
 import { layer } from '../src/DomainLive.js';
 import { JobWorker } from '../src/JobWorker.js';
 import { ReminderScheduler } from '../src/ports/ReminderScheduler.js';
@@ -38,5 +42,20 @@ export type RuntimeOutputIsNarrow = Assert<
 	Equal<
 		Layer.Success<typeof runtime>,
 		BotRuntime | JobWorker | UpdateDeduplicator
+	>
+>;
+
+const application = AppLive.layer(() => UpdateDelivery.manual);
+
+export type AppOutputIsNarrow = Assert<
+	Equal<
+		Layer.Success<typeof application>,
+		BotRuntime | JobWorker | UpdateDeduplicator
+	>
+>;
+export type AppRequirementsAreInfrastructure = Assert<
+	Equal<
+		Layer.Services<typeof application>,
+		AppConfig | PgClient.PgClient | Telegram
 	>
 >;
