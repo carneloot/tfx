@@ -264,6 +264,92 @@ describe('JobRuntime', () => {
 		expect(exit.every((value) => value._tag === 'Failure')).toBe(true);
 	});
 
+	it('uses duration-native retry instants', async () => {
+		const delay = Duration.seconds(2);
+		const retrying = Job.make('duration-retry', {
+			payload: history,
+			error: RetryFailure,
+			maxAttempts: 3,
+			retry: () => Job.retry(delay),
+		});
+		const implementation = Job.implement(retrying, () =>
+			Effect.fail(new RetryFailure()),
+		);
+		const program = Effect.gen(function* () {
+			const runtime = yield* JobRuntime;
+			yield* runtime.schedule(retrying, { value: 'retry' });
+			const result = yield* runtime.runOne();
+			expect(result?.status).toBe('scheduled');
+			if (result?.status === 'scheduled')
+				expect(
+					DateTime.Equivalence(
+						result.runAt,
+						DateTime.addDuration(DateTime.makeUnsafe(0), delay),
+					),
+				).toBe(true);
+		});
+		await Effect.runPromise(
+			Effect.provide(
+				Effect.provide(
+					Effect.provide(program, JobRuntimeLive.layer(implementation)),
+					MemoryJobStore.layer,
+				),
+				TestClock.layer(),
+			),
+		);
+	});
+
+	it('quarantines thrown and invalid duration retry policies', async () => {
+		const invalidPolicies = [
+			() => {
+				throw new Error('policy defect');
+			},
+			() => ({
+				_tag: 'Retry' as const,
+				retryAfter: Duration.millis(-1) as Duration.Duration,
+			}),
+			() => ({
+				_tag: 'Retry' as const,
+				retryAfter: Duration.infinity,
+			}),
+		];
+		for (const [index, retry] of invalidPolicies.entries()) {
+			const invalid = Job.make(`invalid-retry-${index}`, {
+				payload: history,
+				error: RetryFailure,
+				maxAttempts: 3,
+				retry,
+			});
+			const implementation = Job.implement(invalid, () =>
+				Effect.fail(new RetryFailure()),
+			);
+			const program = Effect.gen(function* () {
+				const runtime = yield* JobRuntime;
+				yield* runtime.schedule(invalid, { value: 'bad' });
+				expect(yield* runtime.runOne()).toMatchObject({
+					status: 'quarantined',
+					attempts: 1,
+				});
+			});
+			await Effect.runPromise(
+				Effect.provide(
+					Effect.provide(
+						Effect.provide(program, JobRuntimeLive.layer(implementation)),
+						MemoryJobStore.layer,
+					),
+					TestClock.layer(),
+				),
+			);
+		}
+	});
+
+	it('rejects duplicate declarations before layer acquisition', () => {
+		const implementation = Job.implement(declaration, () => Effect.void);
+		expect(() => JobRuntimeLive.layer(implementation, implementation)).toThrow(
+			"Duplicate job declaration 'work'",
+		);
+	});
+
 	it('quarantines unknown, newer, and invalid payload declarations without attempts', async () => {
 		const implementation = Job.implement(declaration, () => Effect.void);
 		const program = Effect.gen(function* () {

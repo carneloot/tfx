@@ -29,6 +29,27 @@ describe('Job', () => {
 			);
 		expect(Duration.equals(job.schedule(1), Duration.seconds(1))).toBe(true);
 	});
+	it('normalizes valid retry duration inputs and accepts zero', () => {
+		for (const [input, expected] of [
+			['500 millis', Duration.millis(500)],
+			[Duration.seconds(2), Duration.seconds(2)],
+			[0, Duration.zero],
+		] as const) {
+			const decision = Job.retry(input);
+			expect(decision._tag).toBe('Retry');
+			if (decision._tag === 'Retry')
+				expect(Duration.equals(decision.retryAfter!, expected)).toBe(true);
+		}
+	});
+	it('rejects invalid, negative, and infinite retry duration inputs', () => {
+		for (const input of [
+			Number.NaN,
+			-1,
+			Number.POSITIVE_INFINITY,
+			'invalid duration',
+		])
+			expect(() => Job.retry(input as Duration.Input)).toThrow(TypeError);
+	});
 	it('rejects invalid max attempts', () => {
 		const history = VersionedSchema.history(
 			VersionedSchema.version(1, Schema.String),

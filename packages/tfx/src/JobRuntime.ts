@@ -47,6 +47,15 @@ export class JobRuntime extends Context.Service<
 	JobRuntimeService
 >()('tfx/JobRuntime') {}
 type AnyImplementation = Job.Implementation<Job.Job<any, any, any>, any>;
+type RetryEvaluation =
+	| {
+			readonly _tag: 'Retry';
+			readonly delay: Duration.Duration;
+			readonly retryAt: DateTime.Utc;
+	  }
+	| { readonly _tag: 'Permanent' };
+const validRetryDuration = (value: Duration.Duration): boolean =>
+	Duration.isFinite(value) && !Duration.isNegative(value);
 class CancelSignal {
 	readonly _tag = 'CancelSignal';
 }
@@ -57,8 +66,15 @@ type Requirements<I extends ReadonlyArray<AnyImplementation>> =
 	I[number] extends Job.Implementation<any, infer R> ? R : never;
 export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 	...implementations: I
-): Layer.Layer<JobRuntime, never, JobStore | Requirements<I>> =>
-	Layer.effect(
+): Layer.Layer<JobRuntime, never, JobStore | Requirements<I>> => {
+	const names = new Set<string>();
+	for (const implementation of implementations) {
+		const name = implementation.declaration.name;
+		if (names.has(name))
+			throw new TypeError(`Duplicate job declaration '${name}'`);
+		names.add(name);
+	}
+	return Layer.effect(
 		JobRuntime,
 		Effect.gen(function* () {
 			const store = yield* JobStore;
@@ -283,38 +299,41 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 									);
 									return yield* store.get(running.id);
 								}
-								if (decision?._tag === 'Retry') {
-									let retryAfter: Duration.Duration;
-									try {
-										retryAfter =
+								let evaluation: RetryEvaluation;
+								try {
+									if (decision?._tag !== 'Retry')
+										evaluation = { _tag: 'Permanent' };
+									else {
+										const delay =
 											decision.retryAfter ??
 											declaration.schedule(running.attempts);
-									} catch {
-										yield* store.finalize(
-											claim.token,
-											JobOutcome.fatalFailure('Invalid retry policy'),
-											finishedAt,
-										);
-										return yield* store.get(running.id);
+										const retryAt = DateTime.addDuration(finishedAt, delay);
+										if (
+											!validRetryDuration(delay) ||
+											!Number.isFinite(DateTime.toDateUtc(retryAt).getTime())
+										)
+											throw new TypeError(
+												'Job retry delay must produce a valid instant',
+											);
+										evaluation = { _tag: 'Retry', delay, retryAt };
 									}
-									const retryAt = DateTime.addDuration(finishedAt, retryAfter);
-									if (
-										!Duration.isFinite(retryAfter) ||
-										Duration.isNegative(retryAfter) ||
-										!Number.isFinite(DateTime.toDateUtc(retryAt).getTime())
-									) {
-										yield* store.finalize(
-											claim.token,
-											JobOutcome.fatalFailure('Invalid retry policy'),
-											finishedAt,
-										);
-										return yield* store.get(running.id);
-									}
+								} catch {
 									yield* store.finalize(
 										claim.token,
-										JobOutcome.retryableFailure(encoded.success, retryAfter),
+										JobOutcome.fatalFailure('Invalid retry policy'),
 										finishedAt,
-										retryAt,
+									);
+									return yield* store.get(running.id);
+								}
+								if (evaluation._tag === 'Retry') {
+									yield* store.finalize(
+										claim.token,
+										JobOutcome.retryableFailure(
+											encoded.success,
+											evaluation.delay,
+										),
+										finishedAt,
+										evaluation.retryAt,
 									);
 								} else
 									yield* store.finalize(
@@ -365,3 +384,4 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 			return service;
 		}),
 	);
+};

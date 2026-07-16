@@ -71,6 +71,8 @@ export const implement = <J extends Job<any, any, any>, R>(
 	handler: (payload: Payload<J>) => Effect.Effect<void, Error<J>, R>,
 ): Implementation<J, R> => Object.freeze({ declaration, handler });
 export const retry = (retryAfter?: Duration.Input): RetryDecision => {
+	if (typeof retryAfter === 'number' && Number.isNaN(retryAfter))
+		throw new TypeError('retryAfter is not a valid Duration input');
 	const normalized =
 		retryAfter === undefined
 			? undefined
@@ -78,6 +80,11 @@ export const retry = (retryAfter?: Duration.Input): RetryDecision => {
 					Duration.fromInput(retryAfter),
 					() => new TypeError('retryAfter is not a valid Duration input'),
 				);
+	if (
+		normalized !== undefined &&
+		(!Duration.isFinite(normalized) || Duration.isNegative(normalized))
+	)
+		throw new TypeError('retryAfter must be a non-negative finite Duration');
 	return Object.freeze({
 		_tag: 'Retry',
 		...(normalized === undefined ? {} : { retryAfter: normalized }),
