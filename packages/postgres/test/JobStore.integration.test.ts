@@ -4,15 +4,19 @@ import { describe, expect, it } from 'vitest';
 
 import { JobStore } from '../../tfx/src/JobStore.js';
 import { jobStoreConformance } from '../../tfx/test/internal/JobStoreConformance.js';
+import { migrate } from '../src/Migrations.js';
 import * as PostgresJobStore from '../src/PostgresJobStore.js';
 import * as PostgresTestLayer from './internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
-const adapter = PostgresJobStore.layer({
+const options = {
 	schema: 'tfx_job_test',
 	tablePrefix: 'case_',
-});
+};
+const adapter = Layer.unwrap(
+	Effect.as(migrate(options), PostgresJobStore.layer(options)),
+);
 const layer = () => Layer.provide(adapter, PostgresTestLayer.layer);
 const diagnosticLayer = Layer.provideMerge(adapter, PostgresTestLayer.layer);
 if (!enabled)

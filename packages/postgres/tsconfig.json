@@ -6,8 +6,5 @@
 		"tsBuildInfoFile": "dist/.tsbuildinfo"
 	},
 	"include": ["src/**/*.ts"],
-	"references": [
-		{ "path": "../tfx" },
-		{ "path": "../postgres-migrator" }
-	]
+	"references": [{ "path": "../tfx" }, { "path": "../postgres-migrator" }]
 }

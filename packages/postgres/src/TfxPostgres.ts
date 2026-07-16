@@ -11,8 +11,8 @@ import {
 	type UpdateDeduplicatorError,
 } from 'tfx/UpdateDeduplicator';
 
-import { migrate } from './internal/Migrator.js';
 import { safeCause } from './internal/RowValidation.js';
+import { migrate } from './Migrations.js';
 import type { Options } from './Options.js';
 import * as PostgresConversationStorage from './PostgresConversationStorage.js';
 import * as PostgresJobStore from './PostgresJobStore.js';
@@ -37,9 +37,9 @@ export const layer = (
 				),
 			),
 			Layer.mergeAll(
-				PostgresConversationStorage.layer(options, true),
-				PostgresJobStore.layer(options, true),
-				PostgresUpdateDeduplicator.layer(options, true),
+				PostgresConversationStorage.layer(options),
+				PostgresJobStore.layer(options),
+				PostgresUpdateDeduplicator.layer(options),
 			),
 		),
 	);

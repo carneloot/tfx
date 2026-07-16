@@ -12,7 +12,6 @@ import {
 	type Scope,
 } from 'tfx/ConversationStorage';
 
-import { migrate } from './internal/Migrator.js';
 import {
 	decode,
 	expectOne,
@@ -102,7 +101,6 @@ const decodeRow = (
 
 export const layer = (
 	options: Options = {},
-	skipMigration = false,
 ): Layer.Layer<
 	ConversationStorage,
 	ConversationStorageError,
@@ -110,145 +108,140 @@ export const layer = (
 > =>
 	Layer.effect(
 		ConversationStorage,
-		Effect.andThen(
-			protect(skipMigration ? Effect.void : migrate(options)),
-			Effect.map(PgClient.PgClient, (sql) => {
-				const tables = make(options);
-				const schema = sql(tables.schema);
-				const table = sql(tables.conversations);
-				const select = (scope: Scope, lock = false) =>
-					lock
-						? sql<
-								Record<string, unknown>
-							>`SELECT * FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId} FOR UPDATE`
-						: sql<
-								Record<string, unknown>
-							>`SELECT * FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
-				const transition: ConversationStorageService['transition'] = (
-					scope,
-					updateId,
-					expectedRevision,
-					handler,
-				) =>
-					unwrapHandlerFailure(
-						sql
-							.withTransaction(
-								Effect.gen(function* () {
-									yield* validateScope(scope);
-									if (!Number.isSafeInteger(updateId))
-										return yield* Effect.fail(
-											invariant('Unsafe update identifier'),
-										);
-									const raw = (yield* select(scope, true))[0];
-									if (raw === undefined) return { _tag: 'Missing' as const };
-									const current = yield* decodeRow(raw);
-									if (current.lastUpdateId === updateId)
-										return { _tag: 'Duplicate' as const, row: current };
-									if (current.revision !== expectedRevision)
-										return { _tag: 'Stale' as const, row: current };
-									const now = yield* DateTime.now;
-									if (
-										current.expiresAt !== undefined &&
-										DateTime.isLessThanOrEqualTo(current.expiresAt, now)
-									) {
-										yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
-										return { _tag: 'Expired' as const };
-									}
-									const decision = yield* handler(current).pipe(
-										Effect.mapError((error) => new HandlerFailure(error)),
+		Effect.map(PgClient.PgClient, (sql) => {
+			const tables = make(options);
+			const schema = sql(tables.schema);
+			const table = sql(tables.conversations);
+			const select = (scope: Scope, lock = false) =>
+				lock
+					? sql<
+							Record<string, unknown>
+						>`SELECT * FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId} FOR UPDATE`
+					: sql<
+							Record<string, unknown>
+						>`SELECT * FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
+			const transition: ConversationStorageService['transition'] = (
+				scope,
+				updateId,
+				expectedRevision,
+				handler,
+			) =>
+				unwrapHandlerFailure(
+					sql
+						.withTransaction(
+							Effect.gen(function* () {
+								yield* validateScope(scope);
+								if (!Number.isSafeInteger(updateId))
+									return yield* Effect.fail(
+										invariant('Unsafe update identifier'),
 									);
-									const mutation: Mutation = decision.mutation;
-									if (mutation._tag === 'Delete') {
-										yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
-										return {
-											_tag: 'Applied' as const,
-											value: decision.value,
-											row: undefined,
-											...(mutation.afterCommit === undefined
-												? {}
-												: { afterCommit: mutation.afterCommit }),
-										};
-									}
-									const rows = yield* sql<
-										Record<string, unknown>
-									>`UPDATE ${schema}.${table} SET step=${mutation.step}, state_json=${sql.json(mutation.state)}, version=${mutation.version ?? current.version}, revision=revision+1, last_update_id=${updateId}, expires_at=${mutation.expiresAt === undefined ? null : DateTime.toDateUtc(mutation.expiresAt)}, updated_at=now() WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId} RETURNING *`;
-									const rawUpdated = yield* expectOne(rows, () =>
-										invariant('Conversation update returned no row'),
-									);
-									const updated = yield* decodeRow(rawUpdated);
+								const raw = (yield* select(scope, true))[0];
+								if (raw === undefined) return { _tag: 'Missing' as const };
+								const current = yield* decodeRow(raw);
+								if (current.lastUpdateId === updateId)
+									return { _tag: 'Duplicate' as const, row: current };
+								if (current.revision !== expectedRevision)
+									return { _tag: 'Stale' as const, row: current };
+								const now = yield* DateTime.now;
+								if (
+									current.expiresAt !== undefined &&
+									DateTime.isLessThanOrEqualTo(current.expiresAt, now)
+								) {
+									yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
+									return { _tag: 'Expired' as const };
+								}
+								const decision = yield* handler(current).pipe(
+									Effect.mapError((error) => new HandlerFailure(error)),
+								);
+								const mutation: Mutation = decision.mutation;
+								if (mutation._tag === 'Delete') {
+									yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId}`;
 									return {
 										_tag: 'Applied' as const,
 										value: decision.value,
-										row: updated,
+										row: undefined,
 										...(mutation.afterCommit === undefined
 											? {}
 											: { afterCommit: mutation.afterCommit }),
 									};
-								}),
-							)
-							.pipe(
-								Effect.mapError((cause) =>
-									cause instanceof HandlerFailure ? cause : persistence(cause),
-								),
-							),
-					);
-				const service = {
-					load: (scope) =>
-						protect(
-							sql.withTransaction(
-								Effect.gen(function* () {
-									yield* validateScope(scope);
-									const now = yield* DateTime.now;
-									yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId} AND expires_at IS NOT NULL AND expires_at<=${DateTime.toDateUtc(now)}`;
-									const raw = (yield* select(scope))[0];
-									return raw === undefined ? undefined : yield* decodeRow(raw);
-								}),
-							),
-						),
-					create: (row, conflict) =>
-						protect(
-							sql.withTransaction(
-								Effect.gen(function* () {
-									yield* validateScope(row.scope);
-									const now = yield* DateTime.now;
-									yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${row.scope.botId} AND chat_id=${row.scope.chatId} AND user_id=${row.scope.userId} AND expires_at IS NOT NULL AND expires_at<=${DateTime.toDateUtc(now)}`;
-									const rows =
-										conflict === 'fail'
-											? yield* sql<
-													Record<string, unknown>
-												>`INSERT INTO ${schema}.${table} (bot_id,chat_id,user_id,conversation_id,version,step,state_json,revision,last_update_id,expires_at) VALUES (${row.scope.botId},${row.scope.chatId},${row.scope.userId},${row.conversationId},${row.version},${row.step},${sql.json(row.state)},0,${row.lastUpdateId ?? null},${row.expiresAt === undefined ? null : DateTime.toDateUtc(row.expiresAt)}) ON CONFLICT (bot_id,chat_id,user_id) DO NOTHING RETURNING *`
-											: yield* sql<
-													Record<string, unknown>
-												>`INSERT INTO ${schema}.${table} (bot_id,chat_id,user_id,conversation_id,version,step,state_json,revision,last_update_id,expires_at) VALUES (${row.scope.botId},${row.scope.chatId},${row.scope.userId},${row.conversationId},${row.version},${row.step},${sql.json(row.state)},0,${row.lastUpdateId ?? null},${row.expiresAt === undefined ? null : DateTime.toDateUtc(row.expiresAt)}) ON CONFLICT (bot_id,chat_id,user_id) DO UPDATE SET conversation_id=EXCLUDED.conversation_id,version=EXCLUDED.version,step=EXCLUDED.step,state_json=EXCLUDED.state_json,revision=0,last_update_id=EXCLUDED.last_update_id,expires_at=EXCLUDED.expires_at,updated_at=now() RETURNING *`;
-									if (rows.length === 0)
-										return yield* Effect.fail(
-											new ConversationStorageError(
-												'Conflict',
-												'Conversation already active',
-											),
-										);
-									return yield* decodeRow(
-										yield* expectOne(rows, () =>
-											invariant(
-												'Conversation insert returned invalid row count',
-											),
-										),
-									);
-								}),
+								}
+								const rows = yield* sql<
+									Record<string, unknown>
+								>`UPDATE ${schema}.${table} SET step=${mutation.step}, state_json=${sql.json(mutation.state)}, version=${mutation.version ?? current.version}, revision=revision+1, last_update_id=${updateId}, expires_at=${mutation.expiresAt === undefined ? null : DateTime.toDateUtc(mutation.expiresAt)}, updated_at=now() WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId} RETURNING *`;
+								const rawUpdated = yield* expectOne(rows, () =>
+									invariant('Conversation update returned no row'),
+								);
+								const updated = yield* decodeRow(rawUpdated);
+								return {
+									_tag: 'Applied' as const,
+									value: decision.value,
+									row: updated,
+									...(mutation.afterCommit === undefined
+										? {}
+										: { afterCommit: mutation.afterCommit }),
+								};
+							}),
+						)
+						.pipe(
+							Effect.mapError((cause) =>
+								cause instanceof HandlerFailure ? cause : persistence(cause),
 							),
 						),
-					transition,
-					cancel: (scope) =>
-						protect(
+				);
+			const service = {
+				load: (scope) =>
+					protect(
+						sql.withTransaction(
 							Effect.gen(function* () {
 								yield* validateScope(scope);
-								const rows =
-									yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId} RETURNING bot_id`;
-								return rows.length > 0;
+								const now = yield* DateTime.now;
+								yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId} AND expires_at IS NOT NULL AND expires_at<=${DateTime.toDateUtc(now)}`;
+								const raw = (yield* select(scope))[0];
+								return raw === undefined ? undefined : yield* decodeRow(raw);
 							}),
 						),
-				} satisfies ConversationStorageService;
-				return service;
-			}),
-		),
+					),
+				create: (row, conflict) =>
+					protect(
+						sql.withTransaction(
+							Effect.gen(function* () {
+								yield* validateScope(row.scope);
+								const now = yield* DateTime.now;
+								yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${row.scope.botId} AND chat_id=${row.scope.chatId} AND user_id=${row.scope.userId} AND expires_at IS NOT NULL AND expires_at<=${DateTime.toDateUtc(now)}`;
+								const rows =
+									conflict === 'fail'
+										? yield* sql<
+												Record<string, unknown>
+											>`INSERT INTO ${schema}.${table} (bot_id,chat_id,user_id,conversation_id,version,step,state_json,revision,last_update_id,expires_at) VALUES (${row.scope.botId},${row.scope.chatId},${row.scope.userId},${row.conversationId},${row.version},${row.step},${sql.json(row.state)},0,${row.lastUpdateId ?? null},${row.expiresAt === undefined ? null : DateTime.toDateUtc(row.expiresAt)}) ON CONFLICT (bot_id,chat_id,user_id) DO NOTHING RETURNING *`
+										: yield* sql<
+												Record<string, unknown>
+											>`INSERT INTO ${schema}.${table} (bot_id,chat_id,user_id,conversation_id,version,step,state_json,revision,last_update_id,expires_at) VALUES (${row.scope.botId},${row.scope.chatId},${row.scope.userId},${row.conversationId},${row.version},${row.step},${sql.json(row.state)},0,${row.lastUpdateId ?? null},${row.expiresAt === undefined ? null : DateTime.toDateUtc(row.expiresAt)}) ON CONFLICT (bot_id,chat_id,user_id) DO UPDATE SET conversation_id=EXCLUDED.conversation_id,version=EXCLUDED.version,step=EXCLUDED.step,state_json=EXCLUDED.state_json,revision=0,last_update_id=EXCLUDED.last_update_id,expires_at=EXCLUDED.expires_at,updated_at=now() RETURNING *`;
+								if (rows.length === 0)
+									return yield* Effect.fail(
+										new ConversationStorageError(
+											'Conflict',
+											'Conversation already active',
+										),
+									);
+								return yield* decodeRow(
+									yield* expectOne(rows, () =>
+										invariant('Conversation insert returned invalid row count'),
+									),
+								);
+							}),
+						),
+					),
+				transition,
+				cancel: (scope) =>
+					protect(
+						Effect.gen(function* () {
+							yield* validateScope(scope);
+							const rows =
+								yield* sql`DELETE FROM ${schema}.${table} WHERE bot_id=${scope.botId} AND chat_id=${scope.chatId} AND user_id=${scope.userId} RETURNING bot_id`;
+							return rows.length > 0;
+						}),
+					),
+			} satisfies ConversationStorageService;
+			return service;
+		}),
 	);

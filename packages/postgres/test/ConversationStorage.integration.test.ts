@@ -4,15 +4,19 @@ import { describe, expect, it } from 'vitest';
 
 import { ConversationStorage } from '../../tfx/src/ConversationStorage.js';
 import { conversationStorageConformance } from '../../tfx/test/internal/ConversationStorageConformance.js';
+import { migrate } from '../src/Migrations.js';
 import * as PostgresConversationStorage from '../src/PostgresConversationStorage.js';
 import * as PostgresTestLayer from './internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
-const adapter = PostgresConversationStorage.layer({
+const options = {
 	schema: 'tfx_conversation_test',
 	tablePrefix: 'case_',
-});
+};
+const adapter = Layer.unwrap(
+	Effect.as(migrate(options), PostgresConversationStorage.layer(options)),
+);
 const layer = () => Layer.provide(adapter, PostgresTestLayer.layer);
 const diagnosticLayer = Layer.provideMerge(adapter, PostgresTestLayer.layer);
 const row = (

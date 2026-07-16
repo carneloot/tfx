@@ -1,3 +1,4 @@
+import * as TfxMigrations from '@tfx/postgres/Migrations';
 import * as PostgresConversationStorage from '@tfx/postgres/PostgresConversationStorage';
 import * as PostgresUpdateDeduplicator from '@tfx/postgres/PostgresUpdateDeduplicator';
 import { Effect, Layer, Schema } from 'effect';
@@ -26,18 +27,20 @@ import * as PostgresTestLayer from './internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
-const storage = PostgresConversationStorage.layer({
+const tfxOptions = {
 	schema: 'tfx_plan09',
 	tablePrefix: 'case_',
-});
+};
+const storage = PostgresConversationStorage.layer(tfxOptions);
 const dedup = PostgresUpdateDeduplicator.layer({
-	schema: 'tfx_plan09',
-	tablePrefix: 'case_',
+	...tfxOptions,
 	botId: 'carneloot',
 });
+const tfxPersistence = Layer.unwrap(
+	Effect.as(TfxMigrations.migrate(tfxOptions), Layer.merge(storage, dedup)),
+);
 const services = Layer.mergeAll(
-	storage,
-	dedup,
+	tfxPersistence,
 	UserRepositoryLive.layer,
 	PetRepositoryLive.layer,
 ).pipe(Layer.provideMerge(PostgresTestLayer.layer));

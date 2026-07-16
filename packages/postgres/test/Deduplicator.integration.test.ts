@@ -5,16 +5,20 @@ import { describe, expect, it } from 'vitest';
 import * as DispatchOutcome from '../../tfx/src/DispatchOutcome.js';
 import { UpdateDeduplicator } from '../../tfx/src/UpdateDeduplicator.js';
 import { deduplicatorConformance } from '../../tfx/test/internal/DeduplicatorConformance.js';
+import { migrate } from '../src/Migrations.js';
 import * as PostgresUpdateDeduplicator from '../src/PostgresUpdateDeduplicator.js';
 import * as PostgresTestLayer from './internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
-const adapter = PostgresUpdateDeduplicator.layer({
+const options = {
 	schema: 'tfx_dedup_test',
 	tablePrefix: 'case_',
 	botId: 'fixture',
-});
+};
+const adapter = Layer.unwrap(
+	Effect.as(migrate(options), PostgresUpdateDeduplicator.layer(options)),
+);
 const layer = () => Layer.provide(adapter, PostgresTestLayer.layer);
 const diagnosticLayer = Layer.provideMerge(adapter, PostgresTestLayer.layer);
 if (!enabled)

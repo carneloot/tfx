@@ -1,4 +1,5 @@
 export const packageName = '@tfx/postgres' as const;
+export * as Migrations from './Migrations.js';
 export * as Options from './Options.js';
 export * as PostgresConversationStorage from './PostgresConversationStorage.js';
 export * as PostgresJobStore from './PostgresJobStore.js';

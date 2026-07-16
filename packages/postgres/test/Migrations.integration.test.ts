@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { migrate } from '../src/internal/Migrator.js';
+import { migrate } from '../src/Migrations.js';
 import * as PostgresTestLayer from './internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -94,9 +94,37 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 		);
 		expect(result.result).toMatchObject({
 			_tag: 'Failure',
-			failure: { _tag: 'MigrationChecksumMismatchError', version: 1 },
+			failure: {
+				_tag: 'MigrationError',
+				stage: 'ledger_validation',
+			},
 		});
 		expect(result.count).toBe('3');
+	});
+
+	it('rejects unknown future versions and missing applied prefixes', async () => {
+		const options = { schema: 'tfx_ledger_test', tablePrefix: 'case_' };
+		const program = Effect.gen(function* () {
+			yield* migrate(options);
+			const sql = yield* PgClient.PgClient;
+			yield* sql`INSERT INTO tfx_ledger_test.case_migrations (version,name,checksum) VALUES (99,'future',${'f'.repeat(64)})`;
+			const future = yield* Effect.result(migrate(options));
+			yield* sql`DELETE FROM tfx_ledger_test.case_migrations WHERE version=99`;
+			yield* sql`DELETE FROM tfx_ledger_test.case_migrations WHERE version=1`;
+			const gap = yield* Effect.result(migrate(options));
+			return { future, gap };
+		});
+		const result = await Effect.runPromise(
+			Effect.provide(program, PostgresTestLayer.layer),
+		);
+		for (const failure of [result.future, result.gap])
+			expect(failure).toMatchObject({
+				_tag: 'Failure',
+				failure: {
+					_tag: 'MigrationError',
+					stage: 'ledger_validation',
+				},
+			});
 	});
 
 	it('fails atomically on an unnormalizable legacy job row', async () => {
