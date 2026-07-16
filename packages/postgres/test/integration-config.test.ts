@@ -7,6 +7,7 @@ import {
 } from '../../../vitest.integration.config.js';
 
 const expectedSuites = [
+	'packages/postgres-migrator/test/PostgresMigrator.integration.test.ts',
 	'packages/postgres/test/Migrations.integration.test.ts',
 	'packages/postgres/test/ConversationStorage.integration.test.ts',
 	'packages/postgres/test/JobStore.integration.test.ts',
