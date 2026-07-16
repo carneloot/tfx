@@ -8,6 +8,17 @@
 
 ---
 
+## Coordination With Staged Layer Plan
+
+Do not execute this document completely before `docs/plans/2026-07-16-staged-application-layer-composition.md`. Use that plan's **Best Combined Execution Order** as canonical ordering.
+
+Specifically:
+
+- Skip Task 5 Step 4; `PersistenceLive` replaces temporary `Layers.portable` wiring.
+- Skip Task 6; final migration-count regression targets `AppLive` instead.
+- Run Task 7 independently before or after staged composition.
+- Use staged-layer Task 7 for combined final verification instead of this plan's Task 8.
+
 ## Scope And Decisions
 
 Included:
@@ -21,7 +32,7 @@ Included:
 - Removal of migration side effects from individual repositories and stores.
 - One explicit migration owner per aggregate persistence graph.
 - Removal of duplicate Carneloot migration execution.
-- Full portable-layer regression test asserting one Carneloot and one TFX migration acquisition.
+- Full application-layer regression test asserting one Carneloot and one TFX migration acquisition, implemented by the staged layer plan.
 - Rename misleading `tfx.bot.source_started` event to `tfx.bot.source_forked`.
 
 Not included:
