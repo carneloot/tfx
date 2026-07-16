@@ -48,7 +48,7 @@ export const run = (
 		const sql = yield* PgClient.PgClient;
 		const schema = sql(options.schema);
 		const table = sql(options.table);
-		return yield* protect(
+		const committed = yield* protect(
 			sql.withTransaction(
 				Effect.gen(function* () {
 					yield* protect(
@@ -87,7 +87,8 @@ export const run = (
 						}),
 					);
 					yield* validateAppliedMigrations(options.migrations, applied);
-					for (const migration of options.migrations.slice(applied.length)) {
+					const pending = options.migrations.slice(applied.length);
+					for (const migration of pending) {
 						yield* protect(
 							migration.up(sql),
 							'apply',
@@ -100,34 +101,34 @@ export const run = (
 							`Failed to record migration ${migration.version}_${migration.name}`,
 							migration,
 						);
-						yield* Effect.logInfo(
-							`${options.logPrefix}.migration.applied`,
-						).pipe(
-							Effect.annotateLogs({
-								version: migration.version,
-								name: migration.name,
-							}),
-						);
 					}
-					const result = {
-						total: options.migrations.length,
-						applied: applied.length,
-						appliedNow: options.migrations.length - applied.length,
-					} satisfies Result;
-					yield* Effect.logInfo(
-						`${options.logPrefix}.migrations.completed`,
-					).pipe(
-						Effect.annotateLogs({
-							total: result.total,
-							appliedNow: result.appliedNow,
-						}),
-					);
-					return result;
+					return {
+						result: {
+							total: options.migrations.length,
+							applied: applied.length,
+							appliedNow: pending.length,
+						} satisfies Result,
+						migrations: pending,
+					};
 				}),
 			),
 			'transaction',
 			'Migration transaction failed',
 		);
+		for (const migration of committed.migrations)
+			yield* Effect.logInfo(`${options.logPrefix}.migration.applied`).pipe(
+				Effect.annotateLogs({
+					version: migration.version,
+					name: migration.name,
+				}),
+			);
+		yield* Effect.logInfo(`${options.logPrefix}.migrations.completed`).pipe(
+			Effect.annotateLogs({
+				total: committed.result.total,
+				appliedNow: committed.result.appliedNow,
+			}),
+		);
+		return committed.result;
 	}).pipe(
 		Effect.tapError((error) =>
 			Effect.logError(`${options.logPrefix}.migrations.failed`).pipe(

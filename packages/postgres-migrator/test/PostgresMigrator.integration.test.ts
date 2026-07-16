@@ -1,5 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import { Effect } from 'effect';
+import { Effect, Logger } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import type { Migration } from '../src/Migration.js';
@@ -17,6 +17,29 @@ const options = (suffix: string, migrations: ReadonlyArray<Migration>) => ({
 	logPrefix: `test.${suffix}`,
 	migrations,
 });
+
+interface CapturedLog {
+	readonly message: unknown;
+}
+
+const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+	const logs: Array<CapturedLog> = [];
+	const logger = Logger.make((entry) => {
+		logs.push({
+			message:
+				Array.isArray(entry.message) && entry.message.length === 1
+					? entry.message[0]
+					: entry.message,
+		});
+	});
+	return Effect.map(
+		Effect.provideService(effect, Logger.CurrentLoggers, new Set([logger])),
+		(result) => ({ result, logs }),
+	);
+};
+
+const messages = (logs: ReadonlyArray<CapturedLog>) =>
+	logs.map(({ message }) => message);
 
 describe.skipIf(!enabled)('shared PostgreSQL migrator', () => {
 	it('serializes concurrent bootstrap and applies each migration once', async () => {
@@ -44,6 +67,39 @@ describe.skipIf(!enabled)('shared PostgreSQL migrator', () => {
 			Effect.provide(program, PostgresTestLayer.layer),
 		);
 		expect(rows[0]?.count).toBe('1');
+	});
+
+	it('logs lifecycle events only after successful commit', async () => {
+		const suffix = crypto.randomUUID().replaceAll('-', '');
+		const migrations: ReadonlyArray<Migration> = [
+			{
+				version: 1,
+				name: 'one',
+				checksum: checksum('a'),
+				up: () => Effect.void,
+			},
+			{
+				version: 2,
+				name: 'two',
+				checksum: checksum('b'),
+				up: () => Effect.void,
+			},
+		];
+		const observed = await Effect.runPromise(
+			Effect.provide(
+				captureLogs(run(options(suffix, migrations))),
+				PostgresTestLayer.layer,
+			),
+		);
+		const logged = messages(observed.logs);
+		expect(logged).toContain(`test.${suffix}.migrations.started`);
+		expect(
+			logged.filter(
+				(message) => message === `test.${suffix}.migration.applied`,
+			),
+		).toHaveLength(2);
+		expect(logged).toContain(`test.${suffix}.migrations.completed`);
+		expect(logged).not.toContain(`test.${suffix}.migrations.failed`);
 	});
 
 	it('rejects unknown future ledger rows and checksum drift', async () => {
@@ -101,8 +157,8 @@ describe.skipIf(!enabled)('shared PostgreSQL migrator', () => {
 		};
 		const program = Effect.gen(function* () {
 			yield* run(options(suffix, [first]));
-			const failed = yield* Effect.result(
-				run(options(suffix, [first, second])),
+			const observed = yield* captureLogs(
+				Effect.result(run(options(suffix, [first, second]))),
 			);
 			const sql = yield* PgClient.PgClient;
 			const ledger = yield* sql<{
@@ -111,7 +167,7 @@ describe.skipIf(!enabled)('shared PostgreSQL migrator', () => {
 			const table = yield* sql<{
 				value: string | null;
 			}>`SELECT to_regclass(${`migrator_${suffix}.rolled_back`})::text AS value`;
-			return { failed, ledger, table };
+			return { failed: observed.result, logs: observed.logs, ledger, table };
 		});
 		const result = await Effect.runPromise(
 			Effect.provide(program, PostgresTestLayer.layer),
@@ -122,5 +178,10 @@ describe.skipIf(!enabled)('shared PostgreSQL migrator', () => {
 		});
 		expect(result.ledger[0]?.count).toBe('1');
 		expect(result.table[0]?.value).toBeNull();
+		const logged = messages(result.logs);
+		expect(logged).toContain(`test.${suffix}.migrations.started`);
+		expect(logged).toContain(`test.${suffix}.migrations.failed`);
+		expect(logged).not.toContain(`test.${suffix}.migration.applied`);
+		expect(logged).not.toContain(`test.${suffix}.migrations.completed`);
 	});
 });
