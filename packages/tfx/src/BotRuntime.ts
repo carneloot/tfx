@@ -1,8 +1,10 @@
 import * as Context from 'effect/Context';
 import * as Data from 'effect/Data';
+import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Fiber from 'effect/Fiber';
 import * as Layer from 'effect/Layer';
+import * as Option from 'effect/Option';
 
 import type * as Bot from './Bot.js';
 import type { DispatchOutcome } from './DispatchOutcome.js';
@@ -34,10 +36,10 @@ export interface Options<
 	readonly concurrency?: number;
 	readonly capacity?: number;
 	readonly router?: Router.Router;
-	readonly leaseDuration?: number;
-	readonly waitTimeout?: number;
-	readonly retention?: number;
-	readonly heartbeatInterval?: number;
+	readonly leaseDuration?: Duration.Input;
+	readonly waitTimeout?: Duration.Input;
+	readonly retention?: Duration.Input;
+	readonly heartbeatInterval?: Duration.Input;
 }
 export const layer = <
 	B extends Bot.Bot<any, any>,
@@ -53,21 +55,42 @@ export const layer = <
 	const runtime = Layer.effect(
 		BotRuntime,
 		Effect.gen(function* () {
-			for (const [name, value] of [
-				['leaseDuration', options.leaseDuration],
-				['waitTimeout', options.waitTimeout],
-				['retention', options.retention],
-				['heartbeatInterval', options.heartbeatInterval],
-			] as const)
-				if (value !== undefined && (!Number.isFinite(value) || value <= 0))
-					return yield* Effect.die(
-						new Error(`${name} must be finite and positive`),
-					);
-			const leaseDuration = options.leaseDuration ?? 30_000;
-			if (
-				options.heartbeatInterval !== undefined &&
-				options.heartbeatInterval >= leaseDuration
-			)
+			const normalize = (
+				input: Duration.Input | undefined,
+				fallback: Duration.Duration,
+				name: string,
+			) => {
+				const value = Option.getOrElse(
+					Duration.fromInput(input ?? fallback),
+					() => Duration.infinity,
+				);
+				if (!Duration.isFinite(value) || !Duration.isPositive(value))
+					throw new TypeError(`${name} must be finite and positive`);
+				return value;
+			};
+			const leaseDuration = normalize(
+				options.leaseDuration,
+				Duration.seconds(30),
+				'leaseDuration',
+			);
+			const waitTimeout = normalize(
+				options.waitTimeout,
+				Duration.seconds(5),
+				'waitTimeout',
+			);
+			const retention = normalize(
+				options.retention,
+				Duration.days(1),
+				'retention',
+			);
+			const heartbeatInterval = normalize(
+				options.heartbeatInterval,
+				Duration.millis(
+					Math.max(1, Math.floor(Duration.toMillis(leaseDuration) / 3)),
+				),
+				'heartbeatInterval',
+			);
+			if (!Duration.isLessThan(heartbeatInterval, leaseDuration))
 				return yield* Effect.die(
 					new Error('heartbeatInterval must be less than leaseDuration'),
 				);
@@ -80,18 +103,10 @@ export const layer = <
 				capacity: options.capacity ?? 1024,
 				deduplicator,
 				router: options.router ?? Router.make(),
-				...(options.leaseDuration === undefined
-					? {}
-					: { leaseDuration: options.leaseDuration }),
-				...(options.waitTimeout === undefined
-					? {}
-					: { waitTimeout: options.waitTimeout }),
-				...(options.retention === undefined
-					? {}
-					: { retention: options.retention }),
-				...(options.heartbeatInterval === undefined
-					? {}
-					: { heartbeatInterval: options.heartbeatInterval }),
+				leaseDuration,
+				waitTimeout,
+				retention,
+				heartbeatInterval,
 			});
 			const sourceFiber = yield* Effect.forkScoped(
 				source.run(dispatcher.dispatch),

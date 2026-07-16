@@ -1,6 +1,8 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import * as PostgresJobStore from '@tfx/postgres/PostgresJobStore';
 import { Effect, Layer, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import * as TestClock from 'effect/testing/TestClock';
 import * as Job from 'tfx/Job';
 import { JobRuntime, type JobRuntimeService } from 'tfx/JobRuntime';
@@ -12,6 +14,10 @@ import * as AddFood from '../../src/application/AddFood.js';
 import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import { FoodAmountMg } from '../../src/domain/pet-food/FoodAmount.js';
+import {
+	IanaTimeZone,
+	LocalTime,
+} from '../../src/domain/pet-food/FoodDateTime.js';
 import { FoodEntryId } from '../../src/domain/pet-food/PetFood.js';
 import { PetName } from '../../src/domain/Pet.js';
 import * as FeedingReminderJob from '../../src/jobs/FeedingReminderJob.js';
@@ -75,21 +81,30 @@ const fixture = Effect.gen(function* () {
 		Schema.decodeUnknownSync(PetName)(`Pet ${suffix}`),
 	);
 	const food = yield* PetFoodRepository;
-	yield* food.setDayStart(pet.id, '00:00' as never, 'UTC' as never, 1_000);
-	yield* food.setReminderDelay(pet.id, 1_000 as never, 1_000);
+	yield* food.setDayStart(
+		pet.id,
+		Schema.decodeUnknownSync(LocalTime)('00:00'),
+		Schema.decodeUnknownSync(IanaTimeZone)('UTC'),
+		DateTime.makeUnsafe(1_000),
+	);
+	yield* food.setReminderDelay(
+		pet.id,
+		Duration.seconds(1),
+		DateTime.makeUnsafe(1_000),
+	);
 	const entry = yield* food.insert({
 		id: Schema.decodeUnknownSync(FoodEntryId)(crypto.randomUUID()),
 		petId: pet.id,
 		recordedBy: user.user.id,
 		amountMg: Schema.decodeUnknownSync(FoodAmountMg)(50_000),
-		fedAt: 2_000,
+		fedAt: DateTime.makeUnsafe(2_000),
 		source: {
 			botId,
 			updateId: telegramId,
 			messageChatId: null,
 			messageId: null,
 		},
-		now: 2_000,
+		now: DateTime.makeUnsafe(2_000),
 	});
 	return { user, pet, entry };
 });
@@ -110,7 +125,7 @@ else
 					ownerUserId: user.user.id,
 					petId: pet.id,
 					foodEntryId: entry.id,
-					runAt: 3_000,
+					runAt: DateTime.makeUnsafe(3_000),
 				} as const;
 				yield* Effect.all(
 					[
@@ -186,9 +201,9 @@ else
 					ownerUserId: user.user.id,
 					petId: pet.id,
 					foodEntryId: entry.id,
-					scheduledFor: 3_000,
+					scheduledFor: DateTime.makeUnsafe(3_000),
 					dedupeKey,
-					now: 2_000,
+					now: DateTime.makeUnsafe(2_000),
 				});
 				const result = yield* Effect.result(
 					Effect.flatMap(ReminderScheduler, (scheduler) =>
@@ -197,7 +212,7 @@ else
 							ownerUserId: user.user.id,
 							petId: pet.id,
 							foodEntryId: entry.id,
-							runAt: 3_000,
+							runAt: DateTime.makeUnsafe(3_000),
 						}),
 					),
 				);
@@ -241,7 +256,7 @@ else
 								ownerUserId: user.user.id,
 								petId: pet.id,
 								foodEntryId: entry.id,
-								runAt: 3_000,
+								runAt: DateTime.makeUnsafe(3_000),
 							}),
 						),
 					),

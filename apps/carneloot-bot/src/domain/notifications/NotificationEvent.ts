@@ -23,13 +23,13 @@ export const NotificationEvent = Schema.Struct({
 	ownerUserId: UserId,
 	petId: Schema.NullOr(PetId),
 	foodEntryId: Schema.NullOr(FoodEntryId),
-	scheduledFor: Schema.NullOr(Schema.Number),
+	scheduledFor: Schema.NullOr(Schema.DateTimeUtc),
 	status: EventStatus,
 	dedupeKey: Schema.NonEmptyString,
 	jobId: Schema.NullOr(Schema.String),
-	createdAt: Schema.Number,
-	updatedAt: Schema.Number,
-	completedAt: Schema.NullOr(Schema.Number),
-	cancelledAt: Schema.NullOr(Schema.Number),
+	createdAt: Schema.DateTimeUtc,
+	updatedAt: Schema.DateTimeUtc,
+	completedAt: Schema.NullOr(Schema.DateTimeUtc),
+	cancelledAt: Schema.NullOr(Schema.DateTimeUtc),
 });
 export type NotificationEvent = typeof NotificationEvent.Type;

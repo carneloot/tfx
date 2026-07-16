@@ -1,4 +1,5 @@
 import { Effect, Layer, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
 import { MessageContext, type MessageContextService } from 'tfx/MessageContext';
 import { describe, expect, it } from 'vitest';
 
@@ -24,7 +25,14 @@ const profile = {
 	lastName: null,
 	privateChatId: Schema.decodeUnknownSync(TelegramChatId)(42),
 };
-const current = { user: { id: ownerId, createdAt: 0, updatedAt: 0 }, profile };
+const current = {
+	user: {
+		id: ownerId,
+		createdAt: DateTime.makeUnsafe(0),
+		updatedAt: DateTime.makeUnsafe(0),
+	},
+	profile,
+};
 const run = async (names: ReadonlyArray<string>) => {
 	const replies: Array<string> = [];
 	const pets = names.map((name, index) => ({
@@ -33,8 +41,8 @@ const run = async (names: ReadonlyArray<string>) => {
 		),
 		ownerId,
 		name: Schema.decodeUnknownSync(PetName)(name),
-		createdAt: 0,
-		updatedAt: 0,
+		createdAt: DateTime.makeUnsafe(0),
+		updatedAt: DateTime.makeUnsafe(0),
 	}));
 	const context = {
 		reply: (text: string) =>

@@ -1,8 +1,10 @@
+import type * as DateTime from 'effect/DateTime';
+
 import type { BotId, TelegramChatId, TelegramUserId, UserId } from './Ids.js';
 export interface User {
 	readonly id: UserId;
-	readonly createdAt: number;
-	readonly updatedAt: number;
+	readonly createdAt: DateTime.Utc;
+	readonly updatedAt: DateTime.Utc;
 }
 export interface TelegramProfile {
 	readonly botId: BotId;

@@ -1,4 +1,5 @@
 import * as Context from 'effect/Context';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
@@ -145,9 +146,7 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 						return yield* Effect.fail(
 							invariant(`Missing handlers for step '${initialStep}'`),
 						);
-					const now = yield* Effect.clockWith(
-						(clock) => clock.currentTimeMillis,
-					);
+					const now = yield* DateTime.now;
 					yield* storage.create(
 						{
 							scope,
@@ -159,7 +158,7 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 							expiresAt:
 								built.declaration.idleTimeout === undefined
 									? undefined
-									: now + built.declaration.idleTimeout,
+									: DateTime.addDuration(now, built.declaration.idleTimeout),
 						},
 						options.conflict ?? 'fail',
 					);
@@ -265,9 +264,7 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 									target.state,
 									`target state for step '${target.step}'`,
 								);
-								const now = yield* Effect.clockWith(
-									(clock) => clock.currentTimeMillis,
-								);
+								const now = yield* DateTime.now;
 								return {
 									value: undefined,
 									mutation: {
@@ -277,7 +274,12 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 										version: built.declaration.version,
 										...(built.declaration.idleTimeout === undefined
 											? {}
-											: { expiresAt: now + built.declaration.idleTimeout }),
+											: {
+													expiresAt: DateTime.addDuration(
+														now,
+														built.declaration.idleTimeout,
+													),
+												}),
 										...(transition.afterCommit === undefined
 											? {}
 											: { afterCommit: transition.afterCommit }),

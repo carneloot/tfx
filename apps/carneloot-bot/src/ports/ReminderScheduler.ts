@@ -1,4 +1,5 @@
 import * as Context from 'effect/Context';
+import type * as DateTime from 'effect/DateTime';
 import type * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
@@ -17,7 +18,7 @@ export interface ReminderSchedule {
 	readonly ownerUserId: UserId;
 	readonly petId: PetId;
 	readonly foodEntryId: FoodEntryId;
-	readonly runAt: number;
+	readonly runAt: DateTime.Utc;
 }
 export interface ReminderSchedulerService {
 	/**

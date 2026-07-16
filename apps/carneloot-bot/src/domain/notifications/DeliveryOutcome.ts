@@ -1,3 +1,4 @@
+import type * as DateTime from 'effect/DateTime';
 import * as Schema from 'effect/Schema';
 
 import { BotId } from '../Ids.js';
@@ -22,7 +23,7 @@ export const DeliveryOutcome = Schema.Union([
 		_tag: Schema.Literal('Failed'),
 		error: SafeError,
 		retryable: Schema.Boolean,
-		retryAt: Schema.NullOr(Schema.Number),
+		retryAt: Schema.NullOr(Schema.DateTimeUtc),
 	}),
 	Schema.Struct({ _tag: Schema.Literal('Unknown'), error: SafeError }),
 ]);
@@ -34,7 +35,7 @@ export const sent = (
 export const failed = (
 	error: SafeError,
 	retryable: boolean,
-	retryAt: number | null,
+	retryAt: DateTime.Utc | null,
 ): DeliveryOutcome => ({ _tag: 'Failed', error, retryable, retryAt });
 export const unknown = (error: SafeError): DeliveryOutcome => ({
 	_tag: 'Unknown',

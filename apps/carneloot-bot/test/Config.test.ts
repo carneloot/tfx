@@ -1,4 +1,4 @@
-import { ConfigProvider, Effect, Redacted } from 'effect';
+import { ConfigProvider, Duration, Effect, Redacted } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import * as AppConfig from '../src/Config.js';
@@ -8,17 +8,17 @@ const valid = {
 	DATABASE_URL: 'postgres://secret',
 	BOT_ID: 'carneloot',
 	BOT_USERNAME: 'carneloot_bot',
-	POLLING_TIMEOUT_SECONDS: '30',
-	POLLING_RETRY_DELAY_MILLIS: '1000',
+	POLLING_TIMEOUT: '30 seconds',
+	POLLING_RETRY_DELAY: '1 second',
 	DISPATCH_CAPACITY: '32',
 	DISPATCH_CONCURRENCY: '4',
-	JOB_IDLE_MILLIS: '100',
-	JOB_LEASE_MILLIS: '30000',
-	JOB_HEARTBEAT_MILLIS: '10000',
-	DEDUP_LEASE_MILLIS: '30000',
-	DEDUP_HEARTBEAT_MILLIS: '10000',
-	DEDUP_WAIT_MILLIS: '1000',
-	DEDUP_RETENTION_MILLIS: '86400000',
+	JOB_IDLE: '100 millis',
+	JOB_LEASE: '30 seconds',
+	JOB_HEARTBEAT: '10 seconds',
+	DEDUP_LEASE: '30 seconds',
+	DEDUP_HEARTBEAT: '10 seconds',
+	DEDUP_WAIT: '5 seconds',
+	DEDUP_RETENTION: '1 day',
 	TFX_POSTGRES_SCHEMA: 'tfx',
 	TFX_POSTGRES_TABLE_PREFIX: 'bot_',
 };
@@ -32,16 +32,26 @@ describe('AppConfig', () => {
 		const config = await Effect.runPromise(load(valid));
 		expect(config.botId).toBe('carneloot');
 		expect(config.dispatchConcurrency).toBe(4);
+		expect(Duration.equals(config.pollingTimeout, Duration.seconds(30))).toBe(
+			true,
+		);
+		expect(Duration.equals(config.jobIdle, Duration.millis(100))).toBe(true);
+		expect(Duration.equals(config.jobLease, Duration.seconds(30))).toBe(true);
+		expect(Duration.equals(config.dedupRetention, Duration.days(1))).toBe(true);
 		expect(String(config.botToken)).not.toContain('secret-token');
 		expect(Redacted.value(config.databaseUrl)).toBe('postgres://secret');
 	});
 	it.each([
 		{ ...valid, BOT_ID: 'other' },
-		{ ...valid, JOB_IDLE_MILLIS: '0' },
+		{ ...valid, JOB_IDLE: '0 millis' },
+		{ ...valid, JOB_IDLE: '-1 second' },
+		{ ...valid, JOB_IDLE: 'Infinity' },
+		{ ...valid, POLLING_TIMEOUT: '500 millis' },
+		{ ...valid, POLLING_TIMEOUT: '51 seconds' },
 		{ ...valid, DISPATCH_CAPACITY: '2', DISPATCH_CONCURRENCY: '4' },
-		{ ...valid, DEDUP_LEASE_MILLIS: '100', DEDUP_WAIT_MILLIS: '101' },
-		{ ...valid, JOB_HEARTBEAT_MILLIS: '30000' },
-		{ ...valid, DEDUP_HEARTBEAT_MILLIS: '30000' },
+		{ ...valid, DEDUP_LEASE: '100 millis', DEDUP_WAIT: '101 millis' },
+		{ ...valid, JOB_HEARTBEAT: '30 seconds' },
+		{ ...valid, DEDUP_HEARTBEAT: '30 seconds' },
 		{ ...valid, BOT_TOKEN: '' },
 		{ ...valid, DATABASE_URL: '   ' },
 		{ ...valid, BOT_USERNAME: '' },

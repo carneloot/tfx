@@ -1,3 +1,4 @@
+import * as Duration from 'effect/Duration';
 import * as Schema from 'effect/Schema';
 
 import { BotId, PetId, TelegramChatId, UserId } from '../Ids.js';
@@ -10,21 +11,27 @@ export const FoodEntryId = Schema.String.check(
 	Schema.isPattern(uuidPattern),
 ).pipe(Schema.brand('FoodEntryId'));
 export type FoodEntryId = typeof FoodEntryId.Type;
-export const ReminderDelayMs = Schema.Number.check(
+export const ReminderDelay = Schema.Duration.check(
 	Schema.makeFilter(
-		(value) =>
-			Number.isSafeInteger(value) && value >= 1 && value <= 2_592_000_000,
+		(value) => {
+			const millis = Duration.toMillis(value);
+			return (
+				Number.isSafeInteger(millis) &&
+				millis >= 1 &&
+				millis <= Duration.toMillis(Duration.days(30))
+			);
+		},
 		{ message: 'Reminder delay must be between 1ms and 30 days' },
 	),
-).pipe(Schema.brand('ReminderDelayMs'));
-export type ReminderDelayMs = typeof ReminderDelayMs.Type;
+).annotate({ identifier: 'ReminderDelay' });
+export type ReminderDelay = typeof ReminderDelay.Type;
 export const PetFoodSettings = Schema.Struct({
 	petId: PetId,
 	dayStart: Schema.NullOr(LocalTime),
 	timeZone: Schema.NullOr(IanaTimeZone),
-	reminderDelayMs: Schema.NullOr(ReminderDelayMs),
-	createdAt: Schema.Number,
-	updatedAt: Schema.Number,
+	reminderDelay: Schema.NullOr(ReminderDelay),
+	createdAt: Schema.DateTimeUtc,
+	updatedAt: Schema.DateTimeUtc,
 }).check(
 	Schema.makeFilter(
 		(value) => (value.dayStart === null) === (value.timeZone === null),
@@ -37,12 +44,12 @@ export const PetFoodEntry = Schema.Struct({
 	petId: PetId,
 	recordedBy: UserId,
 	amountMg: FoodAmountMg,
-	fedAt: Schema.Number,
+	fedAt: Schema.DateTimeUtc,
 	sourceBotId: BotId,
 	sourceUpdateId: Schema.Number,
 	sourceMessageChatId: Schema.NullOr(TelegramChatId),
 	sourceMessageId: Schema.NullOr(Schema.Number),
-	createdAt: Schema.Number,
-	updatedAt: Schema.Number,
+	createdAt: Schema.DateTimeUtc,
+	updatedAt: Schema.DateTimeUtc,
 });
 export type PetFoodEntry = typeof PetFoodEntry.Type;

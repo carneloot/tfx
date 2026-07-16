@@ -1,9 +1,11 @@
-import * as Clock from 'effect/Clock';
 import * as Context from 'effect/Context';
 import * as Data from 'effect/Data';
+import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Fiber from 'effect/Fiber';
 import * as Layer from 'effect/Layer';
+import * as Option from 'effect/Option';
 import { JobRuntime, type JobRuntimeOptionsError } from 'tfx/JobRuntime';
 import { JobStoreError, type JobRecord } from 'tfx/JobStore';
 
@@ -39,30 +41,46 @@ export class JobWorker extends Context.Service<JobWorker, JobWorkerService>()(
 	'carneloot/JobWorker',
 ) {}
 export interface Options {
-	readonly idleDelay: number;
-	readonly leaseDuration: number;
-	readonly heartbeatInterval: number;
+	readonly idleDelay: Duration.Input;
+	readonly leaseDuration: Duration.Input;
+	readonly heartbeatInterval: Duration.Input;
 }
-const validate = (
-	value: number,
+const normalize = (
+	input: Duration.Input,
 	option: 'idleDelay' | 'leaseDuration' | 'heartbeatInterval',
 ) =>
-	!Number.isFinite(value) || value <= 0
-		? Effect.fail(
+	Option.match(Duration.fromInput(input), {
+		onNone: () =>
+			Effect.fail(
 				new JobWorkerOptionsError({
 					option,
-					message: `${option} must be finite and positive`,
+					message: `${option} must be a valid duration`,
 				}),
-			)
-		: Effect.void;
+			),
+		onSome: (value) =>
+			!Duration.isFinite(value) || !Duration.isPositive(value)
+				? Effect.fail(
+						new JobWorkerOptionsError({
+							option,
+							message: `${option} must be finite and positive`,
+						}),
+					)
+				: Effect.succeed(value),
+	});
 export const layer = (options: Options) =>
 	Layer.effect(
 		JobWorker,
 		Effect.gen(function* () {
-			yield* validate(options.idleDelay, 'idleDelay');
-			yield* validate(options.leaseDuration, 'leaseDuration');
-			yield* validate(options.heartbeatInterval, 'heartbeatInterval');
-			if (options.heartbeatInterval >= options.leaseDuration)
+			const idleDelay = yield* normalize(options.idleDelay, 'idleDelay');
+			const leaseDuration = yield* normalize(
+				options.leaseDuration,
+				'leaseDuration',
+			);
+			const heartbeatInterval = yield* normalize(
+				options.heartbeatInterval,
+				'heartbeatInterval',
+			);
+			if (!Duration.isLessThan(heartbeatInterval, leaseDuration))
 				return yield* Effect.fail(
 					new JobWorkerOptionsError({
 						option: 'heartbeatInterval',
@@ -71,7 +89,7 @@ export const layer = (options: Options) =>
 				);
 			const jobs = yield* JobRuntime;
 			const notifications = yield* NotificationRepository;
-			const now = yield* Clock.currentTimeMillis;
+			const now = yield* DateTime.now;
 			const recoveredDeliveries = yield* notifications.recoverAllExpired(now);
 			const startupProblems = yield* jobs.problems;
 			const failedJobIds = startupProblems
@@ -83,13 +101,10 @@ export const layer = (options: Options) =>
 			const loop: Effect.Effect<void, JobStoreError | JobRuntimeOptionsError> =
 				Effect.suspend(() =>
 					Effect.flatMap(
-						jobs.runOne({
-							leaseDuration: options.leaseDuration,
-							heartbeatInterval: options.heartbeatInterval,
-						}),
+						jobs.runOne({ leaseDuration, heartbeatInterval }),
 						(record) =>
 							record === undefined
-								? Effect.andThen(Effect.sleep(options.idleDelay), loop)
+								? Effect.andThen(Effect.sleep(idleDelay), loop)
 								: loop,
 					),
 				);

@@ -8,8 +8,8 @@ export interface Settings {
 	readonly timeZone: IanaTimeZone;
 }
 export interface Window {
-	readonly start: number;
-	readonly end: number;
+	readonly start: DateTime.Utc;
+	readonly end: DateTime.Utc;
 }
 const boundary = (
 	date: Pick<DateTime.DateTime.Parts, 'year' | 'month' | 'day'>,
@@ -31,19 +31,19 @@ const boundary = (
 	return value.value;
 };
 /** Returns a half-open local-calendar day window [start, end). */
-export const current = (now: number, settings: Settings): Window => {
+export const current = (now: DateTime.Utc, settings: Settings): Window => {
 	const zonedNow = DateTime.makeZonedUnsafe(now, {
 		timeZone: settings.timeZone,
 	});
 	let start = boundary(DateTime.toParts(zonedNow), settings);
-	if (DateTime.toEpochMillis(start) > now) {
+	if (DateTime.isGreaterThan(start, now)) {
 		const previous = DateTime.subtract(zonedNow, { days: 1 });
 		start = boundary(DateTime.toParts(previous), settings);
 	}
 	const following = DateTime.add(start, { days: 1 });
 	const end = boundary(DateTime.toParts(following), settings);
 	return {
-		start: DateTime.toEpochMillis(start),
-		end: DateTime.toEpochMillis(end),
+		start: DateTime.toUtc(start),
+		end: DateTime.toUtc(end),
 	};
 };

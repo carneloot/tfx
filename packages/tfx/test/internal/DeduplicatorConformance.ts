@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect';
+import { Duration, Effect, Layer } from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
@@ -18,10 +18,14 @@ export const deduplicatorConformance = (
 				Effect.gen(function* () {
 					const dedup = yield* UpdateDeduplicator;
 					expect(dedup.diagnostics.backend).toBe(name);
-					const first = yield* dedup.claim(1, { leaseDuration: 10 });
+					const first = yield* dedup.claim(1, {
+						leaseDuration: Duration.millis(10),
+					});
 					if (first._tag !== 'Acquired') throw new Error('expected acquired');
 					expect((yield* dedup.claim(1))._tag).toBe('InProgress');
-					expect(yield* dedup.heartbeat(first.token, 10)).toBe(true);
+					expect(yield* dedup.heartbeat(first.token, Duration.millis(10))).toBe(
+						true,
+					);
 					yield* TestClock.adjust('11 millis');
 					const second = yield* dedup.claim(1);
 					if (second._tag !== 'Acquired') throw new Error('expected takeover');
@@ -29,7 +33,11 @@ export const deduplicatorConformance = (
 						yield* dedup.complete(first.token, DispatchOutcome.handled),
 					).toBe(false);
 					expect(
-						yield* dedup.complete(second.token, DispatchOutcome.handled, 10),
+						yield* dedup.complete(
+							second.token,
+							DispatchOutcome.handled,
+							Duration.millis(10),
+						),
 					).toBe(true);
 					expect((yield* dedup.claim(1))._tag).toBe('Completed');
 				}),

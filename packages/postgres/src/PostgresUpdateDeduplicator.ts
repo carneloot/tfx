@@ -1,5 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import * as Clock from 'effect/Clock';
+import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
@@ -15,11 +16,12 @@ import { migrate } from './internal/Migrator.js';
 import {
 	CompletedOutcome,
 	decode,
+	NullableTimestamp,
 	NullableUnknown,
 	RawInteger,
+	Timestamp,
 	safeCause,
 	safeInteger,
-	timestamp,
 } from './internal/RowValidation.js';
 import { make } from './internal/Tables.js';
 import { defaults, type Options } from './Options.js';
@@ -29,17 +31,17 @@ const RowSchema = Schema.Struct({
 	update_id: RawInteger,
 	status: Schema.Literals(['processing', 'completed', 'released']),
 	lease_generation: RawInteger,
-	lease_expires_at: Schema.Unknown,
+	lease_expires_at: Timestamp,
 	outcome_json: NullableUnknown,
-	completed_at: Schema.Unknown,
+	completed_at: NullableTimestamp,
 });
 type Row = {
 	readonly updateId: number;
 	readonly status: 'processing' | 'completed' | 'released';
 	readonly generation: number;
-	readonly leaseExpiresAt: number;
+	readonly leaseExpiresAt: DateTime.Utc;
 	readonly outcome: CompletedOutcomeType | undefined;
-	readonly completedAt: number | undefined;
+	readonly completedAt: DateTime.Utc | undefined;
 };
 const invariant = (message: string, cause?: unknown) =>
 	new UpdateDeduplicatorError(
@@ -68,15 +70,9 @@ const decodeRow = (raw: unknown): Effect.Effect<Row, UpdateDeduplicatorError> =>
 		const generation = yield* safeInteger(value.lease_generation, () =>
 			invariant('Unsafe deduplication generation'),
 		);
-		const leaseExpiresAt = yield* timestamp(value.lease_expires_at, () =>
-			invariant('Invalid deduplication lease timestamp'),
-		);
+		const leaseExpiresAt = value.lease_expires_at;
 		const completedAt =
-			value.completed_at === null
-				? undefined
-				: yield* timestamp(value.completed_at, () =>
-						invariant('Invalid deduplication completion timestamp'),
-					);
+			value.completed_at === null ? undefined : value.completed_at;
 		const outcome =
 			value.outcome_json === null
 				? undefined
@@ -140,14 +136,15 @@ export const layer = (
 									return yield* Effect.fail(
 										invariant('Unsafe update identifier'),
 									);
-								const now = yield* Clock.currentTimeMillis;
-								const duration = claimOptions.leaseDuration ?? 30_000;
-								const wait = claimOptions.waitTimeout ?? 5_000;
+								const now = yield* DateTime.now;
+								const duration =
+									claimOptions.leaseDuration ?? Duration.seconds(30);
+								const wait = claimOptions.waitTimeout ?? Duration.seconds(5);
 								return yield* sql.withTransaction(
 									Effect.gen(function* () {
 										const current = yield* read(updateId, true);
 										if (current === undefined) {
-											yield* sql`INSERT INTO ${schema}.${table} (bot_id,update_id,status,lease_generation,lease_expires_at,attempts,created_at,updated_at) VALUES (${botId},${updateId},'processing',1,${new Date(now + duration)},1,${new Date(now)},${new Date(now)})`;
+											yield* sql`INSERT INTO ${schema}.${table} (bot_id,update_id,status,lease_generation,lease_expires_at,attempts,created_at,updated_at) VALUES (${botId},${updateId},'processing',1,${DateTime.toDateUtc(DateTime.addDuration(now, duration))},1,${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)})`;
 											return {
 												_tag: 'Acquired' as const,
 												token: { updateId, generation: 1 },
@@ -155,7 +152,7 @@ export const layer = (
 										}
 										if (
 											current.status === 'completed' &&
-											current.leaseExpiresAt > now
+											DateTime.isGreaterThan(current.leaseExpiresAt, now)
 										) {
 											if (current.outcome === undefined)
 												return yield* Effect.fail(
@@ -168,14 +165,14 @@ export const layer = (
 										}
 										if (
 											current.status !== 'processing' ||
-											current.leaseExpiresAt <= now
+											DateTime.isLessThanOrEqualTo(current.leaseExpiresAt, now)
 										) {
 											const generation = current.generation + 1;
 											if (!Number.isSafeInteger(generation))
 												return yield* Effect.fail(
 													invariant('Deduplication generation overflow'),
 												);
-											yield* sql`UPDATE ${schema}.${table} SET status='processing',lease_generation=${generation},lease_expires_at=${new Date(now + duration)},outcome_json=NULL,completed_at=NULL,attempts=attempts+1,updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${updateId}`;
+											yield* sql`UPDATE ${schema}.${table} SET status='processing',lease_generation=${generation},lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, duration))},outcome_json=NULL,completed_at=NULL,attempts=attempts+1,updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND update_id=${updateId}`;
 											return {
 												_tag: 'Acquired' as const,
 												token: { updateId, generation },
@@ -186,8 +183,13 @@ export const layer = (
 											ObservedCompletion,
 											UpdateDeduplicatorError
 										> = Effect.suspend(() =>
-											Effect.flatMap(Clock.currentTimeMillis, (time) => {
-												if (time - started >= wait)
+											Effect.flatMap(DateTime.now, (time) => {
+												if (
+													Duration.isGreaterThanOrEqualTo(
+														DateTime.distance(started, time),
+														wait,
+													)
+												)
 													return Effect.succeed({ _tag: 'TimedOut' });
 												return Effect.flatMap(
 													protect(read(updateId)),
@@ -205,7 +207,9 @@ export const layer = (
 															});
 														}
 														return Effect.andThen(
-															Effect.sleep(Math.min(50, wait)),
+															Effect.sleep(
+																Duration.min(Duration.millis(50), wait),
+															),
 															observe,
 														);
 													},
@@ -217,29 +221,29 @@ export const layer = (
 								);
 							}),
 						),
-					heartbeat: (token, duration = 30_000) =>
+					heartbeat: (token, duration = Duration.seconds(30)) =>
 						protect(
-							Effect.flatMap(Clock.currentTimeMillis, (now) =>
+							Effect.flatMap(DateTime.now, (now) =>
 								Effect.map(
-									sql`UPDATE ${schema}.${table} SET lease_expires_at=${new Date(now + duration)},updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
+									sql`UPDATE ${schema}.${table} SET lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, duration))},updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
 									(rows) => rows.length > 0,
 								),
 							),
 						),
-					complete: (token, outcome, retention = 86_400_000) =>
+					complete: (token, outcome, retention = Duration.days(1)) =>
 						protect(
-							Effect.flatMap(Clock.currentTimeMillis, (now) =>
+							Effect.flatMap(DateTime.now, (now) =>
 								Effect.map(
-									sql`UPDATE ${schema}.${table} SET status='completed',outcome_json=${sql.json(outcome)},completed_at=${new Date(now)},lease_expires_at=${new Date(now + retention)},updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
+									sql`UPDATE ${schema}.${table} SET status='completed',outcome_json=${sql.json(outcome)},completed_at=${DateTime.toDateUtc(now)},lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, retention))},updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
 									(rows) => rows.length > 0,
 								),
 							),
 						),
 					release: (token) =>
 						protect(
-							Effect.flatMap(Clock.currentTimeMillis, (now) =>
+							Effect.flatMap(DateTime.now, (now) =>
 								Effect.map(
-									sql`UPDATE ${schema}.${table} SET status='released',lease_expires_at=${new Date(now)},updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
+									sql`UPDATE ${schema}.${table} SET status='released',lease_expires_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
 									(rows) => rows.length > 0,
 								),
 							),

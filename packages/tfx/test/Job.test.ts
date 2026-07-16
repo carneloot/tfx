@@ -1,4 +1,4 @@
-import { Schema } from 'effect';
+import { Duration, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import * as Job from '../src/Job.js';
@@ -17,15 +17,17 @@ describe('Job', () => {
 			payload: history,
 			error: Failure,
 			maxAttempts: 3,
-			retry: () => Job.retry(500),
+			retry: () => Job.retry(Duration.millis(500)),
 		});
 		expect(job.name).toBe('reminder');
 		expect(job.payload.latest.version).toBe(1);
-		expect(job.retry(new Failure({ message: 'failure' }))).toEqual({
-			_tag: 'Retry',
-			retryAfter: 500,
-		});
-		expect(job.schedule(1)).toBe(1000);
+		const decision = job.retry(new Failure({ message: 'failure' }));
+		expect(decision?._tag).toBe('Retry');
+		if (decision?._tag === 'Retry')
+			expect(Duration.equals(decision.retryAfter!, Duration.millis(500))).toBe(
+				true,
+			);
+		expect(Duration.equals(job.schedule(1), Duration.seconds(1))).toBe(true);
 	});
 	it('rejects invalid max attempts', () => {
 		const history = VersionedSchema.history(

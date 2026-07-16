@@ -1,4 +1,4 @@
-import { Schema } from 'effect';
+import { DateTime, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import { DeliveryOutcome } from '../../src/domain/notifications/DeliveryOutcome.js';
@@ -25,6 +25,26 @@ describe('RecipientRole', () => {
 				error: { code: 'timeout', message: 'Ambiguous transport result' },
 			}),
 		).toMatchObject({ _tag: 'Unknown' });
+		const retryAt = DateTime.makeUnsafe('2024-01-02T12:00:00Z');
+		const failed = Schema.decodeUnknownSync(DeliveryOutcome)({
+			_tag: 'Failed',
+			error: { message: 'Temporary failure' },
+			retryable: true,
+			retryAt,
+		});
+		expect(
+			failed._tag === 'Failed' &&
+				failed.retryAt !== null &&
+				DateTime.Equivalence(failed.retryAt, retryAt),
+		).toBe(true);
+		expect(() =>
+			Schema.decodeUnknownSync(DeliveryOutcome)({
+				_tag: 'Failed',
+				error: { message: 'Temporary failure' },
+				retryable: true,
+				retryAt: DateTime.toEpochMillis(retryAt),
+			}),
+		).toThrow();
 		expect(() =>
 			Schema.decodeUnknownSync(DeliveryOutcome)({
 				_tag: 'Sent',

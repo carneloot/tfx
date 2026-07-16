@@ -1,3 +1,4 @@
+import * as Duration from 'effect/Duration';
 import * as Schema from 'effect/Schema';
 import * as Job from 'tfx/Job';
 import * as VersionedSchema from 'tfx/VersionedSchema';
@@ -19,7 +20,7 @@ export class FeedingReminderRetryError extends Schema.TaggedErrorClass<FeedingRe
 	'FeedingReminderRetryError',
 	{
 		message: Schema.String,
-		retryAfter: Schema.optionalKey(Schema.Number),
+		retryAfter: Schema.optionalKey(Schema.DurationFromMillis),
 	},
 ) {}
 export class FeedingReminderPermanentError extends Schema.TaggedErrorClass<FeedingReminderPermanentError>()(
@@ -39,5 +40,6 @@ export const declaration = Job.make('feeding-reminder', {
 		error._tag === 'FeedingReminderRetryError'
 			? Job.retry(error.retryAfter)
 			: Job.permanent,
-	schedule: (attempt) => Math.min(3_600_000, 5_000 * 2 ** (attempt - 1)),
+	schedule: (attempt) =>
+		Duration.min(Duration.minutes(30), Duration.minutes(2 ** (attempt - 1))),
 });

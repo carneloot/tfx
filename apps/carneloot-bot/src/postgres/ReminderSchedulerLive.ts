@@ -1,5 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import * as Clock from 'effect/Clock';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
@@ -15,6 +15,11 @@ import {
 	ReminderSchedulerError,
 	type ReminderSchedulerService,
 } from '../ports/ReminderScheduler.js';
+
+const Timestamp = Schema.Union([
+	Schema.DateTimeUtcFromDate,
+	Schema.DateTimeUtcFromString,
+]);
 
 const safeCause = (cause: unknown) => {
 	if (typeof cause !== 'object' || cause === null)
@@ -52,7 +57,7 @@ export const layer = Layer.effect(
 					? Effect.void
 					: Effect.asVoid(jobs.cancel(event.jobId)),
 			);
-		const cancelLocked = (botId: BotId, petId: PetId, now: number) =>
+		const cancelLocked = (botId: BotId, petId: PetId, now: DateTime.Utc) =>
 			Effect.flatMap(
 				notifications.cancelActiveForPet(botId, petId, now),
 				cancelJobs,
@@ -62,16 +67,19 @@ export const layer = Layer.effect(
 				sql
 					.withTransaction(
 						Effect.gen(function* () {
-							const now = yield* Clock.currentTimeMillis;
+							const now = yield* DateTime.now;
 							const lockKey = JSON.stringify([request.botId, request.petId]);
 							yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
 							const settings = yield* food.getSettings(request.petId);
 							const latest = yield* food.latestEntry(request.petId);
 							const valid =
-								settings?.reminderDelayMs !== null &&
-								settings?.reminderDelayMs !== undefined &&
+								settings?.reminderDelay !== null &&
+								settings?.reminderDelay !== undefined &&
 								latest?.id === request.foodEntryId &&
-								latest.fedAt + settings.reminderDelayMs === request.runAt;
+								DateTime.Equivalence(
+									DateTime.addDuration(latest.fedAt, settings.reminderDelay),
+									request.runAt,
+								);
 							if (!valid) {
 								yield* cancelLocked(request.botId, request.petId, now);
 								return;
@@ -86,7 +94,10 @@ export const layer = Layer.effect(
 								(event) =>
 									event.food_entry_id === request.foodEntryId &&
 									event.scheduled_for !== null &&
-									new Date(event.scheduled_for).getTime() === request.runAt &&
+									DateTime.Equivalence(
+										Schema.decodeUnknownSync(Timestamp)(event.scheduled_for),
+										request.runAt,
+									) &&
 									event.job_id !== null,
 							);
 							if (matching !== undefined && active.length === 1) return;
@@ -96,7 +107,8 @@ export const layer = Layer.effect(
 								now,
 							);
 							yield* cancelJobs(cancelled);
-							const baseDedupe = `feeding-reminder:${request.botId}:${request.petId}:${request.foodEntryId}:${request.runAt}`;
+							const runAtMillis = DateTime.toEpochMillis(request.runAt);
+							const baseDedupe = `feeding-reminder:${request.botId}:${request.petId}:${request.foodEntryId}:${runAtMillis}`;
 							const id = Schema.decodeUnknownSync(EventId)(crypto.randomUUID());
 							let event = yield* notifications.createEvent({
 								id,
@@ -196,7 +208,7 @@ export const layer = Layer.effect(
 				sql
 					.withTransaction(
 						Effect.gen(function* () {
-							const now = yield* Clock.currentTimeMillis;
+							const now = yield* DateTime.now;
 							const lockKey = JSON.stringify([request.botId, request.petId]);
 							yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
 							yield* cancelLocked(request.botId, request.petId, now);

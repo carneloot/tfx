@@ -1,4 +1,5 @@
 import * as Context from 'effect/Context';
+import type * as DateTime from 'effect/DateTime';
 import type * as Effect from 'effect/Effect';
 
 import type { DomainPersistenceError } from '../domain/DomainError.js';
@@ -12,7 +13,7 @@ import type {
 	FoodEntryId,
 	PetFoodEntry,
 	PetFoodSettings,
-	ReminderDelayMs,
+	ReminderDelay,
 } from '../domain/pet-food/PetFood.js';
 import type { PetAccessDenied } from '../domain/pet-food/PetFoodError.js';
 import type { Pet } from '../domain/Pet.js';
@@ -28,13 +29,13 @@ export interface NewFoodEntry {
 	readonly petId: PetId;
 	readonly recordedBy: UserId;
 	readonly amountMg: FoodAmount;
-	readonly fedAt: number;
+	readonly fedAt: DateTime.Utc;
 	readonly source: FoodSource;
-	readonly now: number;
+	readonly now: DateTime.Utc;
 }
 export interface FoodStatusSummary {
 	readonly totalMg: number;
-	readonly latestFedAt: number | null;
+	readonly latestFedAt: DateTime.Utc | null;
 }
 export type PetFoodRepositoryError = DomainPersistenceError | PetAccessDenied;
 export interface PetFoodRepositoryService {
@@ -49,16 +50,16 @@ export interface PetFoodRepositoryService {
 		petId: PetId,
 		dayStart: LocalTime,
 		timeZone: IanaTimeZone,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<PetFoodSettings, PetFoodRepositoryError>;
 	readonly setReminderDelay: (
 		petId: PetId,
-		delay: ReminderDelayMs,
-		now: number,
+		delay: ReminderDelay,
+		now: DateTime.Utc,
 	) => Effect.Effect<PetFoodSettings, PetFoodRepositoryError>;
 	readonly clearReminderDelay: (
 		petId: PetId,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<PetFoodSettings, PetFoodRepositoryError>;
 	readonly latestEntry: (
 		petId: PetId,
@@ -70,15 +71,15 @@ export interface PetFoodRepositoryService {
 	) => Effect.Effect<PetFoodEntry | undefined, PetFoodRepositoryError>;
 	readonly findBusinessDuplicate: (
 		petId: PetId,
-		fedAt: number,
+		fedAt: DateTime.Utc,
 	) => Effect.Effect<PetFoodEntry | undefined, PetFoodRepositoryError>;
 	readonly insert: (
 		entry: NewFoodEntry,
 	) => Effect.Effect<PetFoodEntry, PetFoodRepositoryError>;
 	readonly status: (
 		petId: PetId,
-		start: number,
-		end: number,
+		start: DateTime.Utc,
+		end: DateTime.Utc,
 	) => Effect.Effect<FoodStatusSummary, PetFoodRepositoryError>;
 }
 export class PetFoodRepository extends Context.Service<

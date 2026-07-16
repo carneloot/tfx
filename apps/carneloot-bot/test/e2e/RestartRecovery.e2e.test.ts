@@ -2,6 +2,8 @@ import * as PgClient from '@effect/sql-pg/PgClient';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import * as TfxPostgres from '@tfx/postgres/TfxPostgres';
 import { Data, Deferred, Effect, Layer, Redacted } from 'effect';
+import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import { BotRuntime } from 'tfx/BotRuntime';
 import { JobStore } from 'tfx/JobStore';
 import { Telegram } from 'tfx/Telegram';
@@ -39,17 +41,17 @@ const config: AppConfigService = {
 	databaseUrl: Redacted.make('postgres://test'),
 	botId: 'carneloot',
 	botUsername: 'carneloot_bot',
-	pollingTimeoutSeconds: 30,
-	pollingRetryDelayMillis: 100,
+	pollingTimeout: Duration.seconds(30),
+	pollingRetryDelay: Duration.millis(100),
 	dispatchCapacity: 8,
 	dispatchConcurrency: 2,
-	jobIdleMillis: 10_000,
-	jobLeaseMillis: 300,
-	jobHeartbeatMillis: 100,
-	dedupLeaseMillis: 300,
-	dedupHeartbeatMillis: 100,
-	dedupWaitMillis: 100,
-	dedupRetentionMillis: 86_400_000,
+	jobIdle: Duration.seconds(10),
+	jobLease: Duration.millis(300),
+	jobHeartbeat: Duration.millis(100),
+	dedupLease: Duration.millis(300),
+	dedupHeartbeat: Duration.millis(100),
+	dedupWait: Duration.millis(100),
+	dedupRetention: Duration.days(1),
 	tfxSchema: 'tfx_restart_e2e',
 	tfxTablePrefix: 'case_',
 };
@@ -294,30 +296,40 @@ else
 							payload: {},
 							payloadVersion: 1,
 							maxAttempts: 3,
-							runAt: 0,
-							now: 0,
+							runAt: DateTime.makeUnsafe(0),
+							now: DateTime.makeUnsafe(0),
 						});
-						const first = (yield* store.claimForMigration(1, 10))!;
+						const first = (yield* store.claimForMigration(
+							DateTime.makeUnsafe(1),
+							Duration.millis(10),
+						))!;
 						expect(first.record.attempts).toBe(0);
 						const running = yield* store.promoteToRunning(
 							first.token,
 							{},
 							1,
-							2,
-							10,
+							DateTime.makeUnsafe(2),
+							Duration.millis(10),
 						);
 						expect(running.attempts).toBe(1);
-						const takeover = (yield* store.claimForMigration(13, 10))!;
+						const takeover = (yield* store.claimForMigration(
+							DateTime.makeUnsafe(13),
+							Duration.millis(10),
+						))!;
 						const second = yield* store.promoteToRunning(
 							takeover.token,
 							{},
 							1,
-							14,
-							10,
+							DateTime.makeUnsafe(14),
+							Duration.millis(10),
 						);
 						expect(second.attempts).toBe(2);
 						expect(
-							yield* store.finalize(first.token, { _tag: 'Succeeded' }, 15),
+							yield* store.finalize(
+								first.token,
+								{ _tag: 'Succeeded' },
+								DateTime.makeUnsafe(15),
+							),
 						).toBe(false);
 						expect(scheduled.record.id).toBe(second.id);
 						for (const [payloadVersion, reason] of [
@@ -329,15 +341,18 @@ else
 								payload: {},
 								payloadVersion,
 								maxAttempts: 8,
-								runAt: 20,
-								now: 20,
+								runAt: DateTime.makeUnsafe(20),
+								now: DateTime.makeUnsafe(20),
 							});
-							const claim = (yield* store.claimForMigration(20, 10))!;
+							const claim = (yield* store.claimForMigration(
+								DateTime.makeUnsafe(20),
+								Duration.millis(10),
+							))!;
 							expect(claim.record.attempts).toBe(0);
 							const quarantined = yield* store.quarantineMigration(
 								claim.token,
 								reason,
-								21,
+								DateTime.makeUnsafe(21),
 							);
 							expect(quarantined).toMatchObject({
 								id: seeded.record.id,

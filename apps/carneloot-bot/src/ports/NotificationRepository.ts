@@ -1,5 +1,7 @@
 import { Data } from 'effect';
 import * as Context from 'effect/Context';
+import type * as DateTime from 'effect/DateTime';
+import type * as Duration from 'effect/Duration';
 import type * as Effect from 'effect/Effect';
 
 import type { BotId, PetId, TelegramChatId, UserId } from '../domain/Ids.js';
@@ -34,9 +36,9 @@ export interface EventInput {
 	readonly ownerUserId: UserId;
 	readonly petId: PetId | null;
 	readonly foodEntryId: FoodEntryId | null;
-	readonly scheduledFor: number | null;
+	readonly scheduledFor: DateTime.Utc | null;
 	readonly dedupeKey: string;
-	readonly now: number;
+	readonly now: DateTime.Utc;
 }
 interface RecipientBase {
 	readonly id: DeliveryId;
@@ -71,8 +73,8 @@ export interface EventSummary {
 	readonly retryableFailed: number;
 	readonly terminal: number;
 	readonly completed: boolean;
-	readonly earliestRetryAt: number | null;
-	readonly earliestSendingLeaseExpiry: number | null;
+	readonly earliestRetryAt: DateTime.Utc | null;
+	readonly earliestSendingLeaseExpiry: DateTime.Utc | null;
 }
 export interface NotificationRepositoryService {
 	readonly createEvent: (
@@ -81,23 +83,23 @@ export interface NotificationRepositoryService {
 	readonly cancelActiveForPet: (
 		botId: BotId,
 		petId: PetId,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<
 		ReadonlyArray<CancelledActiveEvent>,
 		NotificationRepositoryError
 	>;
 	readonly reviveCancelledEvent: (
 		id: EventId,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<boolean, NotificationRepositoryError>;
 	readonly cancelEvent: (
 		id: EventId,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<boolean, NotificationRepositoryError>;
 	readonly attachJob: (
 		id: EventId,
 		jobId: string,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<boolean, NotificationRepositoryError>;
 	readonly getDispatchContext: (
 		id: EventId,
@@ -108,50 +110,50 @@ export interface NotificationRepositoryService {
 	readonly materializeRecipients: (
 		eventId: EventId,
 		recipients: ReadonlyArray<RecipientInput>,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<
 		ReadonlyArray<NotificationDelivery>,
 		NotificationRepositoryError
 	>;
 	readonly recoverExpired: (
 		eventId: EventId,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<number, NotificationRepositoryError>;
 	readonly recoverAllExpired: (
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<number, NotificationRepositoryError>;
 	readonly claimNext: (
 		eventId: EventId,
-		now: number,
-		leaseDuration: number,
+		now: DateTime.Utc,
+		leaseDuration: Duration.Duration,
 	) => Effect.Effect<DeliveryClaim | undefined, NotificationRepositoryError>;
 	readonly finalizeSent: (
 		token: DeliveryToken,
 		botId: BotId,
 		messageId: number,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<boolean, NotificationRepositoryError>;
 	readonly finalizeFailed: (
 		token: DeliveryToken,
 		error: SafeError,
 		retryable: boolean,
-		retryAt: number | null,
-		now: number,
+		retryAt: DateTime.Utc | null,
+		now: DateTime.Utc,
 	) => Effect.Effect<boolean, NotificationRepositoryError>;
 	readonly finalizeUnknown: (
 		token: DeliveryToken,
 		error: SafeError,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<boolean, NotificationRepositoryError>;
 	readonly reconcileUnknownAsSent: (
 		token: DeliveryToken,
 		botId: BotId,
 		messageId: number,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<boolean, NotificationRepositoryError>;
 	readonly summarizeAndComplete: (
 		eventId: EventId,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<EventSummary, NotificationRepositoryError>;
 }
 export class NotificationRepository extends Context.Service<

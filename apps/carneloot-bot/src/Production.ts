@@ -12,8 +12,8 @@ import * as Layers from './Layers.js';
 
 export const pollingOptions = (config: AppConfigService) =>
 	({
-		timeout: config.pollingTimeoutSeconds,
-		retryDelay: config.pollingRetryDelayMillis,
+		timeout: config.pollingTimeout,
+		retryDelay: config.pollingRetryDelay,
 		allowedUpdates: Object.freeze([
 			'message',
 			'edited_message',

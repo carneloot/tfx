@@ -1,3 +1,4 @@
+import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
@@ -9,6 +10,25 @@ export const NullableInteger = Schema.Union([
 ]);
 export const NullableString = Schema.Union([Schema.Null, Schema.String]);
 export const NullableUnknown = Schema.Union([Schema.Null, Schema.Unknown]);
+
+export const Timestamp = Schema.Union([
+	Schema.DateTimeUtcFromDate,
+	Schema.DateTimeUtcFromString,
+	Schema.DateTimeUtcFromMillis,
+]);
+export const NullableTimestamp = Schema.NullOr(Timestamp);
+export const DurationMillis = Schema.DurationFromMillis.check(
+	Schema.makeFilter(
+		(value) => Duration.isFinite(value) && !Duration.isNegative(value),
+		{ message: 'Expected a finite non-negative duration' },
+	),
+);
+export const PositiveDurationMillis = Schema.DurationFromMillis.check(
+	Schema.makeFilter(
+		(value) => Duration.isFinite(value) && Duration.isPositive(value),
+		{ message: 'Expected a finite positive duration' },
+	),
+);
 
 export const CompletedOutcome = Schema.Union([
 	Schema.Struct({ _tag: Schema.Literal('Handled') }),
@@ -27,7 +47,7 @@ export const JobOutcome = Schema.Union([
 	Schema.Struct({
 		_tag: Schema.Literal('RetryableFailure'),
 		error: Schema.Unknown,
-		retryAfter: Schema.optionalKey(Schema.Number),
+		retryAfter: Schema.optionalKey(DurationMillis),
 	}),
 	Schema.Struct({
 		_tag: Schema.Literal('PermanentFailure'),
@@ -65,21 +85,6 @@ export const safeInteger = <E>(
 ): Effect.Effect<number, E> => {
 	const decoded = typeof value === 'number' ? value : Number(value);
 	return Number.isSafeInteger(decoded)
-		? Effect.succeed(decoded)
-		: Effect.fail(error());
-};
-
-export const timestamp = <E>(
-	value: unknown,
-	error: () => E,
-): Effect.Effect<number, E> => {
-	const decoded =
-		value instanceof Date
-			? value.getTime()
-			: typeof value === 'string' || typeof value === 'number'
-				? new Date(value).getTime()
-				: Number.NaN;
-	return Number.isFinite(decoded)
 		? Effect.succeed(decoded)
 		: Effect.fail(error());
 };

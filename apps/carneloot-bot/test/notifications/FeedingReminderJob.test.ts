@@ -1,4 +1,4 @@
-import { Schema } from 'effect';
+import { Duration, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import { BotId, PetId } from '../../src/domain/Ids.js';
@@ -7,7 +7,7 @@ import { FoodEntryId } from '../../src/domain/pet-food/PetFood.js';
 import * as FeedingReminderJob from '../../src/jobs/FeedingReminderJob.js';
 
 describe('FeedingReminderJob declaration', () => {
-	it('owns a versioned v1 payload and finite retry policy', () => {
+	it('owns a versioned v1 payload and Duration retry policy', () => {
 		const payload = {
 			eventId: Schema.decodeUnknownSync(EventId)(
 				'00000000-0000-4000-8000-000000000001',
@@ -28,14 +28,36 @@ describe('FeedingReminderJob declaration', () => {
 			maxAttempts: 8,
 		});
 		expect(FeedingReminderJob.declaration.payload.latest.version).toBe(1);
+		const retryAfter = Duration.millis(123);
+		const decision = FeedingReminderJob.declaration.retry(
+			new FeedingReminderJob.FeedingReminderRetryError({
+				message: 'later',
+				retryAfter,
+			}),
+		);
+		expect(decision?._tag).toBe('Retry');
+		if (decision?._tag === 'Retry') {
+			expect(decision.retryAfter).toBeDefined();
+			expect(Duration.equals(decision.retryAfter!, retryAfter)).toBe(true);
+		}
 		expect(
-			FeedingReminderJob.declaration.retry(
+			Schema.encodeUnknownSync(FeedingReminderJob.FeedingReminderError)(
 				new FeedingReminderJob.FeedingReminderRetryError({
-					message: 'later',
-					retryAfter: 123,
+					message: 'legacy-compatible',
+					retryAfter,
 				}),
 			),
-		).toEqual({ _tag: 'Retry', retryAfter: 123 });
+		).toEqual({
+			_tag: 'FeedingReminderRetryError',
+			message: 'legacy-compatible',
+			retryAfter: 123,
+		});
+		expect(
+			Duration.equals(
+				FeedingReminderJob.declaration.schedule(1),
+				Duration.minutes(1),
+			),
+		).toBe(true);
 		expect(
 			FeedingReminderJob.declaration.retry(
 				new FeedingReminderJob.FeedingReminderPermanentError({

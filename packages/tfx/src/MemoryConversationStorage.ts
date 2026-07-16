@@ -1,4 +1,4 @@
-import * as Clock from 'effect/Clock';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Semaphore from 'effect/Semaphore';
@@ -43,8 +43,11 @@ export const layer: Layer.Layer<ConversationStorage> = Layer.effect(
 						const k = key(scope);
 						const row = rows.get(k);
 						if (row === undefined) return undefined;
-						const now = yield* Clock.currentTimeMillis;
-						if (row.expiresAt !== undefined && row.expiresAt <= now) {
+						const now = yield* DateTime.now;
+						if (
+							row.expiresAt !== undefined &&
+							DateTime.isLessThanOrEqualTo(row.expiresAt, now)
+						) {
 							rows.delete(k);
 							return undefined;
 						}
@@ -57,11 +60,11 @@ export const layer: Layer.Layer<ConversationStorage> = Layer.effect(
 					Effect.gen(function* () {
 						const k = key(row.scope);
 						const existing = rows.get(k);
-						const now = yield* Clock.currentTimeMillis;
+						const now = yield* DateTime.now;
 						if (
 							existing !== undefined &&
 							existing.expiresAt !== undefined &&
-							existing.expiresAt <= now
+							DateTime.isLessThanOrEqualTo(existing.expiresAt, now)
 						)
 							rows.delete(k);
 						if (rows.has(k) && conflict === 'fail')
@@ -87,8 +90,11 @@ export const layer: Layer.Layer<ConversationStorage> = Layer.effect(
 							return { _tag: 'Duplicate' as const, row: current };
 						if (current.revision !== expectedRevision)
 							return { _tag: 'Stale' as const, row: current };
-						const now = yield* Clock.currentTimeMillis;
-						if (current.expiresAt !== undefined && current.expiresAt <= now) {
+						const now = yield* DateTime.now;
+						if (
+							current.expiresAt !== undefined &&
+							DateTime.isLessThanOrEqualTo(current.expiresAt, now)
+						) {
 							rows.delete(k);
 							return { _tag: 'Expired' as const };
 						}

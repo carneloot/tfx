@@ -1,4 +1,4 @@
-import * as Clock from 'effect/Clock';
+import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
@@ -26,7 +26,7 @@ import { PetRepository } from '../ports/PetRepository.js';
 export type TelegramDisposition =
 	| {
 			readonly _tag: 'Retryable';
-			readonly delay: number;
+			readonly delay: Duration.Duration;
 			readonly error: SafeError;
 	  }
 	| { readonly _tag: 'Permanent'; readonly error: SafeError }
@@ -43,12 +43,16 @@ export const classifyTelegramError = (
 		case 'RateLimitError':
 			return {
 				_tag: 'Retryable',
-				delay: Math.max(1, Duration.toMillis(reason.retryAfter)),
+				delay: reason.retryAfter,
 				error: safe(reason),
 			};
 		case 'InternalTelegramError':
 		case 'ConflictError':
-			return { _tag: 'Retryable', delay: 30_000, error: safe(reason) };
+			return {
+				_tag: 'Retryable',
+				delay: Duration.seconds(30),
+				error: safe(reason),
+			};
 		case 'AuthenticationError':
 		case 'ForbiddenError':
 		case 'InvalidRequestError':
@@ -79,17 +83,22 @@ export interface DispatchPayload {
 }
 export const execute = (
 	payload: DispatchPayload,
-	options: { readonly leaseDuration?: number } = {},
+	options: { readonly leaseDuration?: Duration.Input } = {},
 ) =>
 	Effect.gen(function* () {
-		const leaseDuration = options.leaseDuration ?? 30_000;
-		if (!Number.isFinite(leaseDuration) || leaseDuration <= 0)
+		const leaseDuration = Duration.fromInputUnsafe(
+			options.leaseDuration ?? Duration.seconds(30),
+		);
+		if (
+			!Duration.isFinite(leaseDuration) ||
+			!Duration.isPositive(leaseDuration)
+		)
 			return yield* Effect.fail(
 				new FeedingReminderPermanentError({
 					message: 'Delivery lease duration must be finite and positive',
 				}),
 			);
-		const now = yield* Clock.currentTimeMillis;
+		const now = yield* DateTime.now;
 		const notifications = yield* NotificationRepository;
 		const event = yield* notifications.getDispatchContext(payload.eventId);
 		if (
@@ -159,7 +168,7 @@ export const execute = (
 			| FeedingReminderPermanentError
 		> = Effect.suspend(() =>
 			Effect.gen(function* () {
-				const claimNow = yield* Clock.currentTimeMillis;
+				const claimNow = yield* DateTime.now;
 				const claim = yield* notifications.claimNext(
 					event.id,
 					claimNow,
@@ -178,14 +187,17 @@ export const execute = (
 						text,
 					}),
 				);
-				const completedAt = yield* Clock.currentTimeMillis;
+				const completedAt = yield* DateTime.now;
 				const persistenceRetry = () =>
 					new FeedingReminderRetryError({
 						message: 'Delivery finalization persistence failed',
-						retryAfter: Math.max(
-							1,
-							(claim.delivery.sendingLeaseExpiresAt ?? completedAt + 1) -
+						retryAfter: Duration.max(
+							Duration.millis(1),
+							DateTime.distance(
 								completedAt,
+								claim.delivery.sendingLeaseExpiresAt ??
+									DateTime.addDuration(completedAt, Duration.millis(1)),
+							),
 						),
 					});
 				if (sent._tag === 'Success') {
@@ -201,10 +213,13 @@ export const execute = (
 						return yield* Effect.fail(
 							new FeedingReminderRetryError({
 								message: 'Delivery success fence was lost',
-								retryAfter: Math.max(
-									1,
-									(claim.delivery.sendingLeaseExpiresAt ?? completedAt + 1) -
+								retryAfter: Duration.max(
+									Duration.millis(1),
+									DateTime.distance(
 										completedAt,
+										claim.delivery.sendingLeaseExpiresAt ??
+											DateTime.addDuration(completedAt, Duration.millis(1)),
+									),
 								),
 							}),
 						);
@@ -224,7 +239,9 @@ export const execute = (
 								claim.token,
 								disposition.error,
 								retryable,
-								retryable ? completedAt + disposition.delay : null,
+								retryable
+									? DateTime.addDuration(completedAt, disposition.delay)
+									: null,
 								completedAt,
 							)
 							.pipe(Effect.mapError(persistenceRetry));
@@ -235,7 +252,7 @@ export const execute = (
 			}),
 		);
 		yield* loop;
-		const summaryNow = yield* Clock.currentTimeMillis;
+		const summaryNow = yield* DateTime.now;
 		const summary = yield* notifications.summarizeAndComplete(
 			event.id,
 			summaryNow,
@@ -244,11 +261,14 @@ export const execute = (
 		const target =
 			summary.earliestRetryAt ??
 			summary.earliestSendingLeaseExpiry ??
-			summaryNow + 1_000;
+			DateTime.addDuration(summaryNow, Duration.seconds(1));
 		return yield* Effect.fail(
 			new FeedingReminderRetryError({
 				message: 'Notification event still has active deliveries',
-				retryAfter: Math.max(1, target - summaryNow),
+				retryAfter: Duration.max(
+					Duration.millis(1),
+					DateTime.distance(summaryNow, target),
+				),
 			}),
 		);
 	}).pipe(
@@ -258,7 +278,7 @@ export const execute = (
 				? cause
 				: new FeedingReminderRetryError({
 						message: 'Reminder delivery infrastructure failed',
-						retryAfter: 1_000,
+						retryAfter: Duration.seconds(1),
 					}),
 		),
 	);

@@ -1,5 +1,7 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { Effect, Layer, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import { Conversations } from 'tfx/Conversations';
 import * as ConversationsLive from 'tfx/Conversations';
 import { ConversationStorage } from 'tfx/ConversationStorage';
@@ -64,11 +66,15 @@ const pet = {
 	ownerId,
 	name: petName,
 	nameKey: 'rex',
-	createdAt: 0,
-	updatedAt: 0,
+	createdAt: DateTime.makeUnsafe(0),
+	updatedAt: DateTime.makeUnsafe(0),
 };
 const current = {
-	user: { id: ownerId, createdAt: 0, updatedAt: 0 },
+	user: {
+		id: ownerId,
+		createdAt: DateTime.makeUnsafe(0),
+		updatedAt: DateTime.makeUnsafe(0),
+	},
 	profile: {
 		botId,
 		telegramUserId,
@@ -97,7 +103,7 @@ interface Harness {
 	settings: { value: PetFoodSettings | undefined };
 	settingsReads: { value: number };
 	dayMutations: Array<readonly [string, string]>;
-	delayMutations: Array<number>;
+	delayMutations: Array<Duration.Duration>;
 	scheduler: Array<string>;
 	authorizationFails: { value: boolean };
 	outputFailure: { value: boolean };
@@ -121,7 +127,7 @@ const harness = (): Harness => {
 	const settings: Harness['settings'] = { value: undefined };
 	const settingsReads = { value: 0 };
 	const dayMutations: Array<readonly [string, string]> = [];
-	const delayMutations: Array<number> = [];
+	const delayMutations: Array<Duration.Duration> = [];
 	const scheduler: Array<string> = [];
 	const authorizationFails = { value: false };
 	const outputFailure = { value: false };
@@ -172,7 +178,7 @@ const harness = (): Harness => {
 					petId,
 					dayStart,
 					timeZone,
-					reminderDelayMs: settings.value?.reminderDelayMs ?? null,
+					reminderDelay: settings.value?.reminderDelay ?? null,
 					createdAt: settings.value?.createdAt ?? now,
 					updatedAt: now,
 				};
@@ -185,7 +191,7 @@ const harness = (): Harness => {
 					petId,
 					dayStart: settings.value?.dayStart ?? null,
 					timeZone: settings.value?.timeZone ?? null,
-					reminderDelayMs: delay,
+					reminderDelay: delay,
 					createdAt: settings.value?.createdAt ?? now,
 					updatedAt: now,
 				};
@@ -197,7 +203,7 @@ const harness = (): Harness => {
 					petId,
 					dayStart: settings.value?.dayStart ?? null,
 					timeZone: settings.value?.timeZone ?? null,
-					reminderDelayMs: null,
+					reminderDelay: null,
 					createdAt: settings.value?.createdAt ?? now,
 					updatedAt: now,
 				};
@@ -209,13 +215,13 @@ const harness = (): Harness => {
 				petId,
 				recordedBy: ownerId,
 				amountMg: 1000 as never,
-				fedAt: 1000,
+				fedAt: DateTime.makeUnsafe(1000),
 				sourceBotId: botId,
 				sourceUpdateId: 1,
 				sourceMessageChatId: null,
 				sourceMessageId: null,
-				createdAt: 1000,
-				updatedAt: 1000,
+				createdAt: DateTime.makeUnsafe(1000),
+				updatedAt: DateTime.makeUnsafe(1000),
 			} satisfies PetFoodEntry),
 		findBySource: () => Effect.succeed(undefined),
 		findBusinessDuplicate: () => Effect.succeed(undefined),
@@ -233,9 +239,9 @@ const harness = (): Harness => {
 	};
 	const reminders: ReminderSchedulerService = {
 		replaceForLatest: (value) =>
-			Effect.sync(() => scheduler.push(`replace:${value.runAt}`)).pipe(
-				Effect.asVoid,
-			),
+			Effect.sync(() =>
+				scheduler.push(`replace:${DateTime.toEpochMillis(value.runAt)}`),
+			).pipe(Effect.asVoid),
 		cancelForPet: () =>
 			Effect.sync(() => scheduler.push('cancel')).pipe(Effect.asVoid),
 	};
@@ -399,7 +405,7 @@ describe('pet food conversation transcripts', () => {
 					h.layer,
 				),
 			);
-			expect(h.delayMutations).toEqual([milliseconds]);
+			expect(h.delayMutations.map(Duration.toMillis)).toEqual([milliseconds]);
 			expect(h.scheduler).toEqual([`replace:${1000 + milliseconds}`]);
 			expect(h.replies.at(-1)).toContain(
 				milliseconds === 7_200_000 ? '2 horas' : '30 minutos',
@@ -413,9 +419,9 @@ describe('pet food conversation transcripts', () => {
 			petId,
 			dayStart: null,
 			timeZone: null,
-			reminderDelayMs: 60_000 as never,
-			createdAt: 0,
-			updatedAt: 0,
+			reminderDelay: Duration.minutes(1),
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
 		};
 		await run(
 			Effect.provide(
@@ -433,9 +439,9 @@ describe('pet food conversation transcripts', () => {
 			petId,
 			dayStart: null,
 			timeZone: null,
-			reminderDelayMs: 60_000 as never,
-			createdAt: 0,
-			updatedAt: 0,
+			reminderDelay: Duration.minutes(1),
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
 		};
 		await run(
 			Effect.provide(
@@ -481,7 +487,7 @@ describe('pet food conversation transcripts', () => {
 			),
 		);
 		expect(result._tag).toBe('Failure');
-		expect(failed.delayMutations).toEqual([7_200_000]);
+		expect(failed.delayMutations.map(Duration.toMillis)).toEqual([7_200_000]);
 	});
 
 	it('authorizes every selected pet before reading settings', async () => {
@@ -517,9 +523,9 @@ describe('pet food conversation transcripts', () => {
 			petId,
 			dayStart: '00:00' as never,
 			timeZone: 'UTC' as never,
-			reminderDelayMs: null,
-			createdAt: 0,
-			updatedAt: 0,
+			reminderDelay: null,
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
 		};
 		await run(
 			Effect.provide(

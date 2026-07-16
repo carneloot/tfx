@@ -1,4 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
@@ -15,16 +17,12 @@ import {
 	type PetFoodRepositoryService,
 } from '../ports/PetFoodRepository.js';
 
-const timestamp = (value: unknown) => {
-	const result =
-		value instanceof Date
-			? value.getTime()
-			: typeof value === 'string' || typeof value === 'number'
-				? new Date(value).getTime()
-				: Number.NaN;
-	if (!Number.isFinite(result)) throw new Error('Invalid timestamp');
-	return result;
-};
+const Timestamp = Schema.Union([
+	Schema.DateTimeUtcFromDate,
+	Schema.DateTimeUtcFromString,
+	Schema.DateTimeUtcFromMillis,
+]);
+const DurationMillis = Schema.DurationFromMillis;
 const safeInteger = (value: unknown, minimum = 0) => {
 	const result = typeof value === 'number' ? value : Number(value);
 	if (!Number.isSafeInteger(result) || result < minimum)
@@ -42,8 +40,8 @@ const PetRow = Schema.Struct({
 	id: PetId,
 	owner_id: UserId,
 	name: PetName,
-	created_at: Schema.Unknown,
-	updated_at: Schema.Unknown,
+	created_at: Timestamp,
+	updated_at: Timestamp,
 });
 const SettingsRow = Schema.Struct({
 	pet_id: PetId,
@@ -52,15 +50,15 @@ const SettingsRow = Schema.Struct({
 	reminder_delay_ms: Schema.NullOr(
 		Schema.Union([Schema.String, Schema.Number]),
 	),
-	created_at: Schema.Unknown,
-	updated_at: Schema.Unknown,
+	created_at: Timestamp,
+	updated_at: Timestamp,
 });
 const EntryRow = Schema.Struct({
 	id: FoodEntryId,
 	pet_id: PetId,
 	recorded_by: UserId,
 	amount_mg: Schema.Union([Schema.String, Schema.Number]),
-	fed_at: Schema.Unknown,
+	fed_at: Timestamp,
 	source_bot_id: Schema.NonEmptyString,
 	source_update_id: Schema.Union([Schema.String, Schema.Number]),
 	source_message_chat_id: Schema.NullOr(
@@ -69,8 +67,8 @@ const EntryRow = Schema.Struct({
 	source_message_id: Schema.NullOr(
 		Schema.Union([Schema.String, Schema.Number]),
 	),
-	created_at: Schema.Unknown,
-	updated_at: Schema.Unknown,
+	created_at: Timestamp,
+	updated_at: Timestamp,
 });
 const decodePet = (raw: unknown): Pet => {
 	const row = Schema.decodeUnknownSync(PetRow)(raw);
@@ -78,8 +76,8 @@ const decodePet = (raw: unknown): Pet => {
 		id: row.id,
 		ownerId: row.owner_id,
 		name: row.name,
-		createdAt: timestamp(row.created_at),
-		updatedAt: timestamp(row.updated_at),
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
 	};
 };
 const decodeSettings = (raw: unknown) => {
@@ -94,12 +92,14 @@ const decodeSettings = (raw: unknown) => {
 			row.timezone === null
 				? null
 				: Schema.decodeUnknownSync(IanaTimeZone)(row.timezone),
-		reminderDelayMs:
+		reminderDelay:
 			row.reminder_delay_ms === null
 				? null
-				: safeInteger(row.reminder_delay_ms, 1),
-		createdAt: timestamp(row.created_at),
-		updatedAt: timestamp(row.updated_at),
+				: Schema.decodeUnknownSync(DurationMillis)(
+						safeInteger(row.reminder_delay_ms, 1),
+					),
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
 	};
 	return Schema.decodeUnknownSync(PetFoodSettings)(value);
 };
@@ -112,7 +112,7 @@ const decodeEntry = (raw: unknown) => {
 		amountMg: Schema.decodeUnknownSync(FoodAmountMg)(
 			safeInteger(row.amount_mg, 1),
 		),
-		fedAt: timestamp(row.fed_at),
+		fedAt: row.fed_at,
 		sourceBotId: Schema.decodeUnknownSync(BotId)(row.source_bot_id),
 		sourceUpdateId: safeInteger(row.source_update_id),
 		sourceMessageChatId:
@@ -125,8 +125,8 @@ const decodeEntry = (raw: unknown) => {
 			row.source_message_id === null
 				? null
 				: safeInteger(row.source_message_id, 1),
-		createdAt: timestamp(row.created_at),
-		updatedAt: timestamp(row.updated_at),
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
 	};
 };
 const decodeOne = <A>(
@@ -194,7 +194,7 @@ export const layer = Layer.effect(
 					Effect.flatMap(
 						sql<
 							Record<string, unknown>
-						>`INSERT INTO carneloot.pet_food_settings (pet_id,day_start,timezone,created_at,updated_at) VALUES (${petId}::uuid,${dayStart}::time,${timeZone},${new Date(now)},${new Date(now)}) ON CONFLICT (pet_id) DO UPDATE SET day_start=EXCLUDED.day_start,timezone=EXCLUDED.timezone,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
+						>`INSERT INTO carneloot.pet_food_settings (pet_id,day_start,timezone,created_at,updated_at) VALUES (${petId}::uuid,${dayStart}::time,${timeZone},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (pet_id) DO UPDATE SET day_start=EXCLUDED.day_start,timezone=EXCLUDED.timezone,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
 						(rows) =>
 							Effect.try({
 								try: () => decodeOne(rows, decodeSettings),
@@ -208,7 +208,7 @@ export const layer = Layer.effect(
 					Effect.flatMap(
 						sql<
 							Record<string, unknown>
-						>`INSERT INTO carneloot.pet_food_settings (pet_id,reminder_delay_ms,created_at,updated_at) VALUES (${petId}::uuid,${delay},${new Date(now)},${new Date(now)}) ON CONFLICT (pet_id) DO UPDATE SET reminder_delay_ms=EXCLUDED.reminder_delay_ms,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
+						>`INSERT INTO carneloot.pet_food_settings (pet_id,reminder_delay_ms,created_at,updated_at) VALUES (${petId}::uuid,${Duration.toMillis(delay)},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (pet_id) DO UPDATE SET reminder_delay_ms=EXCLUDED.reminder_delay_ms,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
 						(rows) =>
 							Effect.try({
 								try: () => decodeOne(rows, decodeSettings),
@@ -222,7 +222,7 @@ export const layer = Layer.effect(
 					Effect.flatMap(
 						sql<
 							Record<string, unknown>
-						>`INSERT INTO carneloot.pet_food_settings (pet_id,created_at,updated_at) VALUES (${petId}::uuid,${new Date(now)},${new Date(now)}) ON CONFLICT (pet_id) DO UPDATE SET reminder_delay_ms=NULL,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
+						>`INSERT INTO carneloot.pet_food_settings (pet_id,created_at,updated_at) VALUES (${petId}::uuid,${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (pet_id) DO UPDATE SET reminder_delay_ms=NULL,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
 						(rows) =>
 							Effect.try({
 								try: () => decodeOne(rows, decodeSettings),
@@ -248,7 +248,7 @@ export const layer = Layer.effect(
 			findBusinessDuplicate: (petId, fedAt) =>
 				Effect.map(
 					entries(
-						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND abs(extract(epoch FROM (fed_at-${new Date(fedAt)}::timestamptz))*1000) < 60000 ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
+						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND abs(extract(epoch FROM (fed_at-${DateTime.toDateUtc(fedAt)}::timestamptz))*1000) < 60000 ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
 					),
 					(rows) => rows[0],
 				),
@@ -257,7 +257,7 @@ export const layer = Layer.effect(
 					Effect.flatMap(
 						sql<
 							Record<string, unknown>
-						>`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,source_message_id,created_at,updated_at) VALUES (${entry.id}::uuid,${entry.petId}::uuid,${entry.recordedBy}::uuid,${entry.amountMg},${new Date(entry.fedAt)},${entry.source.botId},${entry.source.updateId},${entry.source.messageChatId},${entry.source.messageId},${new Date(entry.now)},${new Date(entry.now)}) RETURNING *`,
+						>`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,source_message_id,created_at,updated_at) VALUES (${entry.id}::uuid,${entry.petId}::uuid,${entry.recordedBy}::uuid,${entry.amountMg},${DateTime.toDateUtc(entry.fedAt)},${entry.source.botId},${entry.source.updateId},${entry.source.messageChatId},${entry.source.messageId},${DateTime.toDateUtc(entry.now)},${DateTime.toDateUtc(entry.now)}) RETURNING *`,
 						(rows) =>
 							Effect.try({
 								try: () => decodeOne(rows, decodeEntry),
@@ -273,7 +273,7 @@ export const layer = Layer.effect(
 						sql<{
 							total_mg: string | number;
 							latest_fed_at: unknown | null;
-						}>`SELECT coalesce(sum(amount_mg),0) AS total_mg,max(fed_at) AS latest_fed_at FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND fed_at>=${new Date(start)} AND fed_at<${new Date(end)}`,
+						}>`SELECT coalesce(sum(amount_mg),0) AS total_mg,max(fed_at) AS latest_fed_at FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND fed_at>=${DateTime.toDateUtc(start)} AND fed_at<${DateTime.toDateUtc(end)}`,
 						(rows) =>
 							Effect.try({
 								try: () => {
@@ -285,7 +285,9 @@ export const layer = Layer.effect(
 										latestFedAt:
 											row.latest_fed_at === null
 												? null
-												: timestamp(row.latest_fed_at),
+												: Schema.decodeUnknownSync(Timestamp)(
+														row.latest_fed_at,
+													),
 									};
 								},
 								catch: (cause) => persistence('Malformed status row', cause),

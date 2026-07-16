@@ -1,5 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import * as Clock from 'effect/Clock';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
@@ -107,7 +107,7 @@ export const execute = (
 							message: 'Pet day start is not configured',
 						}),
 					);
-				const now = yield* Clock.currentTimeMillis;
+				const now = yield* DateTime.now;
 				const fedAt =
 					foodDateTimeInput.trim().length === 0
 						? now
@@ -134,13 +134,13 @@ export const execute = (
 				});
 				const latest = yield* repository.latestEntry(access.petId);
 				const isLatest = latest?.id === entry.id;
-				if (isLatest && settings.reminderDelayMs !== null)
+				if (isLatest && settings.reminderDelay !== null)
 					yield* scheduler.replaceForLatest({
 						botId: access.botId,
 						ownerUserId: access.ownerId,
 						petId: access.petId,
 						foodEntryId: entry.id,
-						runAt: entry.fedAt + settings.reminderDelayMs,
+						runAt: DateTime.addDuration(entry.fedAt, settings.reminderDelay),
 					});
 				return {
 					entry,

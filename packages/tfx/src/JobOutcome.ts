@@ -1,9 +1,11 @@
+import type * as Duration from 'effect/Duration';
+
 export type JobOutcome<E = unknown> =
 	| { readonly _tag: 'Succeeded' }
 	| {
 			readonly _tag: 'RetryableFailure';
 			readonly error: E;
-			readonly retryAfter?: number;
+			readonly retryAfter?: Duration.Duration;
 	  }
 	| { readonly _tag: 'PermanentFailure'; readonly error: E }
 	| { readonly _tag: 'FatalFailure'; readonly cause: string }
@@ -14,7 +16,7 @@ export const succeeded: JobOutcome<never> = Object.freeze({
 });
 export const retryableFailure = <E>(
 	error: E,
-	retryAfter?: number,
+	retryAfter?: Duration.Duration,
 ): JobOutcome<E> =>
 	Object.freeze({
 		_tag: 'RetryableFailure',

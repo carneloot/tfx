@@ -1,6 +1,8 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import * as PostgresJobStore from '@tfx/postgres/PostgresJobStore';
 import { Deferred, Effect, Fiber, Layer, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import * as TestClock from 'effect/testing/TestClock';
 import { JobRuntime } from 'tfx/JobRuntime';
 import * as JobRuntimeLive from 'tfx/JobRuntime';
@@ -11,8 +13,13 @@ import { describe, expect, it } from 'vitest';
 import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import { FoodAmountMg } from '../../src/domain/pet-food/FoodAmount.js';
+import {
+	IanaTimeZone,
+	LocalTime,
+} from '../../src/domain/pet-food/FoodDateTime.js';
 import { FoodEntryId } from '../../src/domain/pet-food/PetFood.js';
 import { PetName } from '../../src/domain/Pet.js';
+import * as FeedingReminderJob from '../../src/jobs/FeedingReminderJob.js';
 import * as FeedingReminderJobLive from '../../src/jobs/FeedingReminderJobLive.js';
 import { NotificationRepository } from '../../src/ports/NotificationRepository.js';
 import { PetFoodRepository } from '../../src/ports/PetFoodRepository.js';
@@ -37,6 +44,15 @@ const control: {
 	started: Deferred.Deferred<void> | undefined;
 } = { mode: 'success', calls: 0, started: undefined };
 const botId = Schema.decodeUnknownSync(BotId)('carneloot');
+const PersistedRetryOutcome = Schema.Struct({
+	outcome_json: Schema.Struct({
+		error: Schema.Struct({
+			_tag: Schema.Literal('FeedingReminderRetryError'),
+			message: Schema.String,
+			retryAfter: Schema.Number,
+		}),
+	}),
+});
 const telegram = Layer.succeed(Telegram, {
 	sendMessage: () =>
 		Effect.suspend(() => {
@@ -113,28 +129,37 @@ const scheduleFixture = Effect.gen(function* () {
 		Schema.decodeUnknownSync(PetName)(`Reminder ${suffix}`),
 	);
 	const food = yield* PetFoodRepository;
-	yield* food.setDayStart(pet.id, '00:00' as never, 'UTC' as never, 1_000);
-	yield* food.setReminderDelay(pet.id, 1_000 as never, 1_000);
+	yield* food.setDayStart(
+		pet.id,
+		Schema.decodeUnknownSync(LocalTime)('00:00'),
+		Schema.decodeUnknownSync(IanaTimeZone)('UTC'),
+		DateTime.makeUnsafe(1_000),
+	);
+	yield* food.setReminderDelay(
+		pet.id,
+		Duration.seconds(1),
+		DateTime.makeUnsafe(1_000),
+	);
 	const entry = yield* food.insert({
 		id: Schema.decodeUnknownSync(FoodEntryId)(crypto.randomUUID()),
 		petId: pet.id,
 		recordedBy: user.user.id,
 		amountMg: Schema.decodeUnknownSync(FoodAmountMg)(50_000),
-		fedAt: 2_000,
+		fedAt: DateTime.makeUnsafe(2_000),
 		source: {
 			botId,
 			updateId: telegramId,
 			messageChatId: null,
 			messageId: null,
 		},
-		now: 2_000,
+		now: DateTime.makeUnsafe(2_000),
 	});
 	yield* (yield* ReminderScheduler).replaceForLatest({
 		botId,
 		ownerUserId: user.user.id,
 		petId: pet.id,
 		foodEntryId: entry.id,
-		runAt: 3_000,
+		runAt: DateTime.makeUnsafe(3_000),
 	});
 	const sql = yield* PgClient.PgClient;
 	const [event] = yield* sql<{
@@ -144,7 +169,9 @@ const scheduleFixture = Effect.gen(function* () {
 	return { user, pet, entry, event: event! };
 });
 const runFresh = Effect.provide(
-	Effect.flatMap(JobRuntime, (jobs) => jobs.runOne({ leaseDuration: 100 })),
+	Effect.flatMap(JobRuntime, (jobs) =>
+		jobs.runOne({ leaseDuration: Duration.millis(100) }),
+	),
 	Layer.fresh(runtime),
 );
 
@@ -201,6 +228,22 @@ else
 		});
 
 		it('persists unknown without resend and schedules exact rate retry', async () => {
+			const legacyError = Schema.decodeUnknownSync(
+				FeedingReminderJob.FeedingReminderError,
+			)({
+				_tag: 'FeedingReminderRetryError',
+				message: 'legacy retry',
+				retryAfter: 2_000,
+			});
+			if (
+				legacyError._tag !== 'FeedingReminderRetryError' ||
+				legacyError.retryAfter === undefined
+			)
+				throw new Error('expected retry error with delay');
+			expect(Duration.equals(legacyError.retryAfter, Duration.seconds(2))).toBe(
+				true,
+			);
+
 			for (const mode of ['network', 'rate'] as const) {
 				control.mode = mode;
 				control.calls = 0;
@@ -218,8 +261,29 @@ else
 						expect(delivery?.status).toBe('unknown');
 						expect(yield* runFresh).toBeUndefined();
 					} else {
-						expect(first).toMatchObject({ status: 'scheduled', runAt: 5_000 });
+						expect(first).toMatchObject({
+							status: 'scheduled',
+							runAt: DateTime.makeUnsafe(5_000),
+						});
 						expect(delivery?.retry_at?.getTime()).toBe(5_000);
+						const [rawOutcome] = yield* sql<
+							Record<string, unknown>
+						>`SELECT outcome_json FROM tfx_feeding_e2e.case_jobs WHERE id=${fixture.event.job_id}::uuid`;
+						const persisted = Schema.decodeUnknownSync(PersistedRetryOutcome)(
+							rawOutcome,
+						);
+						expect(persisted.outcome_json.error.retryAfter).toBe(2_000);
+						const decodedError = Schema.decodeUnknownSync(
+							FeedingReminderJob.FeedingReminderError,
+						)(persisted.outcome_json.error);
+						if (
+							decodedError._tag !== 'FeedingReminderRetryError' ||
+							decodedError.retryAfter === undefined
+						)
+							throw new Error('expected persisted retry error with delay');
+						expect(
+							Duration.equals(decodedError.retryAfter, Duration.seconds(2)),
+						).toBe(true);
 					}
 				});
 				await Effect.runPromise(Effect.provide(program, layer));
@@ -246,7 +310,7 @@ else
 				yield* TestClock.setTime(3_101);
 				yield* (yield* NotificationRepository).recoverExpired(
 					Schema.decodeUnknownSync(EventId)(fixture.event.id),
-					3_101,
+					DateTime.makeUnsafe(3_101),
 				);
 				const [unknown] = yield* sql<{
 					status: string;
@@ -268,14 +332,14 @@ else
 					petId: fixture.pet.id,
 					recordedBy: fixture.user.user.id,
 					amountMg: Schema.decodeUnknownSync(FoodAmountMg)(1_000),
-					fedAt: 2_500,
+					fedAt: DateTime.makeUnsafe(2_500),
 					source: {
 						botId,
 						updateId: Math.floor(Math.random() * 1_000_000_000) + 1_000_000_001,
 						messageChatId: null,
 						messageId: null,
 					},
-					now: 2_500,
+					now: DateTime.makeUnsafe(2_500),
 				});
 				yield* TestClock.setTime(3_000);
 				yield* runFresh;

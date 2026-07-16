@@ -1,4 +1,6 @@
 import { Deferred, Effect, Fiber, Layer, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import * as TestClock from 'effect/testing/TestClock';
 import { Telegram } from 'tfx/Telegram';
 import {
@@ -68,14 +70,14 @@ describe('Telegram delivery classification', () => {
 					}),
 				),
 			),
-		).toMatchObject({ _tag: 'Retryable', delay: 2_000 });
+		).toMatchObject({ _tag: 'Retryable', delay: Duration.seconds(2) });
 		for (const reason of [
 			new InternalTelegramError({ errorCode: 500, description: 'internal' }),
 			new ConflictError({ errorCode: 409, description: 'conflict' }),
 		])
 			expect(
 				Dispatch.classifyTelegramError(telegramError(reason)),
-			).toMatchObject({ _tag: 'Retryable', delay: 30_000 });
+			).toMatchObject({ _tag: 'Retryable', delay: Duration.seconds(30) });
 		for (const reason of [
 			new InvalidRequestError({ errorCode: 400, description: 'bad' }),
 			new ForbiddenError({ errorCode: 403, description: 'no' }),
@@ -130,7 +132,7 @@ const harness = (
 		| 'unknown' = options.initialState ?? 'pending';
 	let calls = 0;
 	let lastError: unknown;
-	let lastRetryAt: number | null = null;
+	let lastRetryAt: DateTime.Utc | null = null;
 	let cancelled = false;
 	let materializations = 0;
 	const repository: NotificationRepositoryService = {
@@ -153,12 +155,12 @@ const harness = (
 				ownerUserId: ownerId,
 				petId,
 				foodEntryId,
-				scheduledFor: 0,
+				scheduledFor: DateTime.makeUnsafe(0),
 				status: options.eventStatus ?? 'scheduled',
 				dedupeKey: 'key',
 				jobId: null,
-				createdAt: 0,
-				updatedAt: 0,
+				createdAt: DateTime.makeUnsafe(0),
+				updatedAt: DateTime.makeUnsafe(0),
 				completedAt: null,
 				cancelledAt: null,
 			}),
@@ -186,8 +188,8 @@ const harness = (
 								status: 'sending',
 								attemptGeneration: 1,
 								attemptCount: options.attemptCount ?? 1,
-								sendingStartedAt: 0,
-								sendingLeaseExpiresAt: 30_000,
+								sendingStartedAt: DateTime.makeUnsafe(0),
+								sendingLeaseExpiresAt: DateTime.makeUnsafe(30_000),
 								retryAt: null,
 								retryable: false,
 								telegramBotId: null,
@@ -196,8 +198,8 @@ const harness = (
 								sentAt: null,
 								failedAt: null,
 								unknownAt: null,
-								createdAt: 0,
-								updatedAt: 0,
+								createdAt: DateTime.makeUnsafe(0),
+								updatedAt: DateTime.makeUnsafe(0),
 							},
 						};
 					})
@@ -239,8 +241,12 @@ const harness = (
 						: 0,
 				completed:
 					state === 'sent' || state === 'unknown' || state === 'permanent',
-				earliestRetryAt: state === 'failed' ? (lastRetryAt ?? 2_000) : null,
-				earliestSendingLeaseExpiry: state === 'sending' ? 30_000 : null,
+				earliestRetryAt:
+					state === 'failed'
+						? (lastRetryAt ?? DateTime.makeUnsafe(2_000))
+						: null,
+				earliestSendingLeaseExpiry:
+					state === 'sending' ? DateTime.makeUnsafe(30_000) : null,
 			}),
 	};
 	const food: PetFoodRepositoryService = {
@@ -250,9 +256,9 @@ const harness = (
 				petId,
 				dayStart: '00:00' as never,
 				timeZone: 'UTC' as never,
-				reminderDelayMs: 1_000 as never,
-				createdAt: 0,
-				updatedAt: 0,
+				reminderDelay: Duration.seconds(1),
+				createdAt: DateTime.makeUnsafe(0),
+				updatedAt: DateTime.makeUnsafe(0),
 			}),
 		setDayStart: () => Effect.die('unused'),
 		setReminderDelay: () => Effect.die('unused'),
@@ -268,18 +274,19 @@ const harness = (
 				petId,
 				recordedBy: ownerId,
 				amountMg: 1_000 as never,
-				fedAt: 0,
+				fedAt: DateTime.makeUnsafe(0),
 				sourceBotId: botId,
 				sourceUpdateId: 1,
 				sourceMessageChatId: null,
 				sourceMessageId: null,
-				createdAt: 0,
-				updatedAt: 0,
+				createdAt: DateTime.makeUnsafe(0),
+				updatedAt: DateTime.makeUnsafe(0),
 			}),
 		findBySource: () => Effect.die('unused'),
 		findBusinessDuplicate: () => Effect.die('unused'),
 		insert: () => Effect.die('unused'),
-		status: () => Effect.succeed({ totalMg: 120_000, latestFedAt: 0 }),
+		status: () =>
+			Effect.succeed({ totalMg: 120_000, latestFedAt: DateTime.makeUnsafe(0) }),
 	};
 	const layer = Layer.mergeAll(
 		Layer.succeed(NotificationRepository, repository),
@@ -313,8 +320,8 @@ const harness = (
 					id: petId,
 					ownerId,
 					name: Schema.decodeUnknownSync(PetName)('Rex'),
-					createdAt: 0,
-					updatedAt: 0,
+					createdAt: DateTime.makeUnsafe(0),
+					updatedAt: DateTime.makeUnsafe(0),
 				}),
 			addOwned: () => Effect.die('unused'),
 			listOwned: () => Effect.die('unused'),
@@ -399,7 +406,7 @@ describe('delivery dispatcher', () => {
 			_tag: 'Failure',
 			failure: {
 				_tag: 'FeedingReminderRetryError',
-				retryAfter: 2_000,
+				retryAfter: Duration.millis(2_000),
 			},
 		});
 	});
@@ -445,9 +452,12 @@ describe('delivery dispatcher', () => {
 			);
 			expect(result).toMatchObject({
 				_tag: 'Failure',
-				failure: { _tag: 'FeedingReminderRetryError', retryAfter: 30_000 },
+				failure: {
+					_tag: 'FeedingReminderRetryError',
+					retryAfter: Duration.millis(30_000),
+				},
 			});
-			expect(h.lastRetryAt()).toBe(30_000);
+			expect(DateTime.toEpochMillis(h.lastRetryAt()!)).toBe(30_000);
 		}
 		const final = harness(
 			Effect.fail(
@@ -482,8 +492,8 @@ describe('delivery dispatcher', () => {
 
 	it('uses earliest future retry and active sending lease delays', async () => {
 		for (const [initialState, retryAfter] of [
-			['failed', 2_000],
-			['sending', 30_000],
+			['failed', Duration.seconds(2)],
+			['sending', Duration.seconds(30)],
 		] as const) {
 			const h = harness(Effect.succeed({ message_id: 1 }), { initialState });
 			const result = await Effect.runPromise(
@@ -506,7 +516,10 @@ describe('delivery dispatcher', () => {
 			);
 			expect(result).toMatchObject({
 				_tag: 'Failure',
-				failure: { _tag: 'FeedingReminderRetryError', retryAfter: 30_000 },
+				failure: {
+					_tag: 'FeedingReminderRetryError',
+					retryAfter: Duration.millis(30_000),
+				},
 			});
 			expect(h.state()).toBe('sending');
 		},

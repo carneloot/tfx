@@ -1,4 +1,5 @@
 import { Deferred, Effect } from 'effect';
+import * as DateTime from 'effect/DateTime';
 import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
@@ -149,7 +150,7 @@ describe('MemoryConversationStorage', () => {
 					step: 'one',
 					state: 0,
 					lastUpdateId: undefined,
-					expiresAt: 1000,
+					expiresAt: DateTime.makeUnsafe(1000),
 				},
 				'fail',
 			);
@@ -188,7 +189,7 @@ describe('MemoryConversationStorage', () => {
 					step: 'one',
 					state: 0,
 					lastUpdateId: undefined,
-					expiresAt: 1000,
+					expiresAt: DateTime.makeUnsafe(1000),
 				},
 				'fail',
 			);

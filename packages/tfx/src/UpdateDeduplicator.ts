@@ -1,4 +1,5 @@
 import * as Context from 'effect/Context';
+import type * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 
@@ -40,18 +41,18 @@ export interface UpdateDeduplicatorService {
 	readonly claim: (
 		updateId: number,
 		options?: {
-			readonly leaseDuration?: number;
-			readonly waitTimeout?: number;
+			readonly leaseDuration?: Duration.Duration;
+			readonly waitTimeout?: Duration.Duration;
 		},
 	) => Effect.Effect<Claim, UpdateDeduplicatorError>;
 	readonly heartbeat: (
 		token: ClaimToken,
-		leaseDuration?: number,
+		leaseDuration?: Duration.Duration,
 	) => Effect.Effect<boolean, UpdateDeduplicatorError>;
 	readonly complete: (
 		token: ClaimToken,
 		outcome: CompletedOutcome,
-		retention?: number,
+		retention?: Duration.Duration,
 	) => Effect.Effect<boolean, UpdateDeduplicatorError>;
 	readonly release: (
 		token: ClaimToken,

@@ -1,3 +1,5 @@
+import * as Duration from 'effect/Duration';
+import * as Option from 'effect/Option';
 import type * as Schema from 'effect/Schema';
 
 import type * as ConversationInput from './ConversationInput.js';
@@ -52,7 +54,7 @@ export interface Conversation<
 	readonly initialize: (input: Startup) => StateOf<Steps[Initial]>;
 	readonly error: ES;
 	readonly middleware: M;
-	readonly idleTimeout: number | undefined;
+	readonly idleTimeout: Duration.Duration | undefined;
 	readonly migrations: VersionedSchema.AnyHistory | undefined;
 }
 export interface Options<
@@ -69,7 +71,7 @@ export interface Options<
 	readonly initialize: (input: Startup) => StateOf<Steps[Initial]>;
 	readonly error: ES;
 	readonly middleware?: M;
-	readonly idleTimeout?: number;
+	readonly idleTimeout?: Duration.Input;
 	readonly migrations?: VersionedSchema.AnyHistory;
 }
 export const make = <
@@ -89,11 +91,18 @@ export const make = <
 		throw new Error('Conversation version must be positive');
 	if (!(options.initialStep in options.steps))
 		throw new Error(`Unknown initial step '${String(options.initialStep)}'`);
+	const idleTimeout =
+		options.idleTimeout === undefined
+			? undefined
+			: Option.getOrThrowWith(
+					Duration.fromInput(options.idleTimeout),
+					() => new TypeError('idleTimeout is not a valid Duration input'),
+				);
 	if (
-		options.idleTimeout !== undefined &&
-		(!Number.isFinite(options.idleTimeout) || options.idleTimeout <= 0)
+		idleTimeout !== undefined &&
+		(!Duration.isFinite(idleTimeout) || !Duration.isPositive(idleTimeout))
 	)
-		throw new Error('idleTimeout must be finite and positive');
+		throw new TypeError('idleTimeout must be finite and positive');
 	if (
 		options.migrations !== undefined &&
 		options.migrations.latest.version !== options.version
@@ -111,7 +120,7 @@ export const make = <
 		initialize: options.initialize,
 		error: options.error,
 		middleware: Object.freeze([...(options.middleware ?? [])]) as unknown as M,
-		idleTimeout: options.idleTimeout,
+		idleTimeout,
 		migrations: options.migrations,
 	});
 };

@@ -1,4 +1,5 @@
 import { Effect, Layer, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
 import { MessageContext, type MessageContextService } from 'tfx/MessageContext';
 import { describe, expect, it } from 'vitest';
 
@@ -33,7 +34,11 @@ const context = (message: unknown) =>
 const repository = Layer.succeed(UserRepository, {
 	registerTelegramProfile: (profile) =>
 		Effect.succeed({
-			user: { id: userId, createdAt: 0, updatedAt: 0 },
+			user: {
+				id: userId,
+				createdAt: DateTime.makeUnsafe(0),
+				updatedAt: DateTime.makeUnsafe(0),
+			},
 			profile,
 		}),
 	findByTelegram: () => Effect.die('unused'),

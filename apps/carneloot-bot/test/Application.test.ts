@@ -1,4 +1,5 @@
 import { Effect, Layer, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
 import { describe, expect, it } from 'vitest';
 
 import * as AddPet from '../src/application/AddPet.js';
@@ -41,8 +42,8 @@ const pets = Layer.succeed(PetRepository, {
 					id: '00000000-0000-4000-8000-000000000002' as never,
 					ownerId,
 					name,
-					createdAt: 0,
-					updatedAt: 0,
+					createdAt: DateTime.makeUnsafe(0),
+					updatedAt: DateTime.makeUnsafe(0),
 				})
 			: Effect.fail(new PetNameAlreadyExists({ message: 'duplicate' }));
 	},
@@ -52,7 +53,14 @@ const users = (id = ownerId) =>
 	Layer.succeed(UserRepository, {
 		registerTelegramProfile: () => Effect.die('unused'),
 		findByTelegram: () =>
-			Effect.succeed({ user: { id, createdAt: 0, updatedAt: 0 }, profile }),
+			Effect.succeed({
+				user: {
+					id,
+					createdAt: DateTime.makeUnsafe(0),
+					updatedAt: DateTime.makeUnsafe(0),
+				},
+				profile,
+			}),
 	});
 const request = { ownerId, botId, telegramUserId, name: ' Rex ' };
 describe('pet application services', () => {

@@ -1,7 +1,15 @@
 import * as BunRuntime from '@effect/platform-bun/BunRuntime';
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
-import { Console, Data, Effect, Layer, Redacted, Schedule } from 'effect';
+import {
+	Console,
+	Data,
+	Duration,
+	Effect,
+	Layer,
+	Redacted,
+	Schedule,
+} from 'effect';
 import { BotRuntime } from 'tfx/BotRuntime';
 import { Telegram } from 'tfx/Telegram';
 import * as TelegramSchemas from 'tfx/TelegramSchemas';
@@ -54,17 +62,17 @@ const config = {
 	databaseUrl: Redacted.make('postgres://redacted'),
 	botId: 'carneloot',
 	botUsername: 'carneloot_bot',
-	pollingTimeoutSeconds: 30,
-	pollingRetryDelayMillis: 100,
+	pollingTimeout: Duration.seconds(30),
+	pollingRetryDelay: Duration.millis(100),
 	dispatchCapacity: 8,
 	dispatchConcurrency: 2,
-	jobIdleMillis: 10,
-	jobLeaseMillis: 30_000,
-	jobHeartbeatMillis: 10_000,
-	dedupLeaseMillis: 30_000,
-	dedupHeartbeatMillis: 10_000,
-	dedupWaitMillis: 1_000,
-	dedupRetentionMillis: 86_400_000,
+	jobIdle: Duration.millis(10),
+	jobLease: Duration.seconds(30),
+	jobHeartbeat: Duration.seconds(10),
+	dedupLease: Duration.seconds(30),
+	dedupHeartbeat: Duration.seconds(10),
+	dedupWait: Duration.seconds(1),
+	dedupRetention: Duration.days(1),
 	tfxSchema: 'tfx_demo_test',
 	tfxTablePrefix: 'case_',
 } satisfies AppConfigService;

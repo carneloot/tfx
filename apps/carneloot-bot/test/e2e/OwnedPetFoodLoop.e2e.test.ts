@@ -1,6 +1,7 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { Data, Effect, Layer, Redacted } from 'effect';
+import * as Duration from 'effect/Duration';
 import { BotRuntime } from 'tfx/BotRuntime';
 import { Telegram } from 'tfx/Telegram';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
@@ -37,17 +38,17 @@ const config: AppConfigService = {
 	databaseUrl: { toString: () => '<redacted>' } as never,
 	botId: 'carneloot',
 	botUsername: 'carneloot_bot',
-	pollingTimeoutSeconds: 30,
-	pollingRetryDelayMillis: 100,
+	pollingTimeout: Duration.seconds(30),
+	pollingRetryDelay: Duration.millis(100),
 	dispatchCapacity: 16,
 	dispatchConcurrency: 4,
-	jobIdleMillis: 10_000,
-	jobLeaseMillis: 30_000,
-	jobHeartbeatMillis: 10_000,
-	dedupLeaseMillis: 30_000,
-	dedupHeartbeatMillis: 10_000,
-	dedupWaitMillis: 1_000,
-	dedupRetentionMillis: 86_400_000,
+	jobIdle: Duration.seconds(10),
+	jobLease: Duration.seconds(30),
+	jobHeartbeat: Duration.seconds(10),
+	dedupLease: Duration.seconds(30),
+	dedupHeartbeat: Duration.seconds(10),
+	dedupWait: Duration.seconds(1),
+	dedupRetention: Duration.days(1),
 	tfxSchema: 'tfx_owned_pet_e2e',
 	tfxTablePrefix: 'case_',
 };

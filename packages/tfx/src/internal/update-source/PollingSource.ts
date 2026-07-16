@@ -12,7 +12,7 @@ export class FatalPollingDispatchError extends Data.TaggedError(
 )<{ readonly updateId: number }> {}
 
 export interface PollingOptions {
-	readonly timeout?: number;
+	readonly timeout?: Duration.Input;
 	readonly limit?: number;
 	readonly allowedUpdates?: ReadonlyArray<string>;
 	readonly commands?: ReadonlyArray<{
@@ -21,12 +21,19 @@ export interface PollingOptions {
 	}>;
 	readonly languageCode?: string;
 	readonly dropPendingUpdates?: boolean;
-	readonly retryDelay?: number;
+	readonly retryDelay?: Duration.Input;
+}
+export interface NormalizedPollingOptions extends Omit<
+	PollingOptions,
+	'timeout' | 'retryDelay'
+> {
+	readonly timeout: Duration.Duration;
+	readonly retryDelay: Duration.Duration;
 }
 const retryDelay = (
 	error: TelegramError,
-	fallback: number,
-): number | undefined => {
+	fallback: Duration.Duration,
+): Duration.Duration | undefined => {
 	const reason = error.reason;
 	if (
 		reason._tag === 'AuthenticationError' ||
@@ -37,13 +44,11 @@ const retryDelay = (
 		reason._tag === 'UnknownError'
 	)
 		return undefined;
-	return reason._tag === 'RateLimitError'
-		? Duration.toMillis(reason.retryAfter)
-		: fallback;
+	return reason._tag === 'RateLimitError' ? reason.retryAfter : fallback;
 };
 export const make = (
 	telegram: TelegramService,
-	options: PollingOptions,
+	options: NormalizedPollingOptions,
 ): UpdateSourceService => ({
 	run: (deliver) =>
 		Effect.gen(function* () {
@@ -65,14 +70,14 @@ export const make = (
 				const request = telegram.getUpdates({
 					...(offset === undefined ? {} : { offset }),
 					limit: options.limit ?? 100,
-					timeout: options.timeout ?? 30,
+					timeout: Duration.toSeconds(options.timeout),
 					...(first && options.allowedUpdates !== undefined
 						? { allowed_updates: options.allowedUpdates }
 						: {}),
 				});
 				return Effect.matchEffect(request, {
 					onFailure: (error) => {
-						const delay = retryDelay(error, options.retryDelay ?? 1000);
+						const delay = retryDelay(error, options.retryDelay);
 						return delay === undefined
 							? Effect.fail(error)
 							: Effect.andThen(Effect.sleep(delay), poll);
@@ -113,6 +118,6 @@ export const make = (
 		}),
 });
 export const fromContext = (
-	options: PollingOptions,
+	options: NormalizedPollingOptions,
 ): Effect.Effect<UpdateSourceService, never, Telegram> =>
 	Effect.map(Telegram, (telegram) => make(telegram, options));

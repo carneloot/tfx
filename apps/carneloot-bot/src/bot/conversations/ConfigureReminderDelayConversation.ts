@@ -1,5 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import * as Data from 'effect/Data';
+import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 import {
@@ -14,7 +15,7 @@ import * as ConfigureReminderDelay from '../../application/ConfigureReminderDela
 import { authorize } from '../../application/PetFoodAccess.js';
 import { ApplicationError } from '../../domain/ApplicationError.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../domain/Ids.js';
-import { ReminderDelayMs } from '../../domain/pet-food/PetFood.js';
+import { ReminderDelay } from '../../domain/pet-food/PetFood.js';
 import { PetName } from '../../domain/Pet.js';
 import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
 import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
@@ -31,7 +32,7 @@ const PetState = Schema.Struct(Base);
 const ActionState = Schema.Struct({
 	...Base,
 	petId: PetId,
-	currentDelayMs: Schema.NullOr(ReminderDelayMs),
+	currentDelay: Schema.NullOr(ReminderDelay),
 });
 const SelectedState = Schema.Struct({ ...Base, petId: PetId });
 const Text = ConversationInput.text(Schema.String);
@@ -86,7 +87,9 @@ export const parseDuration = (input: string) => {
 	const amount = Number((match[1] ?? '').replace(',', '.'));
 	const unit = (match[2] ?? '').toLocaleLowerCase('en-US');
 	const milliseconds = amount * (unit.startsWith('h') ? 3_600_000 : 60_000);
-	return Schema.decodeUnknownEffect(ReminderDelayMs)(milliseconds).pipe(
+	return Schema.decodeUnknownEffect(ReminderDelay)(
+		Duration.millis(milliseconds),
+	).pipe(
 		Effect.mapError(
 			() =>
 				new InvalidReminderDurationError({ message: 'Invalid duration range' }),
@@ -94,7 +97,8 @@ export const parseDuration = (input: string) => {
 	);
 };
 
-const normalized = (milliseconds: number) => {
+const normalized = (duration: Duration.Duration) => {
+	const milliseconds = Duration.toMillis(duration);
 	if (milliseconds % 3_600_000 === 0) {
 		const hours = milliseconds / 3_600_000;
 		return `${hours} ${hours === 1 ? 'hora' : 'horas'}`;
@@ -120,7 +124,7 @@ export const declaration = Conversation.make('configure-reminder-delay', {
 			input: Text,
 		}),
 	},
-	idleTimeout: 15 * 60 * 1000,
+	idleTimeout: '15 minutes',
 	error: ApplicationError,
 });
 
@@ -155,7 +159,7 @@ export const built = ConversationBuilder.done(
 							return ConversationBuilder.to('action', {
 								...state,
 								petId: pet.id,
-								currentDelayMs: settings?.reminderDelayMs ?? null,
+								currentDelay: settings?.reminderDelay ?? null,
 							});
 						}),
 					),
@@ -166,9 +170,9 @@ export const built = ConversationBuilder.done(
 			enter: (state) =>
 				required(
 					reply(
-						state.currentDelayMs === null
+						state.currentDelay === null
 							? 'Notificações desativadas. Envie Definir.'
-							: `Atraso atual: ${normalized(state.currentDelayMs)}. Envie Alterar ou Excluir.`,
+							: `Atraso atual: ${normalized(state.currentDelay)}. Envie Alterar ou Excluir.`,
 					),
 				),
 			onInput: (state, value) =>
@@ -181,11 +185,11 @@ export const built = ConversationBuilder.done(
 							pets: state.pets,
 							petId: state.petId,
 						};
-						if (value === 'Definir' && state.currentDelayMs === null)
+						if (value === 'Definir' && state.currentDelay === null)
 							return ConversationBuilder.to('duration', selected);
-						if (value === 'Alterar' && state.currentDelayMs !== null)
+						if (value === 'Alterar' && state.currentDelay !== null)
 							return ConversationBuilder.to('duration', selected);
-						if (value === 'Excluir' && state.currentDelayMs !== null)
+						if (value === 'Excluir' && state.currentDelay !== null)
 							return ConversationBuilder.to('deleteConfirm', selected);
 						return yield* invalidChoice;
 					}),

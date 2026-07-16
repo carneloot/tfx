@@ -1,11 +1,13 @@
 import * as Cause from 'effect/Cause';
-import * as Clock from 'effect/Clock';
 import * as Context from 'effect/Context';
 import * as Data from 'effect/Data';
+import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 import * as Layer from 'effect/Layer';
 import * as Option from 'effect/Option';
+import * as Schema from 'effect/Schema';
 
 import * as Job from './Job.js';
 import * as JobOutcome from './JobOutcome.js';
@@ -23,14 +25,14 @@ export interface JobRuntimeService {
 	readonly schedule: <J extends Job.Job<any, any, any>>(
 		job: J,
 		payload: Job.Payload<J>,
-		options?: { readonly runAt?: number; readonly conflictKey?: string },
+		options?: { readonly runAt?: DateTime.Utc; readonly conflictKey?: string },
 	) => Effect.Effect<
 		{ readonly id: string; readonly replacedId?: string },
 		JobStoreError
 	>;
 	readonly runOne: (options?: {
-		readonly leaseDuration?: number;
-		readonly heartbeatInterval?: number;
+		readonly leaseDuration?: Duration.Input;
+		readonly heartbeatInterval?: Duration.Input;
 	}) => Effect.Effect<JobRecord | undefined, JobRuntimeError>;
 	readonly problems: Effect.Effect<ReadonlyArray<JobRecord>, JobStoreError>;
 	readonly cancel: (id: string) => Effect.Effect<boolean, JobStoreError>;
@@ -67,7 +69,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 				problems: store.problems(),
 				schedule: (job, payload, options = {}) =>
 					Effect.gen(function* () {
-						const now = yield* Clock.currentTimeMillis;
+						const now = yield* DateTime.now;
 						const result = yield* store.schedule({
 							name: job.name,
 							payload,
@@ -88,11 +90,26 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 					}),
 				runOne: (options = {}) =>
 					Effect.gen(function* () {
-						const leaseDuration = options.leaseDuration ?? 30_000;
-						const heartbeatInterval =
-							options.heartbeatInterval ??
-							Math.max(1, Math.floor(leaseDuration / 3));
-						if (!Number.isFinite(leaseDuration) || leaseDuration <= 0)
+						const leaseDuration = Option.getOrElse(
+							Duration.fromInput(options.leaseDuration ?? Duration.seconds(30)),
+							() => Duration.infinity,
+						);
+						const heartbeatInterval = Option.getOrElse(
+							Duration.fromInput(
+								options.heartbeatInterval ??
+									Duration.millis(
+										Math.max(
+											1,
+											Math.floor(Duration.toMillis(leaseDuration) / 3),
+										),
+									),
+							),
+							() => Duration.infinity,
+						);
+						if (
+							!Duration.isFinite(leaseDuration) ||
+							!Duration.isPositive(leaseDuration)
+						)
 							return yield* Effect.fail(
 								new JobRuntimeOptionsError({
 									option: 'leaseDuration',
@@ -100,9 +117,9 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 								}),
 							);
 						if (
-							!Number.isFinite(heartbeatInterval) ||
-							heartbeatInterval <= 0 ||
-							heartbeatInterval >= leaseDuration
+							!Duration.isFinite(heartbeatInterval) ||
+							!Duration.isPositive(heartbeatInterval) ||
+							!Duration.isLessThan(heartbeatInterval, leaseDuration)
 						)
 							return yield* Effect.fail(
 								new JobRuntimeOptionsError({
@@ -111,7 +128,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 										'heartbeatInterval must be finite, positive, and less than leaseDuration',
 								}),
 							);
-						const claimNow = yield* Clock.currentTimeMillis;
+						const claimNow = yield* DateTime.now;
 						const claim = yield* store.claimForMigration(
 							claimNow,
 							leaseDuration,
@@ -122,7 +139,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							yield* store.quarantineMigration(
 								claim.token,
 								'UnknownDeclaration',
-								yield* Clock.currentTimeMillis,
+								yield* DateTime.now,
 							);
 							return yield* store.get(claim.record.id);
 						}
@@ -133,7 +150,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							yield* store.quarantineMigration(
 								claim.token,
 								'NewerPayloadVersion',
-								yield* Clock.currentTimeMillis,
+								yield* DateTime.now,
 							);
 							return yield* store.get(claim.record.id);
 						}
@@ -149,7 +166,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 								migrated.failure instanceof VersionedSchemaError
 									? migrated.failure.reason
 									: 'InvalidPayload',
-								yield* Clock.currentTimeMillis,
+								yield* DateTime.now,
 							);
 							return yield* store.get(claim.record.id);
 						}
@@ -159,14 +176,14 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							claim.token,
 							migrated.success,
 							declaration.payload.latest.version,
-							yield* Clock.currentTimeMillis,
+							yield* DateTime.now,
 							leaseDuration,
 						);
 						if (running.cancellationRequested) {
 							yield* store.finalize(
 								claim.token,
 								JobOutcome.cancelled,
-								yield* Clock.currentTimeMillis,
+								yield* DateTime.now,
 							);
 							return yield* store.get(running.id);
 						}
@@ -183,7 +200,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 									const current = yield* store.get(running.id);
 									if (current?.cancellationRequested)
 										return yield* Effect.fail(new CancelSignal());
-									const heartbeatNow = yield* Clock.currentTimeMillis;
+									const heartbeatNow = yield* DateTime.now;
 									if (
 										!(yield* store.heartbeat(
 											claim.token,
@@ -201,7 +218,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 						);
 						if (Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause))
 							return yield* Effect.failCause(exit.cause);
-						const finishedAt = yield* Clock.currentTimeMillis;
+						const finishedAt = yield* DateTime.now;
 						const afterExecution = yield* store.get(running.id);
 						if (afterExecution?.cancellationRequested) {
 							yield* store.finalize(
@@ -241,21 +258,67 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							)
 								return yield* Effect.fail(failure.value);
 							if (Option.isSome(failure)) {
-								const decision = declaration.retry(failure.value);
-								if (decision?._tag === 'Retry') {
-									const retryAfter =
-										decision.retryAfter ??
-										declaration.schedule(running.attempts);
+								const encoded = yield* Effect.result(
+									Effect.try(() =>
+										Schema.encodeSync(declaration.error)(failure.value),
+									),
+								);
+								if (encoded._tag === 'Failure') {
 									yield* store.finalize(
 										claim.token,
-										JobOutcome.retryableFailure(failure.value, retryAfter),
+										JobOutcome.fatalFailure('Invalid job error encoding'),
 										finishedAt,
-										finishedAt + retryAfter,
+									);
+									return yield* store.get(running.id);
+								}
+								let decision: Job.RetryDecision | undefined;
+								try {
+									decision = declaration.retry(failure.value);
+								} catch {
+									yield* store.finalize(
+										claim.token,
+										JobOutcome.fatalFailure('Invalid retry policy'),
+										finishedAt,
+									);
+									return yield* store.get(running.id);
+								}
+								if (decision?._tag === 'Retry') {
+									let retryAfter: Duration.Duration;
+									try {
+										retryAfter =
+											decision.retryAfter ??
+											declaration.schedule(running.attempts);
+									} catch {
+										yield* store.finalize(
+											claim.token,
+											JobOutcome.fatalFailure('Invalid retry policy'),
+											finishedAt,
+										);
+										return yield* store.get(running.id);
+									}
+									const retryAt = DateTime.addDuration(finishedAt, retryAfter);
+									if (
+										!Duration.isFinite(retryAfter) ||
+										Duration.isNegative(retryAfter) ||
+										!Number.isFinite(DateTime.toDateUtc(retryAt).getTime())
+									) {
+										yield* store.finalize(
+											claim.token,
+											JobOutcome.fatalFailure('Invalid retry policy'),
+											finishedAt,
+										);
+										return yield* store.get(running.id);
+									}
+									yield* store.finalize(
+										claim.token,
+										JobOutcome.retryableFailure(encoded.success, retryAfter),
+										finishedAt,
+										retryAt,
 									);
 								} else
 									yield* store.finalize(
 										claim.token,
-										JobOutcome.permanentFailure(failure.value),
+										JobOutcome.permanentFailure(encoded.success),
 										finishedAt,
 									);
 							} else
@@ -268,9 +331,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 						return yield* store.get(running.id);
 					}),
 				cancel: (id) =>
-					Effect.flatMap(Clock.currentTimeMillis, (now) =>
-						store.cancel(id, now),
-					),
+					Effect.flatMap(DateTime.now, (now) => store.cancel(id, now)),
 				releaseFailed: (id, options) =>
 					Effect.gen(function* () {
 						const record = yield* store.get(id);
@@ -296,7 +357,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 									'Job payload cannot be released',
 								),
 							);
-						const now = yield* Clock.currentTimeMillis;
+						const now = yield* DateTime.now;
 						return yield* store.releaseFailed(id, now, options);
 					}),
 			};

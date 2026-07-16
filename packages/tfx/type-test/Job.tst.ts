@@ -1,5 +1,8 @@
 import { Context, Effect, Schema } from 'effect';
+import type * as DateTime from 'effect/DateTime';
+import type * as Duration from 'effect/Duration';
 import { DispatchOutcome, Job, VersionedSchema } from 'tfx';
+import type { JobRecord } from 'tfx/JobStore';
 class Repository extends Context.Service<
 	Repository,
 	{ readonly value: string }
@@ -36,3 +39,24 @@ Job.implement(declaration, () => Effect.fail('bad'));
 const invalidCompleted: DispatchOutcome.CompletedOutcome =
 	DispatchOutcome.retryableFailure('retry');
 void invalidCompleted;
+declare const record: JobRecord;
+const runAt: DateTime.Utc = record.runAt;
+const leaseExpiresAt: DateTime.Utc | undefined = record.leaseExpiresAt;
+const createdAt: DateTime.Utc = record.createdAt;
+const updatedAt: DateTime.Utc = record.updatedAt;
+declare const retryDecision: Job.RetryDecision;
+if (retryDecision._tag === 'Retry') {
+	const retryAfter: Duration.Duration | undefined = retryDecision.retryAfter;
+	void retryAfter;
+}
+// @ts-expect-error epoch numbers are not job instants
+const invalidRunAt: number = record.runAt;
+// @ts-expect-error duration millis are not retry durations
+const invalidRetryAfter: number | undefined =
+	retryDecision._tag === 'Retry' ? retryDecision.retryAfter : undefined;
+void runAt;
+void leaseExpiresAt;
+void createdAt;
+void updatedAt;
+void invalidRunAt;
+void invalidRetryAfter;

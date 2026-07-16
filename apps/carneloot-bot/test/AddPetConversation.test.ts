@@ -1,4 +1,5 @@
 import { Effect, Layer, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
 import { Conversations } from 'tfx/Conversations';
 import * as ConversationsLive from 'tfx/Conversations';
 import { ConversationStorage } from 'tfx/ConversationStorage';
@@ -26,7 +27,11 @@ const userLayer = Layer.succeed(UserRepository, {
 	registerTelegramProfile: () => Effect.die('unused'),
 	findByTelegram: () =>
 		Effect.succeed({
-			user: { id: ownerId, createdAt: 0, updatedAt: 0 },
+			user: {
+				id: ownerId,
+				createdAt: DateTime.makeUnsafe(0),
+				updatedAt: DateTime.makeUnsafe(0),
+			},
 			profile: {
 				botId,
 				telegramUserId,
@@ -65,8 +70,8 @@ describe('AddPetConversation', () => {
 					id: '00000000-0000-4000-8000-000000000002' as never,
 					ownerId,
 					name,
-					createdAt: 0,
-					updatedAt: 0,
+					createdAt: DateTime.makeUnsafe(0),
+					updatedAt: DateTime.makeUnsafe(0),
 					...(inserts++, {}),
 				})),
 			listOwned: () => Effect.succeed([]),

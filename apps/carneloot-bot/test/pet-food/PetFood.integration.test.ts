@@ -1,5 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { Deferred, Effect, Fiber, Layer, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
 import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
@@ -154,7 +155,7 @@ else
 						(sql) =>
 							({
 								replaceForLatest: (schedule) =>
-									sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id,food_entry_id,run_at) VALUES ('replace',${schedule.petId}::uuid,${schedule.foodEntryId}::uuid,${new Date(schedule.runAt)})`.pipe(
+									sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id,food_entry_id,run_at) VALUES ('replace',${schedule.petId}::uuid,${schedule.foodEntryId}::uuid,${DateTime.toDateUtc(schedule.runAt)})`.pipe(
 										Effect.mapError(
 											(cause) =>
 												new ReminderSchedulerError({

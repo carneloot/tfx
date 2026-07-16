@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect';
+import { Duration, Effect, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import * as Conversation from '../src/Conversation.js';
@@ -28,10 +28,35 @@ const declaration = Conversation.make('counter', {
 			input: ConversationInput.text(Schema.NumberFromString),
 		}),
 	},
-	idleTimeout: 1000,
+	idleTimeout: '1 second',
 });
 
 describe('Conversation', () => {
+	it('normalizes string idle timeout input', () => {
+		if (declaration.idleTimeout === undefined)
+			throw new Error('expected idle timeout');
+		expect(Duration.equals(declaration.idleTimeout, Duration.seconds(1))).toBe(
+			true,
+		);
+	});
+
+	it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+		'rejects non-positive or non-finite idle timeout %s',
+		(idleTimeout) => {
+			expect(() =>
+				Conversation.make('invalid-timeout', {
+					version: 1,
+					startup: Schema.Number,
+					error: TestConversationError,
+					initialStep: 'count',
+					initialize: (value) => value,
+					steps: declaration.steps,
+					idleTimeout,
+				}),
+			).toThrow('idleTimeout must be finite and positive');
+		},
+	);
+
 	it('requires migration history to end at the declared version', () => {
 		const migrations = VersionedSchema.history(
 			VersionedSchema.version(1, Schema.Number),

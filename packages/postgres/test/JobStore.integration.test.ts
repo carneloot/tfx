@@ -1,5 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import { Deferred, Effect, Fiber, Layer } from 'effect';
+import { DateTime, Deferred, Duration, Effect, Fiber, Layer } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import { JobStore } from '../../tfx/src/JobStore.js';
@@ -22,6 +22,54 @@ if (!enabled)
 else {
 	jobStoreConformance('postgres', layer);
 	describe('PostgreSQL job claim coordination', () => {
+		it('preserves numeric retry duration JSON encoding', async () => {
+			const id = crypto.randomUUID();
+			const now = DateTime.makeUnsafe('2024-01-02T03:04:05.000Z');
+			const program = Effect.gen(function* () {
+				const sql = yield* PgClient.PgClient;
+				const store = yield* JobStore;
+				const scheduled = yield* store.schedule({
+					name: `encoding-${id}`,
+					payload: {},
+					payloadVersion: 1,
+					maxAttempts: 2,
+					runAt: now,
+					now,
+				});
+				const claim = yield* store.claimForMigration(now, Duration.seconds(1));
+				if (claim === undefined || claim.record.id !== scheduled.record.id)
+					throw new Error('expected scheduled job claim');
+				yield* store.promoteToRunning(
+					claim.token,
+					{},
+					1,
+					now,
+					Duration.seconds(1),
+				);
+				yield* store.finalize(
+					claim.token,
+					{
+						_tag: 'RetryableFailure',
+						error: 'retry',
+						retryAfter: Duration.millis(100),
+					},
+					now,
+					DateTime.addDuration(now, Duration.millis(100)),
+				);
+				const rows = yield* sql<{
+					outcome_json: { retryAfter?: unknown };
+				}>`SELECT outcome_json FROM tfx_job_test.case_jobs WHERE id=${scheduled.record.id}::uuid`;
+				return { record: yield* store.get(scheduled.record.id), rows };
+			});
+			const result = await Effect.runPromise(
+				Effect.provide(program, diagnosticLayer),
+			);
+			expect(result.rows[0]?.outcome_json.retryAfter).toBe(100);
+			if (result.record?.outcome?._tag !== 'RetryableFailure')
+				throw new Error('expected retryable outcome');
+			expect(Duration.toMillis(result.record.outcome.retryAfter!)).toBe(100);
+		});
+
 		it('continues past an exhausted expired execution claim', async () => {
 			const program = Effect.gen(function* () {
 				const store = yield* JobStore;
@@ -30,21 +78,33 @@ else {
 					payload: {},
 					payloadVersion: 1,
 					maxAttempts: 1,
-					runAt: 0,
-					now: 0,
+					runAt: DateTime.makeUnsafe(0),
+					now: DateTime.makeUnsafe(0),
 				});
-				const firstClaim = yield* store.claimForMigration(0, 1);
+				const firstClaim = yield* store.claimForMigration(
+					DateTime.makeUnsafe(0),
+					Duration.millis(1),
+				);
 				if (firstClaim === undefined) throw new Error('expected first claim');
-				yield* store.promoteToRunning(firstClaim.token, {}, 1, 0, 1);
+				yield* store.promoteToRunning(
+					firstClaim.token,
+					{},
+					1,
+					DateTime.makeUnsafe(0),
+					Duration.millis(1),
+				);
 				const second = yield* store.schedule({
 					name: `due-${crypto.randomUUID()}`,
 					payload: {},
 					payloadVersion: 1,
 					maxAttempts: 2,
-					runAt: 0,
-					now: 0,
+					runAt: DateTime.makeUnsafe(0),
+					now: DateTime.makeUnsafe(0),
 				});
-				const claim = yield* store.claimForMigration(2, 10);
+				const claim = yield* store.claimForMigration(
+					DateTime.makeUnsafe(2),
+					Duration.millis(10),
+				);
 				return { first: yield* store.get(first.record.id), second, claim };
 			});
 			const result = await Effect.runPromise(Effect.provide(program, layer()));
@@ -82,10 +142,13 @@ else {
 					payload: {},
 					payloadVersion: 1,
 					maxAttempts: 2,
-					runAt: 0,
-					now: 0,
+					runAt: DateTime.makeUnsafe(0),
+					now: DateTime.makeUnsafe(0),
 				});
-				const claim = yield* store.claimForMigration(2, 10);
+				const claim = yield* store.claimForMigration(
+					DateTime.makeUnsafe(2),
+					Duration.millis(10),
+				);
 				yield* sql`DELETE FROM tfx_job_test.case_jobs WHERE declaration=${declaration}`;
 				return { due, claim };
 			});
@@ -104,8 +167,8 @@ else {
 						payload: {},
 						payloadVersion: 1,
 						maxAttempts: 2,
-						runAt: 0,
-						now: 0,
+						runAt: DateTime.makeUnsafe(0),
+						now: DateTime.makeUnsafe(0),
 					});
 				const readyA = yield* Deferred.make<void>();
 				const readyB = yield* Deferred.make<void>();
@@ -113,7 +176,13 @@ else {
 				const claim = (ready: Deferred.Deferred<void>) =>
 					Effect.andThen(
 						Deferred.succeed(ready, undefined),
-						Effect.andThen(Deferred.await(go), store.claimForMigration(0, 10)),
+						Effect.andThen(
+							Deferred.await(go),
+							store.claimForMigration(
+								DateTime.makeUnsafe(0),
+								Duration.millis(10),
+							),
+						),
 					);
 				const a = yield* Effect.forkChild(claim(readyA));
 				const b = yield* Effect.forkChild(claim(readyB));

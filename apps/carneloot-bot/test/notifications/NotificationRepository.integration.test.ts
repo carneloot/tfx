@@ -1,5 +1,7 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { Effect, Layer, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import { describe, expect, it } from 'vitest';
 
 import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
@@ -38,7 +40,7 @@ const create = (
 	repository: typeof NotificationRepository.Service,
 	ownerUserId: any,
 	suffix: string,
-	now = 1_000,
+	now = DateTime.makeUnsafe(1_000),
 ) =>
 	repository.createEvent({
 		id: eventId(),
@@ -73,9 +75,9 @@ else
 					ownerUserId: owner.user.id,
 					petId: null,
 					foodEntryId: null,
-					scheduledFor: 1_000,
+					scheduledFor: DateTime.makeUnsafe(1_000),
 					dedupeKey: `dedupe-${crypto.randomUUID()}`,
-					now: 1_000,
+					now: DateTime.makeUnsafe(1_000),
 				} as const;
 				const first = yield* repository.createEvent(input);
 				const repeated = yield* repository.createEvent({
@@ -100,12 +102,12 @@ else
 				const a = yield* repository.materializeRecipients(
 					first.id,
 					[recipient],
-					1_000,
+					DateTime.makeUnsafe(1_000),
 				);
 				const b = yield* repository.materializeRecipients(
 					first.id,
 					[{ ...recipient, id: deliveryId() }],
-					1_001,
+					DateTime.makeUnsafe(1_001),
 				);
 				const unreachable = yield* repository.materializeRecipients(
 					first.id,
@@ -122,35 +124,38 @@ else
 							},
 						},
 					],
-					1_001,
+					DateTime.makeUnsafe(1_001),
 				);
 				const attached = yield* repository.attachJob(
 					first.id,
 					crypto.randomUUID(),
-					1_002,
+					DateTime.makeUnsafe(1_002),
 				);
 				const attachedTwice = yield* repository.attachJob(
 					first.id,
 					crypto.randomUUID(),
-					1_003,
+					DateTime.makeUnsafe(1_003),
 				);
-				const cancelled = yield* repository.cancelEvent(first.id, 1_004);
+				const cancelled = yield* repository.cancelEvent(
+					first.id,
+					DateTime.makeUnsafe(1_004),
+				);
 				const context = yield* repository.getDispatchContext(first.id);
 				const materializeCancelled = yield* Effect.result(
 					repository.materializeRecipients(
 						first.id,
 						[{ ...recipient, id: deliveryId(), channel: 'telegram-backup' }],
-						1_005,
+						DateTime.makeUnsafe(1_005),
 					),
 				);
 				const claimCancelled = yield* repository.claimNext(
 					first.id,
-					1_005,
-					100,
+					DateTime.makeUnsafe(1_005),
+					Duration.millis(100),
 				);
 				const cancelledSummary = yield* repository.summarizeAndComplete(
 					first.id,
-					1_006,
+					DateTime.makeUnsafe(1_006),
 				);
 				return {
 					first,
@@ -215,12 +220,20 @@ else
 							channel: 'telegram',
 						},
 					],
-					1_000,
+					DateTime.makeUnsafe(1_000),
 				);
 				const claims = yield* Effect.all(
 					[
-						repository.claimNext(event.id, 2_000, 100),
-						repository.claimNext(event.id, 2_000, 100),
+						repository.claimNext(
+							event.id,
+							DateTime.makeUnsafe(2_000),
+							Duration.millis(100),
+						),
+						repository.claimNext(
+							event.id,
+							DateTime.makeUnsafe(2_000),
+							Duration.millis(100),
+						),
 					],
 					{ concurrency: 'unbounded' },
 				);
@@ -235,8 +248,8 @@ else
 						{ ...first.token, generation: 0 },
 						{ message: 'stale' },
 						true,
-						3_000,
-						2_100,
+						DateTime.makeUnsafe(3_000),
+						DateTime.makeUnsafe(2_100),
 					),
 				).toBe(false);
 				expect(
@@ -244,14 +257,22 @@ else
 						first.token,
 						{ code: 'rate-limit', message: 'later' },
 						true,
-						3_000,
-						2_100,
+						DateTime.makeUnsafe(3_000),
+						DateTime.makeUnsafe(2_100),
 					),
 				).toBe(true);
 				expect(
-					yield* repository.claimNext(event.id, 2_999, 100),
+					yield* repository.claimNext(
+						event.id,
+						DateTime.makeUnsafe(2_999),
+						Duration.millis(100),
+					),
 				).toBeUndefined();
-				const second = yield* repository.claimNext(event.id, 3_000, 100);
+				const second = yield* repository.claimNext(
+					event.id,
+					DateTime.makeUnsafe(3_000),
+					Duration.millis(100),
+				);
 				if (second === undefined) throw new Error('expected due retry');
 				expect(second.delivery).toMatchObject({
 					attemptGeneration: 2,
@@ -261,7 +282,7 @@ else
 					yield* repository.finalizeUnknown(
 						second.token,
 						{ message: 'ambiguous' },
-						3_010,
+						DateTime.makeUnsafe(3_010),
 					),
 				).toBe(true);
 				expect(
@@ -269,7 +290,7 @@ else
 						first.token,
 						botId,
 						10,
-						3_020,
+						DateTime.makeUnsafe(3_020),
 					),
 				).toBe(false);
 				expect(
@@ -277,7 +298,7 @@ else
 						second.token,
 						botId,
 						10,
-						3_020,
+						DateTime.makeUnsafe(3_020),
 					),
 				).toBe(true);
 
@@ -298,14 +319,22 @@ else
 							channel: 'telegram',
 						},
 					],
-					4_000,
+					DateTime.makeUnsafe(4_000),
 				);
-				yield* repository.claimNext(recoveryEvent.id, 4_000, 10);
+				yield* repository.claimNext(
+					recoveryEvent.id,
+					DateTime.makeUnsafe(4_000),
+					Duration.millis(10),
+				);
 				expect(
-					yield* repository.recoverAllExpired(4_011),
+					yield* repository.recoverAllExpired(DateTime.makeUnsafe(4_011)),
 				).toBeGreaterThanOrEqual(1);
 				expect(
-					yield* repository.claimNext(recoveryEvent.id, 5_000, 10),
+					yield* repository.claimNext(
+						recoveryEvent.id,
+						DateTime.makeUnsafe(5_000),
+						Duration.millis(10),
+					),
 				).toBeUndefined();
 			});
 			await Effect.runPromise(Effect.provide(program, layer));
@@ -343,36 +372,59 @@ else
 							channel: 'telegram',
 						},
 					],
-					1_000,
+					DateTime.makeUnsafe(1_000),
 				);
-				const first = yield* repository.claimNext(event.id, 2_000, 100);
+				const first = yield* repository.claimNext(
+					event.id,
+					DateTime.makeUnsafe(2_000),
+					Duration.millis(100),
+				);
 				if (first === undefined) throw new Error('missing first');
-				yield* repository.finalizeSent(first.token, botId, 100, 2_001);
-				const second = yield* repository.claimNext(event.id, 2_000, 100);
+				yield* repository.finalizeSent(
+					first.token,
+					botId,
+					100,
+					DateTime.makeUnsafe(2_001),
+				);
+				const second = yield* repository.claimNext(
+					event.id,
+					DateTime.makeUnsafe(2_000),
+					Duration.millis(100),
+				);
 				if (second === undefined) throw new Error('missing second');
 				yield* repository.finalizeFailed(
 					second.token,
 					{ message: 'retry' },
 					true,
-					5_000,
-					2_001,
+					DateTime.makeUnsafe(5_000),
+					DateTime.makeUnsafe(2_001),
 				);
-				const open = yield* repository.summarizeAndComplete(event.id, 2_002);
+				const open = yield* repository.summarizeAndComplete(
+					event.id,
+					DateTime.makeUnsafe(2_002),
+				);
 				expect(open).toMatchObject({
 					retryableFailed: 1,
 					completed: false,
-					earliestRetryAt: 5_000,
+					earliestRetryAt: DateTime.makeUnsafe(5_000),
 				});
-				const retry = yield* repository.claimNext(event.id, 5_000, 100);
+				const retry = yield* repository.claimNext(
+					event.id,
+					DateTime.makeUnsafe(5_000),
+					Duration.millis(100),
+				);
 				if (retry === undefined) throw new Error('missing retry');
 				yield* repository.finalizeFailed(
 					retry.token,
 					{ message: 'permanent' },
 					false,
 					null,
-					5_001,
+					DateTime.makeUnsafe(5_001),
 				);
-				const done = yield* repository.summarizeAndComplete(event.id, 5_002);
+				const done = yield* repository.summarizeAndComplete(
+					event.id,
+					DateTime.makeUnsafe(5_002),
+				);
 				expect(done).toMatchObject({
 					pending: 0,
 					sending: 0,
@@ -417,7 +469,7 @@ else
 							channel: 'telegram',
 						},
 					],
-					1_000,
+					DateTime.makeUnsafe(1_000),
 				);
 				const [second] = yield* repository.materializeRecipients(
 					secondEvent.id,
@@ -431,10 +483,18 @@ else
 							channel: 'telegram',
 						},
 					],
-					1_000,
+					DateTime.makeUnsafe(1_000),
 				);
-				const a = yield* repository.claimNext(event.id, 2_000, 100);
-				const b = yield* repository.claimNext(secondEvent.id, 2_000, 100);
+				const a = yield* repository.claimNext(
+					event.id,
+					DateTime.makeUnsafe(2_000),
+					Duration.millis(100),
+				);
+				const b = yield* repository.claimNext(
+					secondEvent.id,
+					DateTime.makeUnsafe(2_000),
+					Duration.millis(100),
+				);
 				if (
 					a === undefined ||
 					b === undefined ||
@@ -442,9 +502,19 @@ else
 					second === undefined
 				)
 					throw new Error('missing claims');
-				yield* repository.finalizeSent(a.token, botId, 999, 2_001);
+				yield* repository.finalizeSent(
+					a.token,
+					botId,
+					999,
+					DateTime.makeUnsafe(2_001),
+				);
 				const duplicateMessage = yield* Effect.result(
-					repository.finalizeSent(b.token, botId, 999, 2_001),
+					repository.finalizeSent(
+						b.token,
+						botId,
+						999,
+						DateTime.makeUnsafe(2_001),
+					),
 				);
 				return { invalidRole, invalidShape, unsafeChat, duplicateMessage };
 			});

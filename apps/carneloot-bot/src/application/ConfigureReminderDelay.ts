@@ -1,17 +1,17 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import * as Clock from 'effect/Clock';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
 import { InvalidDomainInput } from '../domain/DomainError.js';
-import { ReminderDelayMs } from '../domain/pet-food/PetFood.js';
+import { ReminderDelay } from '../domain/pet-food/PetFood.js';
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { ReminderScheduler } from '../ports/ReminderScheduler.js';
 import { authorize, type PetFoodAccess } from './PetFoodAccess.js';
 
 export const set = (access: PetFoodAccess, delayInput: unknown) =>
 	Effect.gen(function* () {
-		const delay = yield* Schema.decodeUnknownEffect(ReminderDelayMs)(
+		const delay = yield* Schema.decodeUnknownEffect(ReminderDelay)(
 			delayInput,
 		).pipe(
 			Effect.mapError(
@@ -28,7 +28,7 @@ export const set = (access: PetFoodAccess, delayInput: unknown) =>
 		return yield* sql.withTransaction(
 			Effect.gen(function* () {
 				yield* authorize(access);
-				const now = yield* Clock.currentTimeMillis;
+				const now = yield* DateTime.now;
 				const settings = yield* repository.setReminderDelay(
 					access.petId,
 					delay,
@@ -41,7 +41,7 @@ export const set = (access: PetFoodAccess, delayInput: unknown) =>
 						ownerUserId: access.ownerId,
 						petId: access.petId,
 						foodEntryId: latest.id,
-						runAt: latest.fedAt + delay,
+						runAt: DateTime.addDuration(latest.fedAt, delay),
 					});
 				return settings;
 			}),
@@ -56,7 +56,7 @@ export const remove = (access: PetFoodAccess) =>
 		return yield* sql.withTransaction(
 			Effect.gen(function* () {
 				yield* authorize(access);
-				const now = yield* Clock.currentTimeMillis;
+				const now = yield* DateTime.now;
 				const settings = yield* repository.clearReminderDelay(
 					access.petId,
 					now,

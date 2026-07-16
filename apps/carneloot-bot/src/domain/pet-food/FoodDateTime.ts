@@ -141,5 +141,5 @@ export const parse = (input: string, timeZone: IanaTimeZone) =>
 			return yield* Effect.fail(
 				invalid('Yearless date is more than 366 local days away'),
 			);
-		return DateTime.toEpochMillis(parsed);
+		return DateTime.toUtc(parsed);
 	});

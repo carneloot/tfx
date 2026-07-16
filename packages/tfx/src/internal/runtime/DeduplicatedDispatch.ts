@@ -1,3 +1,4 @@
+import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 
 import * as DispatchOutcome from '../../DispatchOutcome.js';
@@ -14,21 +15,24 @@ export const dispatch = (
 	update: Update,
 	behavior: Effect.Effect<DispatchOutcome.DispatchOutcome, never>,
 	options: {
-		readonly leaseDuration?: number;
-		readonly waitTimeout?: number;
-		readonly retention?: number;
-		readonly heartbeatInterval?: number;
+		readonly leaseDuration?: Duration.Duration;
+		readonly waitTimeout?: Duration.Duration;
+		readonly retention?: Duration.Duration;
+		readonly heartbeatInterval?: Duration.Duration;
 	} = {},
 ): Effect.Effect<DispatchOutcome.DispatchOutcome, never> =>
 	Effect.uninterruptibleMask((restore) =>
 		Effect.gen(function* () {
-			const leaseDuration = options.leaseDuration ?? 30_000;
+			const leaseDuration = options.leaseDuration ?? Duration.seconds(30);
 			const heartbeatInterval =
-				options.heartbeatInterval ?? Math.max(1, Math.floor(leaseDuration / 3));
+				options.heartbeatInterval ??
+				Duration.millis(
+					Math.max(1, Math.floor(Duration.toMillis(leaseDuration) / 3)),
+				);
 			if (
-				!Number.isFinite(heartbeatInterval) ||
-				heartbeatInterval <= 0 ||
-				heartbeatInterval >= leaseDuration
+				!Duration.isFinite(heartbeatInterval) ||
+				!Duration.isPositive(heartbeatInterval) ||
+				!Duration.isLessThan(heartbeatInterval, leaseDuration)
 			)
 				return DispatchOutcome.fatal(
 					'heartbeatInterval must be finite, positive, and less than leaseDuration',

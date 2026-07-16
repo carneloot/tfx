@@ -1,4 +1,4 @@
-import { Deferred, Effect, Fiber } from 'effect';
+import { Deferred, Duration, Effect, Fiber } from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
@@ -20,14 +20,20 @@ describe('UpdateDeduplicator', () => {
 		await run(
 			Effect.gen(function* () {
 				const dedup = yield* UpdateDeduplicator;
-				const first = yield* dedup.claim(1, { leaseDuration: 1000 });
+				const first = yield* dedup.claim(1, {
+					leaseDuration: Duration.millis(1000),
+				});
 				if (first._tag !== 'Acquired') throw new Error('expected acquired');
 				const concurrent = yield* dedup.claim(1);
 				if (concurrent._tag !== 'InProgress')
 					throw new Error('expected in progress');
 				const waiter = yield* Effect.forkChild(concurrent.await);
 				expect(
-					yield* dedup.complete(first.token, DispatchOutcome.handled, 1000),
+					yield* dedup.complete(
+						first.token,
+						DispatchOutcome.handled,
+						Duration.millis(1000),
+					),
 				).toBe(true);
 				expect(yield* Fiber.join(waiter)).toEqual({
 					_tag: 'Completed',
@@ -62,9 +68,13 @@ describe('UpdateDeduplicator', () => {
 		await run(
 			Effect.gen(function* () {
 				const dedup = yield* UpdateDeduplicator;
-				const first = yield* dedup.claim(2, { leaseDuration: 100 });
+				const first = yield* dedup.claim(2, {
+					leaseDuration: Duration.millis(100),
+				});
 				if (first._tag !== 'Acquired') return;
-				expect(yield* dedup.heartbeat(first.token, 200)).toBe(true);
+				expect(yield* dedup.heartbeat(first.token, Duration.millis(200))).toBe(
+					true,
+				);
 				yield* TestClock.adjust('201 millis');
 				const second = yield* dedup.claim(2);
 				if (second._tag !== 'Acquired') return;
@@ -199,7 +209,7 @@ describe('UpdateDeduplicator', () => {
 			Effect.gen(function* () {
 				const dedup = yield* UpdateDeduplicator;
 				const exit = yield* Effect.exit(
-					dedup.claim(1, { leaseDuration: Infinity }),
+					dedup.claim(1, { leaseDuration: Duration.infinity }),
 				);
 				expect(exit._tag).toBe('Failure');
 			}),

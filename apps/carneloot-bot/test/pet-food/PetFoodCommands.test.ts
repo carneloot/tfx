@@ -1,5 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { Effect, Layer, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
 import * as TestClock from 'effect/testing/TestClock';
 import * as DispatchOutcome from 'tfx/DispatchOutcome';
 import * as MemoryUpdateDeduplicator from 'tfx/MemoryUpdateDeduplicator';
@@ -54,11 +55,15 @@ const pet = {
 	ownerId,
 	name: petName,
 	nameKey: 'rex',
-	createdAt: 0,
-	updatedAt: 0,
+	createdAt: DateTime.makeUnsafe(0),
+	updatedAt: DateTime.makeUnsafe(0),
 };
 const current = {
-	user: { id: ownerId, createdAt: 0, updatedAt: 0 },
+	user: {
+		id: ownerId,
+		createdAt: DateTime.makeUnsafe(0),
+		updatedAt: DateTime.makeUnsafe(0),
+	},
 	profile: {
 		botId,
 		telegramUserId,
@@ -72,9 +77,9 @@ const settings = Schema.decodeUnknownSync(PetFoodSettings)({
 	petId,
 	dayStart: Schema.decodeUnknownSync(LocalTime)('00:00'),
 	timeZone: Schema.decodeUnknownSync(IanaTimeZone)('UTC'),
-	reminderDelayMs: null,
-	createdAt: 0,
-	updatedAt: 0,
+	reminderDelay: null,
+	createdAt: DateTime.makeUnsafe(0),
+	updatedAt: DateTime.makeUnsafe(0),
 });
 const replies: Array<string> = [];
 const reactions: Array<unknown> = [];
@@ -138,7 +143,7 @@ const provide = <A, E, R>(
 		),
 	) as Effect.Effect<A, E>;
 const repository = (
-	summary: { totalMg: number; latestFedAt: number | null },
+	summary: { totalMg: number; latestFedAt: DateTime.Utc | null },
 	configured = true,
 ): PetFoodRepositoryService => ({
 	lockOwnedPet: () => Effect.succeed(pet),
@@ -182,7 +187,7 @@ describe('pet food command handlers', () => {
 			await run(
 				repository({
 					totalMg: 120_000,
-					latestFedAt: now - (2 * 60 + 15) * 60_000,
+					latestFedAt: DateTime.makeUnsafe(now - (2 * 60 + 15) * 60_000),
 				}),
 			),
 		).toBe('- Rex: 120 g, última vez há 2 horas e 15 minutos');
@@ -197,13 +202,13 @@ describe('pet food command handlers', () => {
 			petId,
 			recordedBy: ownerId,
 			amountMg: Schema.decodeUnknownSync(FoodAmountMg)(50_000),
-			fedAt: Date.parse('2024-01-02T12:00:00Z'),
+			fedAt: DateTime.makeUnsafe('2024-01-02T12:00:00Z'),
 			sourceBotId: botId,
 			sourceUpdateId: 10,
 			sourceMessageChatId: chatId,
 			sourceMessageId: 7,
-			createdAt: 0,
-			updatedAt: 0,
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
 		};
 		const food: PetFoodRepositoryService = {
 			...repository({ totalMg: 0, latestFedAt: null }),
@@ -234,7 +239,7 @@ describe('pet food command handlers', () => {
 		const completed = await Effect.runPromise(
 			Effect.provide(
 				Effect.andThen(
-					TestClock.setTime(entry.fedAt),
+					TestClock.setTime(DateTime.toEpochMillis(entry.fedAt)),
 					provide(
 						AddFoodConversation.built.implementations.amount.onInput(
 							selected.state as never,
@@ -265,13 +270,13 @@ describe('pet food command handlers', () => {
 			petId,
 			recordedBy: ownerId,
 			amountMg: Schema.decodeUnknownSync(FoodAmountMg)(50_000),
-			fedAt: 0,
+			fedAt: DateTime.makeUnsafe(0),
 			sourceBotId: botId,
 			sourceUpdateId: 10,
 			sourceMessageChatId: chatId,
 			sourceMessageId: 7,
-			createdAt: 0,
-			updatedAt: 0,
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
 		};
 		const food: PetFoodRepositoryService = {
 			...repository({ totalMg: 0, latestFedAt: null }),
@@ -375,13 +380,13 @@ describe('pet food command handlers', () => {
 			petId,
 			recordedBy: ownerId,
 			amountMg: Schema.decodeUnknownSync(FoodAmountMg)(1_000),
-			fedAt: 0,
+			fedAt: DateTime.makeUnsafe(0),
 			sourceBotId: botId,
 			sourceUpdateId: 1,
 			sourceMessageChatId: chatId,
 			sourceMessageId: 7,
-			createdAt: 0,
-			updatedAt: 0,
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
 		};
 		const food: PetFoodRepositoryService = {
 			...repository({ totalMg: 0, latestFedAt: null }),
@@ -430,20 +435,20 @@ describe('pet food command handlers', () => {
 			petId,
 			recordedBy: ownerId,
 			amountMg: Schema.decodeUnknownSync(FoodAmountMg)(50_000),
-			fedAt: Date.parse('2024-01-01T10:00:00Z'),
+			fedAt: DateTime.makeUnsafe('2024-01-01T10:00:00Z'),
 			sourceBotId: botId,
 			sourceUpdateId: 10,
 			sourceMessageChatId: chatId,
 			sourceMessageId: 7,
-			createdAt: 0,
-			updatedAt: 0,
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
 		};
 		const latest = {
 			...backdated,
 			id: Schema.decodeUnknownSync(FoodEntryId)(
 				'00000000-0000-4000-8000-000000000004',
 			),
-			fedAt: Date.parse('2024-01-02T12:00:00Z'),
+			fedAt: DateTime.makeUnsafe('2024-01-02T12:00:00Z'),
 		};
 		const food: PetFoodRepositoryService = {
 			...repository({ totalMg: 0, latestFedAt: null }),

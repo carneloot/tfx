@@ -1,4 +1,5 @@
 import { Effect, Layer } from 'effect';
+import * as DateTime from 'effect/DateTime';
 import { describe, expect, it } from 'vitest';
 
 import { ConversationStorage } from '../../src/ConversationStorage.js';
@@ -68,7 +69,7 @@ export const conversationStorageConformance = (
 							step: 'one',
 							state: 0,
 							lastUpdateId: undefined,
-							expiresAt: 0,
+							expiresAt: DateTime.makeUnsafe(0),
 						},
 						'fail',
 					);
@@ -95,7 +96,7 @@ export const conversationStorageConformance = (
 							step: 'one',
 							state: 0,
 							lastUpdateId: undefined,
-							expiresAt: 0,
+							expiresAt: DateTime.makeUnsafe(0),
 						},
 						'fail',
 					);

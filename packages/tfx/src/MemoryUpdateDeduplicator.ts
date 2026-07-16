@@ -1,5 +1,6 @@
-import * as Clock from 'effect/Clock';
+import * as DateTime from 'effect/DateTime';
 import * as Deferred from 'effect/Deferred';
+import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Semaphore from 'effect/Semaphore';
@@ -12,14 +13,14 @@ import {
 } from './UpdateDeduplicator.js';
 interface Row {
 	generation: number;
-	leaseExpiresAt: number;
+	leaseExpiresAt: DateTime.Utc;
 	completed?: CompletedOutcome;
-	retentionUntil?: number;
+	retentionUntil?: DateTime.Utc;
 	completion: Deferred.Deferred<ObservedCompletion>;
 	released: boolean;
 }
-const positive = (value: number, name: string): void => {
-	if (!Number.isFinite(value) || value <= 0)
+const positive = (value: Duration.Duration, name: string): void => {
+	if (!Duration.isFinite(value) || !Duration.isPositive(value))
 		throw new TypeError(`${name} must be finite and positive`);
 };
 const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
@@ -31,9 +32,9 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 		diagnostics: { mode: 'memory', backend: 'memory' },
 		claim: (updateId, options = {}) =>
 			Effect.gen(function* () {
-				const now = yield* Clock.currentTimeMillis;
-				const duration = options.leaseDuration ?? 30_000;
-				const waitTimeout = options.waitTimeout ?? 5_000;
+				const now = yield* DateTime.now;
+				const duration = options.leaseDuration ?? Duration.seconds(30);
+				const waitTimeout = options.waitTimeout ?? Duration.seconds(5);
 				positive(duration, 'leaseDuration');
 				positive(waitTimeout, 'waitTimeout');
 				const result = yield* locked(() => {
@@ -42,22 +43,27 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 						if (scanned++ >= 16) break;
 						if (
 							row.released ||
-							(row.completed !== undefined && row.retentionUntil! <= now)
+							(row.completed !== undefined &&
+								DateTime.isLessThanOrEqualTo(row.retentionUntil!, now))
 						)
 							rows.delete(id);
 					}
 					const current = rows.get(updateId);
-					if (current?.completed !== undefined && current.retentionUntil! > now)
+					if (
+						current?.completed !== undefined &&
+						DateTime.isGreaterThan(current.retentionUntil!, now)
+					)
 						return { _tag: 'Completed' as const, outcome: current.completed };
 					if (
 						current === undefined ||
 						current.released ||
-						current.leaseExpiresAt <= now ||
-						(current.completed !== undefined && current.retentionUntil! <= now)
+						DateTime.isLessThanOrEqualTo(current.leaseExpiresAt, now) ||
+						(current.completed !== undefined &&
+							DateTime.isLessThanOrEqualTo(current.retentionUntil!, now))
 					) {
 						const row: Row = {
 							generation: ++generation,
-							leaseExpiresAt: now + duration,
+							leaseExpiresAt: DateTime.addDuration(now, duration),
 							completion: Deferred.makeUnsafe<ObservedCompletion>(),
 							released: false,
 						};
@@ -80,10 +86,10 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 				});
 				return result;
 			}),
-		heartbeat: (token, duration = 30_000) =>
+		heartbeat: (token, duration = Duration.seconds(30)) =>
 			Effect.gen(function* () {
 				positive(duration, 'leaseDuration');
-				const now = yield* Clock.currentTimeMillis;
+				const now = yield* DateTime.now;
 				return yield* locked(() => {
 					const row = rows.get(token.updateId);
 					if (
@@ -93,14 +99,14 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 						row.completed !== undefined
 					)
 						return false;
-					row.leaseExpiresAt = now + duration;
+					row.leaseExpiresAt = DateTime.addDuration(now, duration);
 					return true;
 				});
 			}),
-		complete: (token, outcome, retention = 86_400_000) =>
+		complete: (token, outcome, retention = Duration.days(1)) =>
 			Effect.gen(function* () {
 				positive(retention, 'retention');
-				const now = yield* Clock.currentTimeMillis;
+				const now = yield* DateTime.now;
 				return yield* locked(() => {
 					const row = rows.get(token.updateId);
 					if (
@@ -111,7 +117,7 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 					)
 						return false;
 					row.completed = outcome;
-					row.retentionUntil = now + retention;
+					row.retentionUntil = DateTime.addDuration(now, retention);
 					Deferred.doneUnsafe(
 						row.completion,
 						Effect.succeed({ _tag: 'Completed', outcome }),
@@ -130,7 +136,7 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 				)
 					return false;
 				row.released = true;
-				row.leaseExpiresAt = 0;
+				row.leaseExpiresAt = DateTime.makeUnsafe(0);
 				Deferred.doneUnsafe(
 					row.completion,
 					Effect.succeed({ _tag: 'Released' }),

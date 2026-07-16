@@ -30,16 +30,16 @@ import * as AppRouter from './Router.js';
 const runtimeOptions = (config: AppConfigService, router: Router) => ({
 	capacity: config.dispatchCapacity,
 	concurrency: config.dispatchConcurrency,
-	leaseDuration: config.dedupLeaseMillis,
-	waitTimeout: config.dedupWaitMillis,
-	retention: config.dedupRetentionMillis,
-	heartbeatInterval: config.dedupHeartbeatMillis,
+	leaseDuration: config.dedupLease,
+	waitTimeout: config.dedupWait,
+	retention: config.dedupRetention,
+	heartbeatInterval: config.dedupHeartbeat,
 	router,
 });
 const workerOptions = (config: AppConfigService) => ({
-	idleDelay: config.jobIdleMillis,
-	leaseDuration: config.jobLeaseMillis,
-	heartbeatInterval: config.jobHeartbeatMillis,
+	idleDelay: config.jobIdle,
+	leaseDuration: config.jobLease,
+	heartbeatInterval: config.jobHeartbeat,
 });
 
 /** Minimal runtime topology for tests supplying already-built infrastructure. */

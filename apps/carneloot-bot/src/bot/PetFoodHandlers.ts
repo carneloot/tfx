@@ -1,4 +1,4 @@
-import * as Clock from 'effect/Clock';
+import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
@@ -69,10 +69,8 @@ export const startConfigureReminderDelay = start(
 	ConfigureReminderDelayConversation.built,
 );
 
-const elapsed = (now: number, then: number) => {
-	const minutes = Math.floor(
-		Duration.toMillis(Duration.millis(Math.max(0, now - then))) / 60_000,
-	);
+const elapsed = (now: DateTime.Utc, then: DateTime.Utc) => {
+	const minutes = Math.floor(Duration.toMinutes(DateTime.distance(then, now)));
 	if (minutes < 1) return 'menos de 1 minuto';
 	const hours = Math.floor(minutes / 60);
 	const remainder = minutes % 60;
@@ -100,7 +98,7 @@ export const foodStatus = Effect.gen(function* () {
 		yield* context.reply('Você não tem pets');
 		return;
 	}
-	const now = yield* Clock.currentTimeMillis;
+	const now = yield* DateTime.now;
 	const lines = statuses.map((status) => {
 		if (status._tag === 'MissingDayStart')
 			return `Você não configurou o início do dia para o pet ${status.pet.name}.`;

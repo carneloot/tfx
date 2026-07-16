@@ -1,5 +1,5 @@
 import * as NodeHttpClient from '@effect/platform-node/NodeHttpClient';
-import { Effect, Layer } from 'effect';
+import { Duration, Effect, Layer } from 'effect';
 import * as Redacted from 'effect/Redacted';
 import { DispatchOutcome } from 'tfx';
 import { BotRuntime } from 'tfx/BotRuntime';
@@ -20,17 +20,17 @@ const config: AppConfigService = {
 	databaseUrl: Redacted.make('postgres://unused'),
 	botId: 'carneloot',
 	botUsername: 'carneloot_bot',
-	pollingTimeoutSeconds: 30,
-	pollingRetryDelayMillis: 100,
+	pollingTimeout: Duration.seconds(30),
+	pollingRetryDelay: Duration.millis(100),
 	dispatchCapacity: 8,
 	dispatchConcurrency: 2,
-	jobIdleMillis: 100,
-	jobLeaseMillis: 30_000,
-	jobHeartbeatMillis: 10_000,
-	dedupLeaseMillis: 30_000,
-	dedupHeartbeatMillis: 10_000,
-	dedupWaitMillis: 1_000,
-	dedupRetentionMillis: 86_400_000,
+	jobIdle: Duration.millis(100),
+	jobLease: Duration.seconds(30),
+	jobHeartbeat: Duration.seconds(10),
+	dedupLease: Duration.seconds(30),
+	dedupHeartbeat: Duration.seconds(10),
+	dedupWait: Duration.seconds(1),
+	dedupRetention: Duration.days(1),
 	tfxSchema: 'tfx',
 	tfxTablePrefix: 'smoke_',
 };

@@ -1,8 +1,14 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import * as Clock from 'effect/Clock';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
+
+const Timestamp = Schema.Union([
+	Schema.DateTimeUtcFromDate,
+	Schema.DateTimeUtcFromString,
+	Schema.DateTimeUtcFromMillis,
+]);
 
 import {
 	DomainPersistenceError,
@@ -28,19 +34,9 @@ const Row = Schema.Struct({
 	first_name: Schema.String,
 	last_name: Schema.NullOr(Schema.String),
 	private_chat_id: Schema.Union([Schema.String, Schema.Number]),
-	created_at: Schema.Unknown,
-	updated_at: Schema.Unknown,
+	created_at: Timestamp,
+	updated_at: Timestamp,
 });
-const time = (value: unknown) => {
-	const result =
-		value instanceof Date
-			? value.getTime()
-			: typeof value === 'string' || typeof value === 'number'
-				? new Date(value).getTime()
-				: Number.NaN;
-	if (!Number.isFinite(result)) throw new Error('Invalid timestamp');
-	return result;
-};
 const safeUserId = (value: string | number) =>
 	Schema.decodeUnknownSync(TelegramUserId)(Number(value));
 const safeChatId = (value: string | number) =>
@@ -52,8 +48,8 @@ const decode = (value: unknown) =>
 			return {
 				user: {
 					id: row.id,
-					createdAt: time(row.created_at),
-					updatedAt: time(row.updated_at),
+					createdAt: row.created_at,
+					updatedAt: row.updated_at,
 				},
 				profile: {
 					botId: row.bot_id,
@@ -109,8 +105,8 @@ export const layer = Layer.effect(
 									profile.botId,
 									profile.telegramUserId,
 								);
-								const now = yield* Clock.currentTimeMillis;
-								const timestamp = new Date(now);
+								const now = yield* DateTime.now;
+								const timestamp = DateTime.toDateUtc(now);
 								if (existing[0] !== undefined) {
 									yield* sql`UPDATE carneloot.telegram_identities SET username=${profile.username},first_name=${profile.firstName},last_name=${profile.lastName},private_chat_id=${profile.privateChatId},updated_at=${timestamp} WHERE bot_id=${profile.botId} AND telegram_user_id=${profile.telegramUserId}`;
 									const existingUserId = Schema.decodeUnknownSync(UserId)(

@@ -1,5 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import * as Clock from 'effect/Clock';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
@@ -38,7 +38,7 @@ export const execute = (
 		return yield* sql.withTransaction(
 			Effect.gen(function* () {
 				yield* authorize(access);
-				const now = yield* Clock.currentTimeMillis;
+				const now = yield* DateTime.now;
 				return yield* repository.setDayStart(
 					access.petId,
 					dayStart,

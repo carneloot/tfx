@@ -4,6 +4,14 @@ import type { TaggedError } from './TaggedError.js';
 export type { TaggedError } from './TaggedError.js';
 
 export type ErrorSchema = Schema.Top;
+export type ServiceFreeErrorSchema = ErrorSchema & {
+	readonly EncodingServices: never;
+};
+type HasServiceFreeEncoding<S extends ErrorSchema> = [
+	Schema.Codec.EncodingServices<S>,
+] extends [never]
+	? true
+	: false;
 
 type IsAny<A> = 0 extends 1 & A ? true : false;
 type IsNever<A> = [A] extends [never] ? true : false;
@@ -37,3 +45,6 @@ export type Valid<S extends ErrorSchema> =
 				: Schema.Schema.Type<S> extends TaggedError
 					? S
 					: never;
+
+export type ServiceFreeValid<S extends ErrorSchema> =
+	HasServiceFreeEncoding<S> extends true ? Valid<S> : never;

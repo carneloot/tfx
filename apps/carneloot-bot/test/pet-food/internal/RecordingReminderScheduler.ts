@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 
@@ -18,7 +19,7 @@ export const layer: Layer.Layer<ReminderScheduler, never, PgClient.PgClient> =
 			const service: ReminderSchedulerService = {
 				replaceForLatest: (schedule) =>
 					mapSql(
-						sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id,food_entry_id,run_at) VALUES ('replace',${schedule.petId}::uuid,${schedule.foodEntryId}::uuid,${new Date(schedule.runAt)})`.pipe(
+						sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id,food_entry_id,run_at) VALUES ('replace',${schedule.petId}::uuid,${schedule.foodEntryId}::uuid,${DateTime.toDateUtc(schedule.runAt)})`.pipe(
 							Effect.asVoid,
 						),
 						'Recording scheduler replace failed',

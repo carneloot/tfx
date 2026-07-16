@@ -1,4 +1,4 @@
-import { Effect } from 'effect';
+import { Duration, Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import * as DispatchOutcome from '../src/DispatchOutcome.js';
@@ -48,6 +48,8 @@ describe('Polling', () => {
 		const source = PollingSource.make(telegram, {
 			commands: [{ command: 'start', description: 'Start' }],
 			allowedUpdates: ['message'],
+			timeout: Duration.seconds(30),
+			retryDelay: Duration.seconds(1),
 		});
 		await expect(
 			Effect.runPromise(

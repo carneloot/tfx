@@ -1,3 +1,4 @@
+import type * as DateTime from 'effect/DateTime';
 import * as Schema from 'effect/Schema';
 import * as SchemaGetter from 'effect/SchemaGetter';
 
@@ -33,6 +34,6 @@ export interface Pet {
 	readonly id: PetId;
 	readonly ownerId: UserId;
 	readonly name: PetName;
-	readonly createdAt: number;
-	readonly updatedAt: number;
+	readonly createdAt: DateTime.Utc;
+	readonly updatedAt: DateTime.Utc;
 }

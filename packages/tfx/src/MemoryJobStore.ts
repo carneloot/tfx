@@ -1,3 +1,4 @@
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Semaphore from 'effect/Semaphore';
@@ -76,7 +77,9 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 								record.status === 'failed' || record.status === 'quarantined',
 						)
 						.sort(
-							(a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id),
+							(a, b) =>
+								DateTime.Order(a.updatedAt, b.updatedAt) ||
+								a.id.localeCompare(b.id),
 						),
 				),
 			),
@@ -84,12 +87,14 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 			locked(() =>
 				Effect.sync(() => {
 					for (const row of [...records.values()].sort(
-						(a, b) => a.runAt - b.runAt || a.createdAt - b.createdAt,
+						(a, b) =>
+							DateTime.Order(a.runAt, b.runAt) ||
+							DateTime.Order(a.createdAt, b.createdAt),
 					))
 						if (
 							row.status === 'running' &&
 							row.leasePhase === 'execution' &&
-							row.leaseExpiresAt! <= now
+							DateTime.isLessThanOrEqualTo(row.leaseExpiresAt!, now)
 						) {
 							if (row.attempts >= row.maxAttempts) {
 								update({
@@ -108,7 +113,7 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 								status: 'scheduled',
 								leasePhase: 'migration',
 								leaseGeneration: row.leaseGeneration + 1,
-								leaseExpiresAt: now + leaseDuration,
+								leaseExpiresAt: DateTime.addDuration(now, leaseDuration),
 								outcome: { _tag: 'LeaseLost' },
 								updatedAt: now,
 							});
@@ -124,16 +129,21 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 						.filter(
 							(r) =>
 								r.status === 'scheduled' &&
-								r.runAt <= now &&
-								(r.leaseExpiresAt === undefined || r.leaseExpiresAt <= now),
+								DateTime.isLessThanOrEqualTo(r.runAt, now) &&
+								(r.leaseExpiresAt === undefined ||
+									DateTime.isLessThanOrEqualTo(r.leaseExpiresAt, now)),
 						)
-						.sort((a, b) => a.runAt - b.runAt || a.createdAt - b.createdAt)[0];
+						.sort(
+							(a, b) =>
+								DateTime.Order(a.runAt, b.runAt) ||
+								DateTime.Order(a.createdAt, b.createdAt),
+						)[0];
 					if (candidate === undefined) return undefined;
 					const record = update({
 						...candidate,
 						leasePhase: 'migration',
 						leaseGeneration: candidate.leaseGeneration + 1,
-						leaseExpiresAt: now + leaseDuration,
+						leaseExpiresAt: DateTime.addDuration(now, leaseDuration),
 						updatedAt: now,
 					});
 					return {
@@ -148,7 +158,7 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 				if (
 					!tokenMatch(row, token, 'migration') ||
 					row!.leaseExpiresAt === undefined ||
-					row!.leaseExpiresAt <= now
+					DateTime.isLessThanOrEqualTo(row!.leaseExpiresAt, now)
 				)
 					return Effect.fail(
 						new JobStoreError('StaleToken', 'Migration lease lost'),
@@ -165,7 +175,7 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 						status: 'running',
 						attempts: row!.attempts + 1,
 						leasePhase: 'execution',
-						leaseExpiresAt: now + leaseDuration,
+						leaseExpiresAt: DateTime.addDuration(now, leaseDuration),
 						updatedAt: now,
 					}),
 				);
@@ -175,7 +185,7 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 				const row = records.get(token.id);
 				return !tokenMatch(row, token, 'migration') ||
 					row!.leaseExpiresAt === undefined ||
-					row!.leaseExpiresAt <= now
+					DateTime.isLessThanOrEqualTo(row!.leaseExpiresAt, now)
 					? Effect.fail(new JobStoreError('StaleToken', 'Migration lease lost'))
 					: Effect.succeed(
 							update({
@@ -193,7 +203,11 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 				Effect.sync(() => {
 					const row = records.get(token.id);
 					if (!tokenMatch(row, token, 'execution')) return false;
-					update({ ...row!, leaseExpiresAt: now + duration, updatedAt: now });
+					update({
+						...row!,
+						leaseExpiresAt: DateTime.addDuration(now, duration),
+						updatedAt: now,
+					});
 					return true;
 				}),
 			),

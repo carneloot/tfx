@@ -1,4 +1,6 @@
 import * as Context from 'effect/Context';
+import type * as DateTime from 'effect/DateTime';
+import type * as Duration from 'effect/Duration';
 import type * as Effect from 'effect/Effect';
 
 import type { ClaimToken } from './internal/job/ClaimToken.js';
@@ -19,16 +21,16 @@ export interface JobRecord {
 	readonly status: JobStatus;
 	readonly attempts: number;
 	readonly maxAttempts: number;
-	readonly runAt: number;
+	readonly runAt: DateTime.Utc;
 	readonly conflictKey?: string | undefined;
 	readonly leaseGeneration: number;
 	readonly leasePhase?: LeasePhase | undefined;
-	readonly leaseExpiresAt?: number | undefined;
+	readonly leaseExpiresAt?: DateTime.Utc | undefined;
 	readonly cancellationRequested: boolean;
 	readonly errorSummary?: string | undefined;
 	readonly outcome?: JobOutcome | undefined;
-	readonly createdAt: number;
-	readonly updatedAt: number;
+	readonly createdAt: DateTime.Utc;
+	readonly updatedAt: DateTime.Utc;
 }
 export class JobStoreError extends Error {
 	readonly _tag = 'JobStoreError';
@@ -51,8 +53,8 @@ export interface ScheduleRequest {
 	readonly payload: unknown;
 	readonly payloadVersion: number;
 	readonly maxAttempts: number;
-	readonly runAt: number;
-	readonly now: number;
+	readonly runAt: DateTime.Utc;
+	readonly now: DateTime.Utc;
 	readonly conflictKey?: string | undefined;
 }
 export interface JobStoreService {
@@ -71,8 +73,8 @@ export interface JobStoreService {
 		JobStoreError
 	>;
 	readonly claimForMigration: (
-		now: number,
-		leaseDuration: number,
+		now: DateTime.Utc,
+		leaseDuration: Duration.Duration,
 	) => Effect.Effect<
 		{ readonly record: JobRecord; readonly token: ClaimToken } | undefined,
 		JobStoreError
@@ -81,32 +83,32 @@ export interface JobStoreService {
 		token: ClaimToken,
 		payload: unknown,
 		version: number,
-		now: number,
-		leaseDuration: number,
+		now: DateTime.Utc,
+		leaseDuration: Duration.Duration,
 	) => Effect.Effect<JobRecord, JobStoreError>;
 	readonly quarantineMigration: (
 		token: ClaimToken,
 		reason: string,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<JobRecord, JobStoreError>;
 	readonly heartbeat: (
 		token: ClaimToken,
-		now: number,
-		leaseDuration: number,
+		now: DateTime.Utc,
+		leaseDuration: Duration.Duration,
 	) => Effect.Effect<boolean, JobStoreError>;
 	readonly finalize: (
 		token: ClaimToken,
 		outcome: JobOutcome,
-		now: number,
-		retryAt?: number,
+		now: DateTime.Utc,
+		retryAt?: DateTime.Utc,
 	) => Effect.Effect<boolean, JobStoreError>;
 	readonly cancel: (
 		id: string,
-		now: number,
+		now: DateTime.Utc,
 	) => Effect.Effect<boolean, JobStoreError>;
 	readonly releaseFailed: (
 		id: string,
-		now: number,
+		now: DateTime.Utc,
 		options: { readonly reason: string; readonly resetAttempts?: boolean },
 	) => Effect.Effect<JobRecord, JobStoreError>;
 }

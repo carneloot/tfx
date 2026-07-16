@@ -1,8 +1,14 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import * as Clock from 'effect/Clock';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
+
+const Timestamp = Schema.Union([
+	Schema.DateTimeUtcFromDate,
+	Schema.DateTimeUtcFromString,
+	Schema.DateTimeUtcFromMillis,
+]);
 
 import {
 	DomainPersistenceError,
@@ -20,29 +26,19 @@ const Row = Schema.Struct({
 	id: PetId,
 	owner_id: UserId,
 	name: PetName,
-	created_at: Schema.Unknown,
-	updated_at: Schema.Unknown,
+	created_at: Timestamp,
+	updated_at: Timestamp,
 });
-const timestamp = (value: unknown) =>
-	value instanceof Date
-		? value.getTime()
-		: typeof value === 'string' || typeof value === 'number'
-			? new Date(value).getTime()
-			: Number.NaN;
 const decode = (value: unknown) =>
 	Effect.try({
 		try: () => {
 			const row = Schema.decodeUnknownSync(Row)(value);
-			const createdAt = timestamp(row.created_at);
-			const updatedAt = timestamp(row.updated_at);
-			if (!Number.isFinite(createdAt) || !Number.isFinite(updatedAt))
-				throw new Error('Invalid timestamp');
 			return {
 				id: row.id,
 				ownerId: row.owner_id,
 				name: row.name,
-				createdAt,
-				updatedAt,
+				createdAt: row.created_at,
+				updatedAt: row.updated_at,
 			};
 		},
 		catch: (cause) =>
@@ -97,8 +93,8 @@ export const layer = Layer.effect(
 					.withTransaction(
 						Effect.gen(function* () {
 							yield* assertOwner(ownerId);
-							const now = yield* Clock.currentTimeMillis;
-							const timestamp = new Date(now);
+							const now = yield* DateTime.now;
+							const timestamp = DateTime.toDateUtc(now);
 							const rows = yield* sql<
 								Record<string, unknown>
 							>`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${ownerId}::uuid,${name},${petNameKey(name)},${timestamp},${timestamp}) RETURNING *`;

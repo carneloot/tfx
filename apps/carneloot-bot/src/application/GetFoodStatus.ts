@@ -1,6 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import * as Clock from 'effect/Clock';
 import * as Data from 'effect/Data';
+import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 
 import type { BotId, TelegramUserId, UserId } from '../domain/Ids.js';
@@ -20,7 +20,7 @@ export type PetFoodStatus = Data.TaggedEnum<{
 	readonly Configured: {
 		readonly pet: Pet;
 		readonly totalMg: number;
-		readonly latestFedAt: number | null;
+		readonly latestFedAt: DateTime.Utc | null;
 		readonly window: DayBoundary.Window;
 	};
 }>;
@@ -33,7 +33,7 @@ export const execute = (identity: Identity) =>
 		return yield* sql.withTransaction(
 			Effect.gen(function* () {
 				const owned = yield* pets.listOwned(identity.ownerId);
-				const now = yield* Clock.currentTimeMillis;
+				const now = yield* DateTime.now;
 				return yield* Effect.forEach(owned, (pet) =>
 					Effect.gen(function* () {
 						yield* authorize({ ...identity, petId: pet.id });

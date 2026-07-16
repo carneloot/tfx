@@ -1,4 +1,5 @@
 import * as Context from 'effect/Context';
+import type * as DateTime from 'effect/DateTime';
 import type * as Effect from 'effect/Effect';
 
 import type { Scope } from './internal/conversation/Scope.js';
@@ -12,7 +13,7 @@ export interface ConversationRow {
 	readonly state: unknown;
 	readonly revision: number;
 	readonly lastUpdateId: number | undefined;
-	readonly expiresAt: number | undefined;
+	readonly expiresAt: DateTime.Utc | undefined;
 }
 export type Mutation =
 	| {
@@ -20,7 +21,7 @@ export type Mutation =
 			readonly step: string;
 			readonly state: unknown;
 			readonly version?: number;
-			readonly expiresAt?: number;
+			readonly expiresAt?: DateTime.Utc;
 			readonly afterCommit?: AfterCommit;
 	  }
 	| { readonly _tag: 'Delete'; readonly afterCommit?: AfterCommit };

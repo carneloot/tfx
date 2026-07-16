@@ -1,4 +1,4 @@
-import { Deferred, Effect, Layer, Ref, Schema } from 'effect';
+import { Deferred, Duration, Effect, Layer, Ref, Schema } from 'effect';
 import {
 	Bot,
 	BotRuntime,
@@ -51,9 +51,9 @@ describe('BotRuntime', () => {
 						Layer.provide(
 							BotRuntime.layer(Bot.make('bot'), {
 								delivery: UpdateDelivery.manual,
-								leaseDuration: 100,
-								waitTimeout: 100,
-								retention: 1_000,
+								leaseDuration: Duration.millis(100),
+								waitTimeout: '100 millis',
+								retention: Duration.seconds(1),
 								router: {
 									route: () =>
 										Effect.sync(() => {
@@ -148,7 +148,7 @@ describe('BotRuntime', () => {
 		expect(Ref.getUnsafe(finalized)).toBe(true);
 	});
 
-	it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+	it.each([Duration.zero, Duration.millis(-1), Number.NaN, Duration.infinity])(
 		'rejects invalid dedup duration %s',
 		async (leaseDuration) => {
 			const exit = await Effect.runPromiseExit(
@@ -169,14 +169,18 @@ describe('BotRuntime', () => {
 	);
 
 	it('rejects heartbeat intervals at or above the dedup lease', async () => {
-		for (const heartbeatInterval of [0, 100, Number.POSITIVE_INFINITY]) {
+		for (const heartbeatInterval of [
+			Duration.zero,
+			Duration.millis(100),
+			Duration.infinity,
+		]) {
 			const exit = await Effect.runPromiseExit(
 				Effect.scoped(
 					Layer.build(
 						Layer.provide(
 							BotRuntime.layer(Bot.make('bot'), {
 								delivery: UpdateDelivery.manual,
-								leaseDuration: 100,
+								leaseDuration: Duration.millis(100),
 								heartbeatInterval,
 							}),
 							UpdateDeduplicator.layerNoop,

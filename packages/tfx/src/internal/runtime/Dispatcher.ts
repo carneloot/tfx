@@ -1,3 +1,4 @@
+import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import type * as Scope from 'effect/Scope';
 
@@ -19,10 +20,10 @@ export const make = (options: {
 	readonly capacity: number;
 	readonly deduplicator: UpdateDeduplicatorService;
 	readonly router: Router;
-	readonly leaseDuration?: number;
-	readonly waitTimeout?: number;
-	readonly retention?: number;
-	readonly heartbeatInterval?: number;
+	readonly leaseDuration?: Duration.Duration;
+	readonly waitTimeout?: Duration.Duration;
+	readonly retention?: Duration.Duration;
+	readonly heartbeatInterval?: Duration.Duration;
 }): Effect.Effect<Dispatcher, never, Scope.Scope> =>
 	Effect.map(KeyedExecutor.make(options), (executor) => ({
 		dispatch: (update) => {

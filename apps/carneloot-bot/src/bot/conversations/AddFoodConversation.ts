@@ -73,7 +73,7 @@ const amountText = (milligrams: number) => {
 	const grams = milligrams / 1_000;
 	return `${Number.isInteger(grams) ? grams : grams.toFixed(3).replace(/0+$/u, '').replace(/\.$/u, '')} g`;
 };
-const localized = (instant: number, timeZone: IanaTimeZone) => {
+const localized = (instant: DateTime.Utc, timeZone: IanaTimeZone) => {
 	const parts = DateTime.toParts(
 		DateTime.makeZonedUnsafe(instant, { timeZone }),
 	);

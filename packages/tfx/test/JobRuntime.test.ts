@@ -1,4 +1,6 @@
 import { Effect, Fiber, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
@@ -53,8 +55,8 @@ describe('JobRuntime', () => {
 				payload: { old: 'old' },
 				payloadVersion: 1,
 				maxAttempts: 3,
-				now: 0,
-				runAt: 0,
+				now: DateTime.makeUnsafe(0),
+				runAt: DateTime.makeUnsafe(0),
 			});
 			expect((yield* runtime.runOne())?.status).toBe('scheduled');
 			expect(yield* store.get(raw.record.id)).toMatchObject({
@@ -80,7 +82,7 @@ describe('JobRuntime', () => {
 			const store = yield* JobStore;
 			const scheduled = yield* runtime.schedule(declaration, { value: 'wait' });
 			const worker = yield* Effect.forkChild(
-				runtime.runOne({ leaseDuration: 30 }),
+				runtime.runOne({ leaseDuration: Duration.millis(30) }),
 			);
 			const awaitRunning: Effect.Effect<void, JobStoreError> = Effect.suspend(
 				() =>
@@ -110,7 +112,7 @@ describe('JobRuntime', () => {
 			const store = yield* JobStore;
 			const scheduled = yield* runtime.schedule(declaration, { value: 'wait' });
 			const worker = yield* Effect.forkChild(
-				runtime.runOne({ leaseDuration: 100 }),
+				runtime.runOne({ leaseDuration: Duration.millis(100) }),
 			);
 			const awaitRunning: Effect.Effect<void, JobStoreError> = Effect.suspend(
 				() =>
@@ -138,14 +140,23 @@ describe('JobRuntime', () => {
 				payload: { value: 'late' },
 				payloadVersion: 2,
 				maxAttempts: 3,
-				now: 0,
-				runAt: 0,
+				now: DateTime.makeUnsafe(0),
+				runAt: DateTime.makeUnsafe(0),
 			});
-			const claim = yield* store.claimForMigration(0, 10);
+			const claim = yield* store.claimForMigration(
+				DateTime.makeUnsafe(0),
+				Duration.millis(10),
+			);
 			if (claim === undefined) throw new Error('expected claim');
 			yield* TestClock.adjust('11 millis');
 			return yield* Effect.flip(
-				store.promoteToRunning(claim.token, { value: 'late' }, 2, 11, 10),
+				store.promoteToRunning(
+					claim.token,
+					{ value: 'late' },
+					2,
+					DateTime.makeUnsafe(11),
+					Duration.millis(10),
+				),
 			);
 		});
 		const error = await Effect.runPromise(
@@ -169,7 +180,7 @@ describe('JobRuntime', () => {
 							(heartbeatInterval) =>
 								Effect.exit(
 									runtime.runOne({
-										leaseDuration: 100,
+										leaseDuration: Duration.millis(100),
 										heartbeatInterval,
 									}),
 								),
@@ -193,8 +204,8 @@ describe('JobRuntime', () => {
 				payload: {},
 				payloadVersion: 1,
 				maxAttempts: 2,
-				now: 0,
-				runAt: 0,
+				now: DateTime.makeUnsafe(0),
+				runAt: DateTime.makeUnsafe(0),
 			});
 			expect(yield* runtime.runOne()).toMatchObject({
 				id: unknown.record.id,
@@ -206,8 +217,8 @@ describe('JobRuntime', () => {
 				payload: {},
 				payloadVersion: 9,
 				maxAttempts: 2,
-				now: 0,
-				runAt: 0,
+				now: DateTime.makeUnsafe(0),
+				runAt: DateTime.makeUnsafe(0),
 			});
 			expect(yield* runtime.runOne()).toMatchObject({
 				id: newer.record.id,
