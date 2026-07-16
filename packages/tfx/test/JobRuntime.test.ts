@@ -299,11 +299,12 @@ describe('JobRuntime', () => {
 		);
 	});
 
-	it('quarantines thrown and invalid duration retry policies', async () => {
-		const invalidPolicies = [
+	it('quarantines thrown and malformed retry policies', async () => {
+		const invalidPolicies: ReadonlyArray<() => Job.RetryDecision> = [
 			() => {
 				throw new Error('policy defect');
 			},
+			() => ({ _tag: 'Invalid' }) as unknown as Job.RetryDecision,
 			() => ({
 				_tag: 'Retry' as const,
 				retryAfter: Duration.millis(-1) as Duration.Duration,

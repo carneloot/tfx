@@ -292,9 +292,9 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							}
 							let evaluation: RetryEvaluation;
 							try {
-								if (decision?._tag !== 'Retry')
+								if (decision === undefined || decision._tag === 'Permanent')
 									evaluation = { _tag: 'Permanent' };
-								else {
+								else if (decision._tag === 'Retry') {
 									const delay =
 										decision.retryAfter ??
 										declaration.schedule(running.attempts);
@@ -307,7 +307,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 											'Job retry delay must produce a valid instant',
 										);
 									evaluation = { _tag: 'Retry', delay, retryAt };
-								}
+								} else throw new TypeError('Invalid job retry decision');
 							} catch {
 								yield* store.finalize(
 									claim.token,
