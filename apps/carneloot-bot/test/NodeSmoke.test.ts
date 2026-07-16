@@ -1,6 +1,5 @@
 import * as NodeHttpClient from '@effect/platform-node/NodeHttpClient';
-import { Duration, Effect, Layer } from 'effect';
-import * as Redacted from 'effect/Redacted';
+import { Effect, Layer } from 'effect';
 import { DispatchOutcome } from 'tfx';
 import { BotRuntime } from 'tfx/BotRuntime';
 import { JobRuntime } from 'tfx/JobRuntime';
@@ -8,29 +7,15 @@ import { UpdateDeduplicator } from 'tfx/UpdateDeduplicator';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
 import { describe, expect, it } from 'vitest';
 
-import type { AppConfigService } from '../src/Config.js';
 import { JobWorker } from '../src/JobWorker.js';
 import * as Layers from '../src/Layers.js';
 import { NotificationRepository } from '../src/ports/NotificationRepository.js';
 import * as Production from '../src/Production.js';
 import * as Router from '../src/Router.js';
+import { testConfig } from './internal/TestConfig.js';
 
-const config: AppConfigService = {
-	botToken: Redacted.make('test'),
-	databaseUrl: Redacted.make('postgres://unused'),
-	botId: 'carneloot',
-	botUsername: 'carneloot_bot',
-	pollingTimeout: Duration.seconds(30),
-	pollingRetryDelay: Duration.millis(100),
-	dispatchCapacity: 8,
-	dispatchConcurrency: 2,
-	jobIdle: Duration.millis(100),
-	jobLease: Duration.seconds(30),
-	jobHeartbeat: Duration.seconds(10),
-	dedupLease: Duration.seconds(30),
-	dedupHeartbeat: Duration.seconds(10),
-	dedupWait: Duration.seconds(1),
-	dedupRetention: Duration.days(1),
+const config = {
+	...testConfig,
 	tfxSchema: 'tfx',
 	tfxTablePrefix: 'smoke_',
 };
