@@ -43,101 +43,108 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 	const locked = <A>(f: () => A) => semaphore.withPermit(Effect.sync(f));
 	return {
 		diagnostics: { mode: 'memory', backend: 'memory' },
-		claim: (updateId, options = {}) =>
-			Effect.gen(function* () {
-				const duration = options.leaseDuration ?? Duration.seconds(30);
-				const waitTimeout = options.waitTimeout ?? Duration.seconds(5);
-				yield* positive(duration, 'leaseDuration');
-				yield* positive(waitTimeout, 'waitTimeout');
-				const now = yield* DateTime.now;
-				const result = yield* locked(() => {
-					sweep(
-						rows,
-						cleanup,
-						(row) =>
-							row.released ||
-							(row.completed !== undefined &&
-								DateTime.isLessThanOrEqualTo(row.retentionUntil!, now)),
-						16,
-					);
-					const current = rows.get(updateId);
-					if (
-						current?.completed !== undefined &&
-						DateTime.isGreaterThan(current.retentionUntil!, now)
-					)
-						return { _tag: 'Completed' as const, outcome: current.completed };
-					if (
-						current === undefined ||
-						current.released ||
-						DateTime.isLessThanOrEqualTo(current.leaseExpiresAt, now) ||
-						(current.completed !== undefined &&
-							DateTime.isLessThanOrEqualTo(current.retentionUntil!, now))
-					) {
-						const row: Row = {
-							generation: ++generation,
-							leaseExpiresAt: DateTime.addDuration(now, duration),
-							completion: Deferred.makeUnsafe<ObservedCompletion>(),
-							released: false,
-						};
-						rows.set(updateId, row);
-						return {
-							_tag: 'Acquired' as const,
-							token: { updateId, generation: row.generation },
-						};
-					}
-					const observe = Deferred.await(current.completion);
-					return {
-						_tag: 'InProgress' as const,
-						await: Effect.race(
-							observe,
-							Effect.as(Effect.sleep(waitTimeout), {
-								_tag: 'TimedOut' as const,
-							}),
-						),
+		claim: Effect.fn('MemoryUpdateDeduplicator.claim')(function* (
+			updateId,
+			options = {},
+		) {
+			const duration = options.leaseDuration ?? Duration.seconds(30);
+			const waitTimeout = options.waitTimeout ?? Duration.seconds(5);
+			yield* positive(duration, 'leaseDuration');
+			yield* positive(waitTimeout, 'waitTimeout');
+			const now = yield* DateTime.now;
+			const result = yield* locked(() => {
+				sweep(
+					rows,
+					cleanup,
+					(row) =>
+						row.released ||
+						(row.completed !== undefined &&
+							DateTime.isLessThanOrEqualTo(row.retentionUntil!, now)),
+					16,
+				);
+				const current = rows.get(updateId);
+				if (
+					current?.completed !== undefined &&
+					DateTime.isGreaterThan(current.retentionUntil!, now)
+				)
+					return { _tag: 'Completed' as const, outcome: current.completed };
+				if (
+					current === undefined ||
+					current.released ||
+					DateTime.isLessThanOrEqualTo(current.leaseExpiresAt, now) ||
+					(current.completed !== undefined &&
+						DateTime.isLessThanOrEqualTo(current.retentionUntil!, now))
+				) {
+					const row: Row = {
+						generation: ++generation,
+						leaseExpiresAt: DateTime.addDuration(now, duration),
+						completion: Deferred.makeUnsafe<ObservedCompletion>(),
+						released: false,
 					};
-				});
-				return result;
-			}),
-		heartbeat: (token, duration = Duration.seconds(30)) =>
-			Effect.gen(function* () {
-				yield* positive(duration, 'leaseDuration');
-				const now = yield* DateTime.now;
-				return yield* locked(() => {
-					const row = rows.get(token.updateId);
-					if (
-						row === undefined ||
-						row.generation !== token.generation ||
-						row.released ||
-						row.completed !== undefined
-					)
-						return false;
-					row.leaseExpiresAt = DateTime.addDuration(now, duration);
-					return true;
-				});
-			}),
-		complete: (token, outcome, retention = Duration.days(1)) =>
-			Effect.gen(function* () {
-				yield* positive(retention, 'retention');
-				const now = yield* DateTime.now;
-				return yield* locked(() => {
-					const row = rows.get(token.updateId);
-					if (
-						row === undefined ||
-						row.generation !== token.generation ||
-						row.released ||
-						row.completed !== undefined
-					)
-						return false;
-					row.completed = outcome;
-					row.retentionUntil = DateTime.addDuration(now, retention);
-					Deferred.doneUnsafe(
-						row.completion,
-						Effect.succeed({ _tag: 'Completed', outcome }),
-					);
-					return true;
-				});
-			}),
-		release: (token) =>
+					rows.set(updateId, row);
+					return {
+						_tag: 'Acquired' as const,
+						token: { updateId, generation: row.generation },
+					};
+				}
+				const observe = Deferred.await(current.completion);
+				return {
+					_tag: 'InProgress' as const,
+					await: Effect.race(
+						observe,
+						Effect.as(Effect.sleep(waitTimeout), {
+							_tag: 'TimedOut' as const,
+						}),
+					),
+				};
+			});
+			return result;
+		}),
+		heartbeat: Effect.fn('MemoryUpdateDeduplicator.heartbeat')(function* (
+			token,
+			duration = Duration.seconds(30),
+		) {
+			yield* positive(duration, 'leaseDuration');
+			const now = yield* DateTime.now;
+			return yield* locked(() => {
+				const row = rows.get(token.updateId);
+				if (
+					row === undefined ||
+					row.generation !== token.generation ||
+					row.released ||
+					row.completed !== undefined
+				)
+					return false;
+				row.leaseExpiresAt = DateTime.addDuration(now, duration);
+				return true;
+			});
+		}),
+		complete: Effect.fn('MemoryUpdateDeduplicator.complete')(function* (
+			token,
+			outcome,
+			retention = Duration.days(1),
+		) {
+			yield* positive(retention, 'retention');
+			const now = yield* DateTime.now;
+			return yield* locked(() => {
+				const row = rows.get(token.updateId);
+				if (
+					row === undefined ||
+					row.generation !== token.generation ||
+					row.released ||
+					row.completed !== undefined
+				)
+					return false;
+				row.completed = outcome;
+				row.retentionUntil = DateTime.addDuration(now, retention);
+				Deferred.doneUnsafe(
+					row.completion,
+					Effect.succeed({ _tag: 'Completed', outcome }),
+				);
+				return true;
+			});
+		}),
+		release: Effect.fn('MemoryUpdateDeduplicator.release')((token) =>
 			locked(() => {
 				const row = rows.get(token.updateId);
 				if (
@@ -155,6 +162,7 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 				rows.delete(token.updateId);
 				return true;
 			}),
+		),
 	};
 });
 export const layerMemory: Layer.Layer<UpdateDeduplicator> = Layer.effect(

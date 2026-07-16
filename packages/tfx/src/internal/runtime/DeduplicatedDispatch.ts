@@ -11,7 +11,7 @@ import type { Update } from '../telegram/generated/TelegramApi.types.js';
 class ClaimLost {
 	readonly _tag = 'ClaimLost';
 }
-export const dispatch = (
+export const dispatch = Effect.fn('DeduplicatedDispatch.dispatch')(function (
 	dedup: UpdateDeduplicatorService,
 	update: Update,
 	behavior: Effect.Effect<DispatchOutcome.DispatchOutcome, never>,
@@ -21,8 +21,8 @@ export const dispatch = (
 		readonly retention?: Duration.Duration;
 		readonly heartbeatInterval?: Duration.Duration;
 	} = {},
-): Effect.Effect<DispatchOutcome.DispatchOutcome, never> =>
-	Effect.uninterruptibleMask((restore) =>
+): Effect.Effect<DispatchOutcome.DispatchOutcome, never> {
+	return Effect.uninterruptibleMask((restore) =>
 		Effect.gen(function* () {
 			const leaseDuration = options.leaseDuration ?? Duration.seconds(30);
 			const heartbeatInterval =
@@ -104,3 +104,4 @@ export const dispatch = (
 			),
 		),
 	);
+});

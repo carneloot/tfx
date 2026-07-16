@@ -51,85 +51,82 @@ export const make = (
 	telegram: TelegramService,
 	options: NormalizedPollingOptions,
 ): UpdateSourceService => ({
-	run: (deliver) =>
-		Effect.gen(function* () {
-			yield* telegram.getMe();
-			yield* telegram.deleteWebhook({
-				drop_pending_updates: options.dropPendingUpdates ?? false,
+	run: Effect.fn('PollingSource.run')(function* (deliver) {
+		yield* telegram.getMe();
+		yield* telegram.deleteWebhook({
+			drop_pending_updates: options.dropPendingUpdates ?? false,
+		});
+		if (options.commands !== undefined)
+			yield* telegram.setMyCommands({
+				commands: options.commands,
+				language_code: options.languageCode ?? 'pt',
 			});
-			if (options.commands !== undefined)
-				yield* telegram.setMyCommands({
-					commands: options.commands,
-					language_code: options.languageCode ?? 'pt',
-				});
-			let offset: number | undefined;
-			let first = true;
-			const pollRetrySchedule = Schedule.forever.pipe(
-				Schedule.setInputType<TelegramError>(),
-				Schedule.modifyDelay(({ input }) =>
-					Effect.succeed(
-						retryDelay(input, options.retryDelay) ?? Duration.zero,
-					),
+		let offset: number | undefined;
+		let first = true;
+		const pollRetrySchedule = Schedule.forever.pipe(
+			Schedule.setInputType<TelegramError>(),
+			Schedule.modifyDelay(({ input }) =>
+				Effect.succeed(retryDelay(input, options.retryDelay) ?? Duration.zero),
+			),
+		);
+		const pollOnce: Effect.Effect<
+			void,
+			TelegramError | FatalPollingDispatchError
+		> = Effect.suspend(() =>
+			Effect.flatMap(
+				Effect.suspend(() =>
+					telegram.getUpdates({
+						...(offset === undefined ? {} : { offset }),
+						limit: options.limit ?? 100,
+						timeout: Duration.toSeconds(options.timeout),
+						...(first && options.allowedUpdates !== undefined
+							? { allowed_updates: options.allowedUpdates }
+							: {}),
+					}),
+				).pipe(
+					Effect.retry({
+						while: (error) =>
+							retryDelay(error, options.retryDelay) !== undefined,
+						schedule: pollRetrySchedule,
+					}),
 				),
-			);
-			const pollOnce: Effect.Effect<
-				void,
-				TelegramError | FatalPollingDispatchError
-			> = Effect.suspend(() =>
-				Effect.flatMap(
-					Effect.suspend(() =>
-						telegram.getUpdates({
-							...(offset === undefined ? {} : { offset }),
-							limit: options.limit ?? 100,
-							timeout: Duration.toSeconds(options.timeout),
-							...(first && options.allowedUpdates !== undefined
-								? { allowed_updates: options.allowedUpdates }
-								: {}),
-						}),
-					).pipe(
-						Effect.retry({
-							while: (error) =>
-								retryDelay(error, options.retryDelay) !== undefined,
-							schedule: pollRetrySchedule,
-						}),
-					),
-					(updates: ReadonlyArray<Update>) => {
-						first = false;
-						return Effect.flatMap(
-							Effect.forEach(
-								updates,
-								(update) =>
-									Effect.map(deliver(update), (outcome) => ({
-										update,
-										outcome,
-									})),
-								{ concurrency: 'unbounded' },
-							),
-							(settled) => {
-								const ordered = [...settled].sort(
-									(a, b) => a.update.update_id - b.update.update_id,
-								);
-								for (const item of ordered) {
-									if (DispatchOutcome.isTerminal(item.outcome))
-										return Effect.fail(
-											new FatalPollingDispatchError({
-												updateId: item.update.update_id,
-											}),
-										);
-									if (!DispatchOutcome.isAcknowledgeable(item.outcome)) break;
-									offset = item.update.update_id + 1;
-								}
-								return Effect.void;
-							},
-						);
-					},
-				),
-			);
-			return yield* pollOnce.pipe(
-				Effect.repeat(Schedule.forever),
-				Effect.andThen(Effect.never),
-			);
-		}),
+				(updates: ReadonlyArray<Update>) => {
+					first = false;
+					return Effect.flatMap(
+						Effect.forEach(
+							updates,
+							(update) =>
+								Effect.map(deliver(update), (outcome) => ({
+									update,
+									outcome,
+								})),
+							{ concurrency: 'unbounded' },
+						),
+						(settled) => {
+							const ordered = [...settled].sort(
+								(a, b) => a.update.update_id - b.update.update_id,
+							);
+							for (const item of ordered) {
+								if (DispatchOutcome.isTerminal(item.outcome))
+									return Effect.fail(
+										new FatalPollingDispatchError({
+											updateId: item.update.update_id,
+										}),
+									);
+								if (!DispatchOutcome.isAcknowledgeable(item.outcome)) break;
+								offset = item.update.update_id + 1;
+							}
+							return Effect.void;
+						},
+					);
+				},
+			),
+		);
+		return yield* pollOnce.pipe(
+			Effect.repeat(Schedule.forever),
+			Effect.andThen(Effect.never),
+		);
+	}),
 });
 export const fromContext = (
 	options: NormalizedPollingOptions,

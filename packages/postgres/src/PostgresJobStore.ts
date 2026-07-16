@@ -220,7 +220,7 @@ export const layer = (
 								}),
 							),
 						),
-					get: (id) => protect(read(id)),
+					get: Effect.fn('PostgresJobStore.get')((id) => protect(read(id))),
 					problems: () =>
 						protect(
 							Effect.flatMap(
@@ -263,38 +263,43 @@ export const layer = (
 								}),
 							),
 						),
-					promoteToRunning: (claim, payload, version, now, duration) =>
-						protect(
-							sql.withTransaction(
-								Effect.gen(function* () {
-									const current = yield* readToken(
-										claim.id,
-										claim.generation,
-										'migration',
-									);
-									if (
-										current === undefined ||
-										current.leaseExpiresAt === undefined ||
-										DateTime.isLessThanOrEqualTo(current.leaseExpiresAt, now)
-									)
-										return yield* Effect.fail(
-											new JobStoreError('StaleToken', 'Migration lease lost'),
+					promoteToRunning: Effect.fn('PostgresJobStore.promoteToRunning')(
+						function (claim, payload, version, now, duration) {
+							return protect(
+								sql.withTransaction(
+									Effect.gen(function* () {
+										const current = yield* readToken(
+											claim.id,
+											claim.generation,
+											'migration',
 										);
-									if (current.attempts >= current.maxAttempts)
-										return yield* Effect.fail(
-											new JobStoreError('InvalidState', 'Attempts exhausted'),
-										);
-									const next = current.attempts + 1;
-									const rows = yield* sql<
-										Record<string, unknown>
-									>`UPDATE ${schema}.${jobs} SET payload_json=${sql.json(payload)},payload_version=${version},status='running',attempts=${next},lease_phase='execution',lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, duration))},outcome_json=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE id=${claim.id}::uuid RETURNING *`;
-									yield* sql`INSERT INTO ${schema}.${attempts} (job_id,attempt,lease_generation,started_at) VALUES (${claim.id}::uuid,${next},${claim.generation},${DateTime.toDateUtc(now)})`;
-									return yield* decodeOne(rows);
-								}),
-							),
-						),
-					quarantineMigration: (claim, reason, now) =>
-						protect(
+										if (
+											current === undefined ||
+											current.leaseExpiresAt === undefined ||
+											DateTime.isLessThanOrEqualTo(current.leaseExpiresAt, now)
+										)
+											return yield* Effect.fail(
+												new JobStoreError('StaleToken', 'Migration lease lost'),
+											);
+										if (current.attempts >= current.maxAttempts)
+											return yield* Effect.fail(
+												new JobStoreError('InvalidState', 'Attempts exhausted'),
+											);
+										const next = current.attempts + 1;
+										const rows = yield* sql<
+											Record<string, unknown>
+										>`UPDATE ${schema}.${jobs} SET payload_json=${sql.json(payload)},payload_version=${version},status='running',attempts=${next},lease_phase='execution',lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, duration))},outcome_json=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE id=${claim.id}::uuid RETURNING *`;
+										yield* sql`INSERT INTO ${schema}.${attempts} (job_id,attempt,lease_generation,started_at) VALUES (${claim.id}::uuid,${next},${claim.generation},${DateTime.toDateUtc(now)})`;
+										return yield* decodeOne(rows);
+									}),
+								),
+							);
+						},
+					),
+					quarantineMigration: Effect.fn(
+						'PostgresJobStore.quarantineMigration',
+					)(function (claim, reason, now) {
+						return protect(
 							sql.withTransaction(
 								Effect.gen(function* () {
 									const current = yield* readToken(
@@ -316,7 +321,8 @@ export const layer = (
 									return yield* decodeOne(rows);
 								}),
 							),
-						),
+						);
+					}),
 					heartbeat: (claim, now, duration) =>
 						protect(
 							Effect.map(
@@ -324,43 +330,46 @@ export const layer = (
 								(rows) => rows.length > 0,
 							),
 						),
-					finalize: (claim, outcome, now, retryAt) =>
-						protect(
-							sql.withTransaction(
-								Effect.gen(function* () {
-									const current = yield* readToken(
-										claim.id,
-										claim.generation,
-										'execution',
-									);
-									if (current === undefined) return false;
-									const encodedOutcome = yield* Schema.encodeEffect(
-										JobOutcomeSchema,
-									)(outcome).pipe(
-										Effect.mapError((cause) =>
-											invariant('Invalid job outcome', cause),
-										),
-									);
-									const retry =
-										outcome._tag === 'RetryableFailure' &&
-										retryAt !== undefined &&
-										current.attempts < current.maxAttempts;
-									const status =
-										outcome._tag === 'Succeeded'
-											? 'completed'
-											: outcome._tag === 'Cancelled'
-												? 'cancelled'
-												: retry
-													? 'scheduled'
-													: outcome._tag === 'FatalFailure'
-														? 'quarantined'
-														: 'failed';
-									yield* sql`UPDATE ${schema}.${attempts} SET finished_at=${DateTime.toDateUtc(now)},outcome=${outcome._tag},error_json=${sql.json(encodedOutcome)} WHERE job_id=${claim.id}::uuid AND attempt=${current.attempts}`;
-									yield* sql`UPDATE ${schema}.${jobs} SET status=${status},run_at=${retry ? DateTime.toDateUtc(retryAt) : DateTime.toDateUtc(current.runAt)},lease_phase=NULL,lease_expires_at=NULL,outcome_json=${sql.json(encodedOutcome)},completed_at=${status === 'completed' ? DateTime.toDateUtc(now) : null},failed_at=${status === 'failed' ? DateTime.toDateUtc(now) : null},updated_at=${DateTime.toDateUtc(now)} WHERE id=${claim.id}::uuid`;
-									return true;
-								}),
-							),
-						),
+					finalize: Effect.fn('PostgresJobStore.finalize')(
+						function (claim, outcome, now, retryAt) {
+							return protect(
+								sql.withTransaction(
+									Effect.gen(function* () {
+										const current = yield* readToken(
+											claim.id,
+											claim.generation,
+											'execution',
+										);
+										if (current === undefined) return false;
+										const encodedOutcome = yield* Schema.encodeEffect(
+											JobOutcomeSchema,
+										)(outcome).pipe(
+											Effect.mapError((cause) =>
+												invariant('Invalid job outcome', cause),
+											),
+										);
+										const retry =
+											outcome._tag === 'RetryableFailure' &&
+											retryAt !== undefined &&
+											current.attempts < current.maxAttempts;
+										const status =
+											outcome._tag === 'Succeeded'
+												? 'completed'
+												: outcome._tag === 'Cancelled'
+													? 'cancelled'
+													: retry
+														? 'scheduled'
+														: outcome._tag === 'FatalFailure'
+															? 'quarantined'
+															: 'failed';
+										yield* sql`UPDATE ${schema}.${attempts} SET finished_at=${DateTime.toDateUtc(now)},outcome=${outcome._tag},error_json=${sql.json(encodedOutcome)} WHERE job_id=${claim.id}::uuid AND attempt=${current.attempts}`;
+										yield* sql`UPDATE ${schema}.${jobs} SET status=${status},run_at=${retry ? DateTime.toDateUtc(retryAt) : DateTime.toDateUtc(current.runAt)},lease_phase=NULL,lease_expires_at=NULL,outcome_json=${sql.json(encodedOutcome)},completed_at=${status === 'completed' ? DateTime.toDateUtc(now) : null},failed_at=${status === 'failed' ? DateTime.toDateUtc(now) : null},updated_at=${DateTime.toDateUtc(now)} WHERE id=${claim.id}::uuid`;
+										return true;
+									}),
+								),
+							);
+						},
+					),
 					cancel: (id, now) =>
 						protect(
 							sql.withTransaction(

@@ -93,11 +93,11 @@ const mapRepositoryError = (
 				message: `Reminder delivery ${error.reason}`,
 			});
 
-export const execute = (
-	payload: DispatchPayload,
-	options: { readonly leaseDuration?: Duration.Input } = {},
-) =>
-	Effect.gen(function* () {
+export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
+	function* (
+		payload: DispatchPayload,
+		options: { readonly leaseDuration?: Duration.Input } = {},
+	) {
 		const leaseDuration = Duration.fromInputUnsafe(
 			options.leaseDuration ?? Duration.seconds(30),
 		);
@@ -283,16 +283,19 @@ export const execute = (
 				),
 			}),
 		);
-	}).pipe(
-		Effect.mapError((cause) =>
-			cause instanceof FeedingReminderRetryError ||
-			cause instanceof FeedingReminderPermanentError
-				? cause
-				: cause instanceof NotificationRepositoryError
-					? mapRepositoryError(cause)
-					: new FeedingReminderRetryError({
-							message: 'Reminder delivery infrastructure failed',
-							retryAfter: Duration.seconds(1),
-						}),
+	},
+	(effect) =>
+		effect.pipe(
+			Effect.mapError((cause) =>
+				cause instanceof FeedingReminderRetryError ||
+				cause instanceof FeedingReminderPermanentError
+					? cause
+					: cause instanceof NotificationRepositoryError
+						? mapRepositoryError(cause)
+						: new FeedingReminderRetryError({
+								message: 'Reminder delivery infrastructure failed',
+								retryAfter: Duration.seconds(1),
+							}),
+			),
 		),
-	);
+);

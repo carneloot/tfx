@@ -127,6 +127,7 @@ export const layer = (options: Options) =>
 							Effect.as(undefined),
 						),
 				),
+				Effect.withSpan('JobWorker.runOnePass'),
 			);
 			const loop: Effect.Effect<void, JobStoreError | JobRuntimeOptionsError> =
 				Effect.suspend(() =>
