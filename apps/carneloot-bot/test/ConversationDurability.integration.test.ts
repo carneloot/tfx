@@ -2,19 +2,23 @@ import * as PgClient from '@effect/sql-pg/PgClient';
 import * as TfxMigrations from '@tfx/postgres/Migrations';
 import * as PostgresConversationStorage from '@tfx/postgres/PostgresConversationStorage';
 import * as PostgresUpdateDeduplicator from '@tfx/postgres/PostgresUpdateDeduplicator';
-import { Effect, Layer, Schema } from 'effect';
+import { DateTime, Duration, Effect, Layer, Schema } from 'effect';
 import { Conversations } from 'tfx/Conversations';
 import * as ConversationsLive from 'tfx/Conversations';
 import { ConversationStorage } from 'tfx/ConversationStorage';
 import * as DispatchOutcome from 'tfx/DispatchOutcome';
 import { MessageContext, type MessageContextService } from 'tfx/MessageContext';
+import { Telegram } from 'tfx/Telegram';
 import { UpdateDeduplicator } from 'tfx/UpdateDeduplicator';
 import { describe, expect, it } from 'vitest';
 
 import * as AddPetConversation from '../src/bot/AddPetConversation.js';
+import * as ConfigureReminderDelayConversation from '../src/bot/conversations/ConfigureReminderDelayConversation.js';
 import { BotId, TelegramChatId, TelegramUserId } from '../src/domain/Ids.js';
 import { PetName } from '../src/domain/Pet.js';
+import { PetFoodRepository } from '../src/ports/PetFoodRepository.js';
 import { PetRepository } from '../src/ports/PetRepository.js';
+import { ReminderScheduler } from '../src/ports/ReminderScheduler.js';
 import { UserRepository } from '../src/ports/UserRepository.js';
 import * as RepositoriesLive from '../src/postgres/RepositoriesLive.js';
 import * as PostgresTestLayer from './internal/PostgresTestLayer.js';
@@ -38,6 +42,10 @@ const services = <E, R>(pg: Layer.Layer<PgClient.PgClient, E, R>) =>
 const message = {
 	reply: () => Effect.succeed({} as never),
 } as unknown as MessageContextService;
+const scheduler = Layer.succeed(ReminderScheduler, {
+	replaceForLatest: () => Effect.void,
+	cancelForPet: () => Effect.void,
+});
 const profile = {
 	botId: Schema.decodeUnknownSync(BotId)('carneloot'),
 	telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(9020),
@@ -106,6 +114,102 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 		expect(result.result._tag).toBe('Applied');
 		expect(result.pets.map((pet) => pet.name)).toEqual(['Rex']);
 	});
+	it('resumes reminder-delay action state containing an existing delay', async () => {
+		const telegramId = Date.now();
+		const scope = {
+			botId: 'carneloot',
+			chatId: telegramId,
+			userId: telegramId,
+		};
+		const replies: Array<string> = [];
+		const capturedMessage = {
+			reply: (text: string) =>
+				Effect.sync(() => {
+					replies.push(text);
+					return {} as never;
+				}),
+		} as unknown as MessageContextService;
+		const result = await Effect.runPromise(
+			Effect.provide(
+				Effect.gen(function* () {
+					const sql = yield* PgClient.PgClient;
+					const pg = Layer.succeed(PgClient.PgClient, sql);
+					const runtime = Layer.mergeAll(
+						services(pg),
+						scheduler,
+						Layer.succeed(MessageContext, capturedMessage),
+						Layer.succeed(Telegram, {} as never),
+					);
+					yield* Effect.provide(
+						Effect.provide(
+							Effect.gen(function* () {
+								const owner =
+									yield* (yield* UserRepository).registerTelegramProfile({
+										...profile,
+										telegramUserId:
+											Schema.decodeUnknownSync(TelegramUserId)(telegramId),
+										privateChatId:
+											Schema.decodeUnknownSync(TelegramChatId)(telegramId),
+									});
+								const pet = yield* (yield* PetRepository).addOwned(
+									owner.user.id,
+									Schema.decodeUnknownSync(PetName)('Barto'),
+								);
+								yield* (yield* PetFoodRepository).setReminderDelay(
+									pet.id,
+									Duration.hours(2),
+									yield* DateTime.now,
+								);
+								const conversations = yield* Conversations;
+								yield* conversations.start(
+									ConfigureReminderDelayConversation.built,
+									{
+										ownerId: owner.user.id,
+										botId: owner.profile.botId,
+										telegramUserId: owner.profile.telegramUserId,
+										pets: [{ id: pet.id, name: pet.name }],
+									},
+									{ scope },
+								);
+								yield* conversations.resume(
+									ConfigureReminderDelayConversation.built,
+									'Barto',
+									{ scope, updateId: telegramId },
+								);
+							}),
+							ConversationsLive.layer,
+						),
+						runtime,
+					);
+					return yield* Effect.provide(
+						Effect.provide(
+							Effect.gen(function* () {
+								const resumed = yield* (yield* Conversations).resume(
+									ConfigureReminderDelayConversation.built,
+									'Alterar',
+									{ scope, updateId: telegramId + 1 },
+								);
+								const row = yield* (yield* ConversationStorage).load(scope);
+								return { resumed, row };
+							}),
+							ConversationsLive.layer,
+						),
+						runtime,
+					);
+				}),
+				PostgresTestLayer.layer,
+			),
+		);
+		expect(replies).toContain(
+			'Atraso atual: 2 horas. Envie Alterar ou Excluir.',
+		);
+		expect(replies.at(-1)).toBe(
+			'Envie a duração, por exemplo 30 minutos ou 2 horas.',
+		);
+		expect(result.resumed._tag).toBe('Applied');
+		expect(result.row?.step).toBe('duration');
+	});
+
 	it('fences storage replay and durable dedup claims', async () => {
 		const scope = { botId: 'carneloot', chatId: 9030, userId: 9030 };
 		const updateId = 7030;

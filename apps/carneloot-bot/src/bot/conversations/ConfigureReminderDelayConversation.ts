@@ -29,10 +29,17 @@ const Base = {
 	pets: Schema.Array(PetOption),
 };
 const PetState = Schema.Struct(Base);
+const ReminderDelayMilliseconds = Schema.Number.check(
+	Schema.isInt(),
+	Schema.isBetween({
+		minimum: 1,
+		maximum: Duration.toMillis(Duration.days(30)),
+	}),
+);
 const ActionState = Schema.Struct({
 	...Base,
 	petId: PetId,
-	currentDelay: Schema.NullOr(ReminderDelay),
+	currentDelayMs: Schema.NullOr(ReminderDelayMilliseconds),
 });
 const SelectedState = Schema.Struct({ ...Base, petId: PetId });
 const Text = ConversationInput.text(Schema.String);
@@ -156,10 +163,14 @@ export const built = ConversationBuilder.done(
 							});
 							const repository = yield* PetFoodRepository;
 							const settings = yield* repository.getSettings(pet.id);
+							const currentDelay = settings?.reminderDelay ?? null;
 							return ConversationBuilder.to('action', {
 								...state,
 								petId: pet.id,
-								currentDelay: settings?.reminderDelay ?? null,
+								currentDelayMs:
+									currentDelay === null
+										? null
+										: Duration.toMillis(currentDelay),
 							});
 						}),
 					),
@@ -170,9 +181,9 @@ export const built = ConversationBuilder.done(
 			enter: (state) =>
 				required(
 					reply(
-						state.currentDelay === null
+						state.currentDelayMs === null
 							? 'Notificações desativadas. Envie Definir.'
-							: `Atraso atual: ${normalized(state.currentDelay)}. Envie Alterar ou Excluir.`,
+							: `Atraso atual: ${normalized(Duration.millis(state.currentDelayMs))}. Envie Alterar ou Excluir.`,
 					),
 				),
 			onInput: (state, value) =>
@@ -185,11 +196,11 @@ export const built = ConversationBuilder.done(
 							pets: state.pets,
 							petId: state.petId,
 						};
-						if (value === 'Definir' && state.currentDelay === null)
+						if (value === 'Definir' && state.currentDelayMs === null)
 							return ConversationBuilder.to('duration', selected);
-						if (value === 'Alterar' && state.currentDelay !== null)
+						if (value === 'Alterar' && state.currentDelayMs !== null)
 							return ConversationBuilder.to('duration', selected);
-						if (value === 'Excluir' && state.currentDelay !== null)
+						if (value === 'Excluir' && state.currentDelayMs !== null)
 							return ConversationBuilder.to('deleteConfirm', selected);
 						return yield* invalidChoice;
 					}),
