@@ -31,6 +31,9 @@ describe('DeduplicationObserver', () => {
 				});
 
 				expect(result).toBe(completed);
+				if (result._tag !== 'Completed') {
+					throw new Error('Expected completed observation');
+				}
 				expect(result.outcome).toBe(outcome);
 				expect(yield* Ref.get(attempts)).toBe(1);
 			}),
