@@ -30,7 +30,7 @@ Because this is a workspace-wide breaking type migration, Tasks 1–10 remain un
 - job retry delay and backoff
 - job/dedup lease and heartbeat intervals
 - dedup wait timeout and retention
-- polling retry delay
+- Telegram long-poll timeout and polling retry delay
 - worker idle delay
 - reminder delay
 - notification retry/lease delays
@@ -38,11 +38,27 @@ Because this is a workspace-wide breaking type migration, Tasks 1–10 remain un
 ### Keep numbers
 
 - IDs, versions, attempts, generations, capacities, concurrency, limits
-- Telegram long-poll `timeout`, because Telegram protocol encodes it as seconds
 - Telegram payload timestamps until decoded at Telegram/domain boundary
 - persisted duration encoding in bigint/JSON, converted with Schema codecs
 
-### Boundary rules
+### Option and boundary rules
+
+Configuration-facing constructors/layers accept `Duration.Input` so callers may use `"10 seconds"`, `Duration.seconds(10)`, or other Effect duration inputs. Normalize exactly once during construction; stored domain values, service interfaces, and implementation state use `Duration.Duration` only.
+
+```ts
+const normalizeDuration = (
+	input: Duration.Input,
+	name: string,
+): Duration.Duration =>
+	Option.match(Duration.fromInput(input), {
+		onNone: () => {
+			throw new TypeError(`${name} is not a valid Duration input`);
+		},
+		onSome: (duration) => duration,
+	});
+```
+
+Do not repeatedly call `Duration.fromInput` inside loops or persistence methods.
 
 ```ts
 // Effect clock
@@ -57,6 +73,9 @@ const sqlDate = DateTime.toDateUtc(now);
 
 // Persisted millis
 const millis = Duration.toMillis(duration);
+
+// Telegram protocol seconds — conversion only at request construction
+const timeoutSeconds = Duration.toSeconds(longPollTimeout);
 ```
 
 No SQL column type migration is required.
@@ -180,10 +199,10 @@ Expected: type tests fail because current public contracts use numbers.
 Use exact contract shapes:
 
 ```ts
-// Conversation.ts
+// Conversation.ts runtime declaration
 readonly idleTimeout: Duration.Duration | undefined;
-// Options
-readonly idleTimeout?: Duration.Duration;
+// Constructor Options
+readonly idleTimeout?: Duration.Input;
 ```
 
 ```ts
@@ -220,7 +239,16 @@ export interface ScheduleRequest {
 }
 ```
 
-Every JobStore method receives `DateTime.Utc` for `now`/`retryAt` and `Duration.Duration` for lease duration:
+`JobRuntime.runOne` accepts configuration inputs and normalizes once per invocation:
+
+```ts
+readonly runOne: (options?: {
+	readonly leaseDuration?: Duration.Input;
+	readonly heartbeatInterval?: Duration.Input;
+}) => Effect.Effect<JobRecord | undefined, JobRuntimeError>;
+```
+
+Every lower-level JobStore method receives `DateTime.Utc` for `now`/`retryAt` and normalized `Duration.Duration` for lease duration:
 
 ```ts
 readonly claimForMigration: (
@@ -257,12 +285,14 @@ readonly complete: (
 ```
 
 ```ts
-// BotRuntime.ts
-readonly leaseDuration?: Duration.Duration;
-readonly waitTimeout?: Duration.Duration;
-readonly retention?: Duration.Duration;
-readonly heartbeatInterval?: Duration.Duration;
+// BotRuntime.ts public layer Options
+readonly leaseDuration?: Duration.Input;
+readonly waitTimeout?: Duration.Input;
+readonly retention?: Duration.Input;
+readonly heartbeatInterval?: Duration.Input;
 ```
+
+Normalize BotRuntime options once during layer construction into an internal object whose fields are `Duration.Duration`; `Dispatcher` and `UpdateDeduplicator` never receive `Duration.Input`.
 
 Add a structural service-free error schema so JobRuntime can encode declared errors without hidden Effect requirements:
 
@@ -280,7 +310,7 @@ export type ServiceFreeValid<S extends ErrorSchema> =
 
 Keep general `Valid` unchanged for conversations and middleware. Change `Job`/`Job.Options`/related job generics from `ES extends ErrorSchema.ErrorSchema` to `ES extends ErrorSchema.ServiceFreeErrorSchema`, and require `error: ErrorSchema.ServiceFreeValid<ES>` in `Job.make`. Existing tagged error schemas remain valid; an error schema requiring encoding services becomes a compile-time error. The generic bound lets `Schema.encodeSync(declaration.error)` compile inside JobRuntime.
 
-Do not add number overloads. Workspace packages are unreleased `0.0.0`; one clean break prevents dual representations.
+Do not add parallel number overloads. Numeric milliseconds are accepted only where an option is explicitly `Duration.Input`, then normalized immediately. Workspace packages are unreleased `0.0.0`; one clean break prevents dual stored representations.
 
 - [ ] **Step 4: Run type-check to obtain implementation worklist**
 
@@ -334,16 +364,21 @@ Expected: compile/runtime failures at numeric addition and comparison sites.
 
 - [ ] **Step 3: Normalize and validate idle timeout in constructor**
 
-Use Effect Duration guards:
+Normalize `Duration.Input` once, then use Effect Duration guards:
 
 ```ts
+const idleTimeout =
+	options.idleTimeout === undefined
+		? undefined
+		: normalizeDuration(options.idleTimeout, 'idleTimeout');
 if (
-	options.idleTimeout !== undefined &&
-	(!Duration.isFinite(options.idleTimeout) ||
-		!Duration.isPositive(options.idleTimeout))
+	idleTimeout !== undefined &&
+	(!Duration.isFinite(idleTimeout) || !Duration.isPositive(idleTimeout))
 )
 	throw new TypeError('idleTimeout must be finite and positive');
 ```
+
+Store normalized `idleTimeout` on the returned conversation declaration.
 
 Keep version, initial-step, and migration-history checks unchanged.
 
@@ -433,7 +468,7 @@ const validRetryDuration = (value: Duration.Duration): boolean =>
 	Duration.isFinite(value) && !Duration.isNegative(value);
 ```
 
-`Job.retry()` accepts `Duration.Duration | undefined`. `JobRuntime` catches thrown policy callbacks, rejects invalid/infinite/negative durations, and computes:
+`Job.retry()` accepts `Duration.Input | undefined`, normalizes immediately, and stores `Duration.Duration` in `RetryDecision`. `JobRuntime` catches thrown policy callbacks, rejects invalid/infinite/negative durations, and computes:
 
 ```ts
 const retryAt = DateTime.addDuration(finishedAt, retryAfter);
@@ -442,9 +477,9 @@ if (!Number.isFinite(sqlDate.getTime()))
 	return yield* invalidRetryPolicy;
 ```
 
-- [ ] **Step 4: Replace JobRuntime clocks and arithmetic**
+- [ ] **Step 4: Normalize JobRuntime options, then replace clocks/arithmetic**
 
-Use `DateTime.now` for claim, promotion, finish, cancellation, and release instants. Pass `Duration.Duration` directly into `Effect.sleep` heartbeat monitor.
+Normalize `leaseDuration`/`heartbeatInterval` from `Duration.Input` at start of `runOne`; validate finite positive values and heartbeat less than lease. Use `DateTime.now` for claim, promotion, finish, cancellation, and release instants. Pass `Duration.Duration` directly into `Effect.sleep` heartbeat monitor.
 
 ```ts
 const claimNow = yield* DateTime.now;
@@ -550,14 +585,15 @@ Expected: job tests pass; workspace consumers remain intentionally uncommitted u
 - [ ] **Step 1: Convert option and conformance fixtures**
 
 ```ts
-leaseDuration: Duration.seconds(30),
-waitTimeout: Duration.seconds(5),
-retention: Duration.days(1),
-heartbeatInterval: Duration.seconds(10),
-retryDelay: Duration.seconds(1),
+leaseDuration: '30 seconds',
+waitTimeout: '5 seconds',
+retention: '1 day',
+heartbeatInterval: '10 seconds',
+timeout: '30 seconds',
+retryDelay: '1 second',
 ```
 
-Keep polling `timeout: 30` and `limit: 100` numeric because they are Telegram protocol fields.
+Keep only `limit: 100` numeric. Long-poll timeout is Duration in tfx and converts to integer seconds at Telegram request construction.
 
 - [ ] **Step 2: Run focused tests and verify numeric assumptions fail**
 
@@ -569,7 +605,7 @@ Expected: failures at duration validation, lease arithmetic, timeout comparisons
 
 - [ ] **Step 3: Validate durations with Duration guards**
 
-Use one file-local helper per public constructor/service boundary:
+Public `BotRuntime`/`Polling` options normalize `Duration.Input` once. Internal `Dispatcher`, `DeduplicatedDispatch`, and `UpdateDeduplicator` signatures stay `Duration.Duration`. Use one file-local validator after normalization:
 
 ```ts
 const finitePositive = (value: Duration.Duration): boolean =>
@@ -615,9 +651,54 @@ const heartbeatInterval =
 
 This conversion is allowed only for deriving a duration, not for instant arithmetic.
 
-- [ ] **Step 6: Migrate polling retry delay**
+- [ ] **Step 6: Migrate polling timeout and retry delay**
 
-Change `PollingOptions.retryDelay?: Duration.Duration`. Rate-limit conversion returns provider Duration directly:
+Change public options to inputs and define an internal normalized options type:
+
+```ts
+export interface PollingOptions {
+	readonly timeout?: Duration.Input;
+	readonly retryDelay?: Duration.Input;
+	// unchanged limit/allowedUpdates/commands fields
+}
+interface NormalizedPollingOptions extends Omit<
+	PollingOptions,
+	'timeout' | 'retryDelay'
+> {
+	readonly timeout: Duration.Duration;
+	readonly retryDelay: Duration.Duration;
+}
+```
+
+Normalize in `Polling.make`, then pass `NormalizedPollingOptions` to `PollingSource`. Validate timeout as finite, positive, whole seconds from 1 through 50:
+
+```ts
+const timeout = normalizeDuration(
+	options.timeout ?? '30 seconds',
+	'timeout',
+);
+const timeoutSeconds = Duration.toSeconds(timeout);
+if (
+	!Duration.isFinite(timeout) ||
+	!Number.isSafeInteger(timeoutSeconds) ||
+	timeoutSeconds < 1 ||
+	timeoutSeconds > 50
+)
+	throw new TypeError(
+		'Polling timeout must be a whole-second Duration between 1 and 50 seconds',
+	);
+```
+
+`PollingSource` sends only the converted protocol scalar:
+
+```ts
+telegram.getUpdates({
+	// ...offset, limit, allowed_updates
+	timeout: timeoutSeconds,
+});
+```
+
+Rate-limit conversion returns provider Duration directly:
 
 ```ts
 const retryDelay = (
@@ -629,7 +710,7 @@ const retryDelay = (
 		: fallback;
 ```
 
-Default is `Duration.seconds(1)` and `Effect.sleep(delay)` receives Duration. Keep `timeout` validation numeric and bounded to Telegram-supported seconds.
+Normalize retry default from `options.retryDelay ?? '1 second'`; `Effect.sleep(delay)` receives the normalized Duration. Add boundary tests rejecting sub-second, fractional-second, zero, infinite, and over-50-second long-poll timeouts while asserting `Duration.seconds(30)` is encoded as Telegram `timeout: 30`.
 
 - [ ] **Step 7: Validate complete tfx slice and checkpoint**
 
@@ -833,7 +914,7 @@ Expected after Tasks 1–6:
 - no `Clock.currentTimeMillis` in temporal workflows
 - no instant-plus-duration numeric arithmetic
 - `new Date` only absent or limited to non-temporal unrelated code
-- polling protocol timeout remains documented number seconds
+- only the Telegram request-local `timeoutSeconds` scalar remains numeric
 
 - [ ] **Step 2: Run all tfx/postgres tests**
 
@@ -942,16 +1023,31 @@ Expected: domain-focused tests pass. Application ports/workflows remain uncommit
 
 **Files:**
 - Modify: `apps/carneloot-bot/src/{Config.ts,Layers.ts,Production.ts}`
+- Modify: `apps/carneloot-bot/{.env.example,README.md}`
 - Modify: `apps/carneloot-bot/test/{Config.test.ts,BotLayers.test.ts,NodeSmoke.test.ts}`
 
-- [ ] **Step 1: Update config tests**
+- [ ] **Step 1: Update config tests and environment names**
 
-Keep environment variable names/values in milliseconds. Assert decoded values:
+Use human-readable Effect duration strings:
 
 ```ts
-expect(Duration.toMillis(config.jobIdle)).toBe(100);
-expect(Duration.toMillis(config.jobLease)).toBe(30_000);
-expect(Duration.toMillis(config.dedupRetention)).toBe(86_400_000);
+POLLING_TIMEOUT: '30 seconds',
+POLLING_RETRY_DELAY: '1 second',
+JOB_IDLE: '100 millis',
+JOB_LEASE: '30 seconds',
+JOB_HEARTBEAT: '10 seconds',
+DEDUP_LEASE: '30 seconds',
+DEDUP_HEARTBEAT: '10 seconds',
+DEDUP_WAIT: '5 seconds',
+DEDUP_RETENTION: '1 day',
+```
+
+Assert decoded values:
+
+```ts
+expect(Duration.equals(config.jobIdle, Duration.millis(100))).toBe(true);
+expect(Duration.equals(config.jobLease, Duration.seconds(30))).toBe(true);
+expect(Duration.equals(config.dedupRetention, Duration.days(1))).toBe(true);
 ```
 
 Rename service fields:
@@ -967,43 +1063,32 @@ jobHeartbeatMillis → jobHeartbeat
  dedupRetentionMillis → dedupRetention
 ```
 
-Keep `pollingTimeoutSeconds`, capacities, and concurrency numeric.
+Rename AppConfig service field `pollingTimeoutSeconds` to `pollingTimeout: Duration.Duration`; capacities and concurrency remain numeric. Update `.env.example` and README with the new names/units; do not retain misleading `_MILLIS`/`_SECONDS` aliases in this unreleased app.
 
-- [ ] **Step 2: Compose env-string duration schema**
+- [ ] **Step 2: Read config with Effect's Duration parser**
 
-`Schema.DurationFromMillis` is number-encoded, while environment providers supply strings. Use:
-
-```ts
-const PositiveDurationFromMillisString = Schema.NumberFromString.pipe(
-	Schema.decodeTo(
-		Schema.DurationFromMillis.check(
-			Schema.makeFilter(
-				(value) =>
-					Duration.isFinite(value) && Duration.isPositive(value),
-				{ message: 'Expected finite positive duration milliseconds' },
-			),
-		),
-	),
-);
-```
-
-Read duration fields with:
+Use `Config.duration`, which is the pinned shortcut for `Config.schema(Schema.DurationFromString, name)` and accepts values such as `"10 seconds"`:
 
 ```ts
-jobIdle: Config.schema(
-	PositiveDurationFromMillisString,
-	'JOB_IDLE_MILLIS',
-),
+pollingTimeout: Config.duration('POLLING_TIMEOUT'),
+pollingRetryDelay: Config.duration('POLLING_RETRY_DELAY'),
+jobIdle: Config.duration('JOB_IDLE'),
+jobLease: Config.duration('JOB_LEASE'),
+jobHeartbeat: Config.duration('JOB_HEARTBEAT'),
+dedupLease: Config.duration('DEDUP_LEASE'),
+dedupHeartbeat: Config.duration('DEDUP_HEARTBEAT'),
+dedupWait: Config.duration('DEDUP_WAIT'),
+dedupRetention: Config.duration('DEDUP_RETENTION'),
 ```
 
-Apply same recipe to all `*_MILLIS` duration variables. Keep redacted-secret checks and cross-field relations explicit.
+After `Config.all`, reject infinite, negative, and zero durations with Duration guards. For polling timeout additionally require whole seconds from 1 through 50. Keep redacted-secret checks and cross-field relations explicit.
 
 - [ ] **Step 3: Replace numeric relations**
 
 ```ts
 if (!Duration.isLessThan(value.jobHeartbeat, value.jobLease))
 	return yield* invalidConfig(
-		'JOB_HEARTBEAT_MILLIS must be less than JOB_LEASE_MILLIS',
+		'JOB_HEARTBEAT must be less than JOB_LEASE',
 	);
 ```
 
@@ -1152,7 +1237,7 @@ const retryAt = DateTime.addDuration(now, disposition.delay);
 const retryAfter = DateTime.distance(now, retryAt);
 ```
 
-Worker options remain Duration and pass directly to `Effect.sleep`, `Schedule`, and `JobRuntime`.
+`JobWorker.layer` accepts `Duration.Input` for idle/lease/heartbeat options, normalizes once during layer acquisition, and passes `Duration.Duration` to `Effect.sleep`, `Schedule`, and `JobRuntime`.
 
 - [ ] **Step 3: Update FeedingReminder errors/job policy**
 
@@ -1221,6 +1306,8 @@ Add design rule:
 ```markdown
 - Runtime absolute instants use `DateTime.Utc`.
 - Runtime elapsed intervals use `Duration.Duration`.
+- Configuration-facing options accept `Duration.Input` and normalize once.
+- Environment duration values use Effect strings such as `"10 seconds"` via `Config.duration`.
 - PostgreSQL adapters alone convert `DateTime.Utc` to `Date`.
 - Config/storage codecs alone convert Duration to/from milliseconds.
 - IDs, counters, capacities, and protocol-native scalar units remain numbers.
@@ -1231,8 +1318,9 @@ Add design rule:
 Update every temporal snippet:
 
 ```text
-number retry delay       → Duration.Duration
-number lease/retention   → Duration.Duration
+number retry delay       → Duration.Input at option/helper boundary, normalized Duration.Duration internally
+number lease/retention   → Duration.Input at config boundary, normalized Duration.Duration internally
+polling timeout seconds  → Duration.Duration; convert with Duration.toSeconds only in Telegram request
 number runAt/retryAt     → DateTime.Utc
 Clock.currentTimeMillis  → DateTime.now
 instant + duration       → DateTime.addDuration
@@ -1313,11 +1401,11 @@ Expected: no SQL migration content changed solely for TypeScript temporal repres
 Review specifically:
 
 ```text
-1. tfx public temporal APIs contain DateTime.Utc/Duration.Duration only.
+1. tfx runtime temporal values are DateTime.Utc/Duration.Duration; only configuration option positions expose Duration.Input.
 2. No mixed number/DateTime arithmetic or equality remains.
 3. PostgreSQL timestamptz and duration-millis encodings remain backward compatible.
 4. JobOutcome.retryAfter JSON remains numeric millis.
-5. Polling timeout remains Telegram protocol seconds; retryDelay is Duration.
+5. Polling timeout and retryDelay are Duration in tfx; only Telegram request timeout is integer seconds.
 6. TestClock determinism and interruption behavior remain intact.
 7. Reliability plan no longer proposes number-based temporal validation.
 ```
@@ -1333,7 +1421,8 @@ git commit -m "docs: record Effect-native temporal model"
 
 ## Acceptance criteria
 
-- `tfx` public contracts use `DateTime.Utc` for instants and `Duration.Duration` for intervals.
+- `tfx` runtime contracts use `DateTime.Utc` for instants and `Duration.Duration` for normalized intervals.
+- Configuration-facing constructors accept `Duration.Input`, including strings such as `"10 seconds"`, and normalize once.
 - `tfx` production code contains no epoch-millisecond arithmetic.
 - Memory stores use DateTime ordering/arithmetic and Duration sleeps.
 - PostgreSQL adapters decode `timestamptz` to DateTime and bind only through `DateTime.toDateUtc`.
