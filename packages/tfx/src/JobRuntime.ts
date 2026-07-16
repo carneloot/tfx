@@ -82,6 +82,39 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 			const byName = new Map(
 				implementations.map((i) => [i.declaration.name, i]),
 			);
+			const logRunResult = (record: JobRecord | undefined) => {
+				if (record === undefined) return Effect.void;
+				const annotations = {
+					jobId: record.id,
+					jobName: record.name,
+					status: record.status,
+					attempts: record.attempts,
+				};
+				switch (record.status) {
+					case 'completed':
+					case 'cancelled':
+						return Effect.logInfo('tfx.job.run_finished').pipe(
+							Effect.annotateLogs(annotations),
+						);
+					case 'scheduled':
+					case 'running':
+						return Effect.logWarning('tfx.job.run_finished').pipe(
+							Effect.annotateLogs(annotations),
+						);
+					case 'failed':
+					case 'quarantined':
+						return Effect.logError('tfx.job.run_finished').pipe(
+							Effect.annotateLogs(annotations),
+						);
+				}
+			};
+			const getLogged = Effect.fn('JobRuntime.getLogged')(function* (
+				id: string,
+			) {
+				const record = yield* store.get(id);
+				yield* logRunResult(record);
+				return record;
+			});
 			const service: JobRuntimeService = {
 				problems: store.problems(),
 				schedule: Effect.fn('JobRuntime.schedule')(function* (
@@ -101,6 +134,13 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							? {}
 							: { conflictKey: options.conflictKey }),
 					});
+					yield* Effect.logInfo('tfx.job.scheduled').pipe(
+						Effect.annotateLogs({
+							jobId: result.record.id,
+							jobName: result.record.name,
+							replaced: result.replacedId !== undefined,
+						}),
+					);
 					return {
 						id: result.record.id,
 						...(result.replacedId === undefined
@@ -147,6 +187,13 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 					const claimNow = yield* DateTime.now;
 					const claim = yield* store.claimForMigration(claimNow, leaseDuration);
 					if (claim === undefined) return undefined;
+					yield* Effect.logInfo('tfx.job.claimed').pipe(
+						Effect.annotateLogs({
+							jobId: claim.record.id,
+							jobName: claim.record.name,
+							attempts: claim.record.attempts,
+						}),
+					);
 					const implementation = byName.get(claim.record.name);
 					if (implementation === undefined) {
 						yield* store.quarantineMigration(
@@ -154,7 +201,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							'UnknownDeclaration',
 							yield* DateTime.now,
 						);
-						return yield* store.get(claim.record.id);
+						return yield* getLogged(claim.record.id);
 					}
 					const declaration = implementation.declaration;
 					if (
@@ -165,7 +212,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							'NewerPayloadVersion',
 							yield* DateTime.now,
 						);
-						return yield* store.get(claim.record.id);
+						return yield* getLogged(claim.record.id);
 					}
 					const migrated = yield* Effect.result(
 						declaration.payload.migrate(
@@ -181,10 +228,13 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 								: 'InvalidPayload',
 							yield* DateTime.now,
 						);
-						return yield* store.get(claim.record.id);
+						return yield* getLogged(claim.record.id);
 					}
 					const beforePromotion = yield* store.get(claim.record.id);
-					if (beforePromotion?.status === 'cancelled') return beforePromotion;
+					if (beforePromotion?.status === 'cancelled') {
+						yield* logRunResult(beforePromotion);
+						return beforePromotion;
+					}
 					const running = yield* store.promoteToRunning(
 						claim.token,
 						migrated.success,
@@ -192,13 +242,20 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 						yield* DateTime.now,
 						leaseDuration,
 					);
+					yield* Effect.logInfo('tfx.job.running').pipe(
+						Effect.annotateLogs({
+							jobId: running.id,
+							jobName: running.name,
+							attempts: running.attempts,
+						}),
+					);
 					if (running.cancellationRequested) {
 						yield* store.finalize(
 							claim.token,
 							JobOutcome.cancelled,
 							yield* DateTime.now,
 						);
-						return yield* store.get(running.id);
+						return yield* getLogged(running.id);
 					}
 					const execution = Effect.provide(
 						implementation.handler(migrated.success),
@@ -237,7 +294,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							JobOutcome.cancelled,
 							finishedAt,
 						);
-						return yield* store.get(running.id);
+						return yield* getLogged(running.id);
 					}
 					if (Exit.isSuccess(exit))
 						yield* store.finalize(
@@ -256,10 +313,10 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 								JobOutcome.cancelled,
 								finishedAt,
 							);
-							return yield* store.get(running.id);
+							return yield* getLogged(running.id);
 						}
 						if (Option.isSome(failure) && failure.value instanceof LeaseSignal)
-							return yield* store.get(running.id);
+							return yield* getLogged(running.id);
 						if (
 							Option.isSome(failure) &&
 							failure.value instanceof JobStoreError
@@ -277,7 +334,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 									JobOutcome.fatalFailure('Invalid job error encoding'),
 									finishedAt,
 								);
-								return yield* store.get(running.id);
+								return yield* getLogged(running.id);
 							}
 							let decision: Job.RetryDecision | undefined;
 							try {
@@ -288,7 +345,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 									JobOutcome.fatalFailure('Invalid retry policy'),
 									finishedAt,
 								);
-								return yield* store.get(running.id);
+								return yield* getLogged(running.id);
 							}
 							let evaluation: RetryEvaluation;
 							try {
@@ -314,7 +371,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 									JobOutcome.fatalFailure('Invalid retry policy'),
 									finishedAt,
 								);
-								return yield* store.get(running.id);
+								return yield* getLogged(running.id);
 							}
 							if (evaluation._tag === 'Retry') {
 								yield* store.finalize(
@@ -339,11 +396,18 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 								finishedAt,
 							);
 					}
-					return yield* store.get(running.id);
+					return yield* getLogged(running.id);
 				}),
-				cancel: Effect.fn('JobRuntime.cancel')((id) =>
-					Effect.flatMap(DateTime.now, (now) => store.cancel(id, now)),
-				),
+				cancel: Effect.fn('JobRuntime.cancel')(function* (id) {
+					const cancelled = yield* Effect.flatMap(DateTime.now, (now) =>
+						store.cancel(id, now),
+					);
+					if (cancelled)
+						yield* Effect.logInfo('tfx.job.cancellation_requested').pipe(
+							Effect.annotateLogs({ jobId: id }),
+						);
+					return cancelled;
+				}),
 				releaseFailed: Effect.fn('JobRuntime.releaseFailed')(
 					function* (id, options) {
 						const record = yield* store.get(id);

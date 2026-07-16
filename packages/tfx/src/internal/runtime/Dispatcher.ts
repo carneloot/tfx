@@ -28,27 +28,46 @@ export const make = (options: {
 	Effect.map(KeyedExecutor.make(options), (executor) => ({
 		dispatch: (update) => {
 			const scope = fromUpdate(options.botId, update);
-			return executor.submit(
-				options.partitioning(scope),
-				DeduplicatedDispatch.dispatch(
-					options.deduplicator,
-					update,
-					options.router.route(update),
-					{
-						...(options.leaseDuration === undefined
-							? {}
-							: { leaseDuration: options.leaseDuration }),
-						...(options.waitTimeout === undefined
-							? {}
-							: { waitTimeout: options.waitTimeout }),
-						...(options.retention === undefined
-							? {}
-							: { retention: options.retention }),
-						...(options.heartbeatInterval === undefined
-							? {}
-							: { heartbeatInterval: options.heartbeatInterval }),
-					},
-				),
-			);
+			return executor
+				.submit(
+					options.partitioning(scope),
+					DeduplicatedDispatch.dispatch(
+						options.deduplicator,
+						update,
+						options.router.route(update),
+						{
+							...(options.leaseDuration === undefined
+								? {}
+								: { leaseDuration: options.leaseDuration }),
+							...(options.waitTimeout === undefined
+								? {}
+								: { waitTimeout: options.waitTimeout }),
+							...(options.retention === undefined
+								? {}
+								: { retention: options.retention }),
+							...(options.heartbeatInterval === undefined
+								? {}
+								: { heartbeatInterval: options.heartbeatInterval }),
+						},
+					),
+				)
+				.pipe(
+					Effect.tap((outcome) => {
+						const log =
+							outcome._tag === 'Fatal'
+								? Effect.logError
+								: outcome._tag === 'RetryableFailure' ||
+									  outcome._tag === 'HandledWithOutputFailure'
+									? Effect.logWarning
+									: Effect.logInfo;
+						return log('tfx.dispatch.completed').pipe(
+							Effect.annotateLogs({
+								botId: options.botId,
+								updateId: update.update_id,
+								outcome: outcome._tag,
+							}),
+						);
+					}),
+				);
 		},
 	}));

@@ -102,6 +102,23 @@ export const make = (
 					operation({ payload }).pipe(
 						Effect.map((envelope) => (envelope as { result: unknown }).result),
 						Effect.mapError((cause) => mapGeneratedError(property, cause)),
+						Effect.tap(() =>
+							Effect.logDebug('tfx.telegram.request_completed').pipe(
+								Effect.annotateLogs({ method: property }),
+							),
+						),
+						Effect.tapError((error) => {
+							const log = error.isRetryable
+								? Effect.logWarning
+								: Effect.logError;
+							return log('tfx.telegram.request_failed').pipe(
+								Effect.annotateLogs({
+									method: property,
+									reason: error.reason._tag,
+									retryable: error.isRetryable,
+								}),
+							);
+						}),
 					);
 			},
 		});

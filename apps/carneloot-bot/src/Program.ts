@@ -31,12 +31,39 @@ export const run = Effect.gen(function* () {
 	const bot = yield* BotRuntime;
 	const worker = yield* JobWorker;
 	if (worker.diagnostics.startupProblems.length > 0)
-		yield* Effect.logWarning('Job worker started with problem jobs', {
-			failedJobIds: worker.diagnostics.failedJobIds,
-			quarantinedJobIds: worker.diagnostics.quarantinedJobIds,
-		});
-	return yield* Effect.raceFirst(bot.await, worker.await);
-});
+		yield* Effect.logWarning('carneloot.worker.problem_jobs').pipe(
+			Effect.annotateLogs({
+				failedJobIds: worker.diagnostics.failedJobIds,
+				quarantinedJobIds: worker.diagnostics.quarantinedJobIds,
+			}),
+		);
+	yield* Effect.logInfo('carneloot.application.started').pipe(
+		Effect.annotateLogs({
+			deduplicationBackend: dedup.diagnostics.backend,
+			recoveredDeliveries: worker.diagnostics.recoveredDeliveries,
+		}),
+	);
+	const botAwait = bot.await.pipe(
+		Effect.tap(() => Effect.logWarning('carneloot.bot.completed')),
+		Effect.tapError((error) =>
+			Effect.logError('carneloot.bot.failed').pipe(
+				Effect.annotateLogs({ errorTag: error._tag }),
+			),
+		),
+	);
+	const workerAwait = worker.await.pipe(
+		Effect.tap(() => Effect.logWarning('carneloot.worker.completed')),
+		Effect.tapError((error) =>
+			Effect.logError('carneloot.worker.failed').pipe(
+				Effect.annotateLogs({
+					errorTag: error._tag,
+					...('reason' in error ? { reason: String(error.reason) } : {}),
+				}),
+			),
+		),
+	);
+	return yield* Effect.raceFirst(botAwait, workerAwait);
+}).pipe(Effect.ensuring(Effect.logInfo('carneloot.application.stopped')));
 
 /** Portable scoped factory; platform-specific entry points provide one graph. */
 export const fromLayer = <E extends TaggedError, R>(

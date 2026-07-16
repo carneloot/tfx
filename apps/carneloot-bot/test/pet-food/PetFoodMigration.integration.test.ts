@@ -1,5 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import { Effect } from 'effect';
+import { Effect, Logger, References } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import { migrate } from '../../src/postgres/AppMigrator.js';
@@ -12,6 +12,28 @@ import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
+interface CapturedLog {
+	readonly message: unknown;
+	readonly level: string;
+	readonly annotations: Readonly<Record<string, unknown>>;
+}
+const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+	const logs: Array<CapturedLog> = [];
+	const logger = Logger.make((options) => {
+		logs.push({
+			message:
+				Array.isArray(options.message) && options.message.length === 1
+					? options.message[0]
+					: options.message,
+			level: options.logLevel,
+			annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+		});
+	});
+	return Effect.map(
+		Effect.provideService(effect, Logger.CurrentLoggers, new Set([logger])),
+		(result) => ({ result, logs }),
+	);
+};
 describe.skipIf(!enabled)('pet food migration', () => {
 	it('applies immutable migrations in order under concurrent startup', async () => {
 		const program = Effect.gen(function* () {
@@ -81,14 +103,29 @@ describe.skipIf(!enabled)('pet food migration', () => {
 				}),
 			);
 		});
-		const result = await Effect.runPromise(
-			Effect.provide(program, PostgresTestLayer.layer),
+		const captured = await Effect.runPromise(
+			captureLogs(Effect.provide(program, PostgresTestLayer.layer)),
 		);
-		for (const failure of [result.unknown, result.gap])
+		for (const failure of [captured.result.unknown, captured.result.gap])
 			expect(failure).toMatchObject({
 				_tag: 'Failure',
 				failure: { _tag: 'DomainPersistenceError' },
 			});
+		const failureLogs = captured.logs.filter(
+			(log) => log.message === 'carneloot.migrations.failed',
+		);
+		expect(failureLogs).toEqual([
+			{
+				message: 'carneloot.migrations.failed',
+				level: 'Error',
+				annotations: { stage: 'ledger_validation' },
+			},
+			{
+				message: 'carneloot.migrations.failed',
+				level: 'Error',
+				annotations: { stage: 'ledger_validation' },
+			},
+		]);
 	});
 	it('executes FK, range, null-pair, uniqueness, and cascade constraints', async () => {
 		const userId = crypto.randomUUID();

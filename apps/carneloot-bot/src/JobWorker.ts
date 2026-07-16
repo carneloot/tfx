@@ -105,6 +105,17 @@ export const layer = (options: Options) =>
 			const quarantinedJobIds = startupProblems
 				.filter((job) => job.status === 'quarantined')
 				.map((job) => job.id);
+			const startupLog =
+				recoveredDeliveries > 0 || startupProblems.length > 0
+					? Effect.logWarning
+					: Effect.logInfo;
+			yield* startupLog('carneloot.worker.initialized').pipe(
+				Effect.annotateLogs({
+					recoveredDeliveries,
+					failedJobs: failedJobIds.length,
+					quarantinedJobs: quarantinedJobIds.length,
+				}),
+			);
 			const persistenceRetry = Schedule.exponential(idleDelay).pipe(
 				Schedule.jittered,
 				Schedule.upTo({ times: 5 }),
@@ -123,9 +134,9 @@ export const layer = (options: Options) =>
 						error instanceof JobStoreError &&
 						error.reason === 'PersistenceFailure',
 					() =>
-						Effect.logWarning('JobWorker.persistence_retry_exhausted').pipe(
-							Effect.as(undefined),
-						),
+						Effect.logWarning(
+							'carneloot.worker.persistence_retry_exhausted',
+						).pipe(Effect.annotateLogs({ attempts: 6 }), Effect.as(undefined)),
 				),
 				Effect.withSpan('JobWorker.runOnePass'),
 			);

@@ -1,4 +1,12 @@
-import { Deferred, Effect, Fiber, Layer, Schema } from 'effect';
+import {
+	Deferred,
+	Effect,
+	Fiber,
+	Layer,
+	Logger,
+	References,
+	Schema,
+} from 'effect';
 import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as TestClock from 'effect/testing/TestClock';
@@ -109,6 +117,29 @@ describe('Telegram delivery classification', () => {
 		);
 	});
 });
+
+interface CapturedLog {
+	readonly message: unknown;
+	readonly level: string;
+	readonly annotations: Readonly<Record<string, unknown>>;
+}
+const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+	const logs: Array<CapturedLog> = [];
+	const logger = Logger.make((options) => {
+		logs.push({
+			message:
+				Array.isArray(options.message) && options.message.length === 1
+					? options.message[0]
+					: options.message,
+			level: options.logLevel,
+			annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+		});
+	});
+	return Effect.as(
+		Effect.provideService(effect, Logger.CurrentLoggers, new Set([logger])),
+		logs,
+	);
+};
 
 interface HarnessOptions {
 	readonly attemptCount?: number;
@@ -567,14 +598,37 @@ describe('delivery dispatcher', () => {
 		},
 	);
 
-	it('marks ambiguous network outcomes unknown and never resends', async () => {
+	it('logs sanitized ambiguous outcomes and never resends', async () => {
 		const h = harness(
-			Effect.fail(telegramError(new NetworkError({ message: 'network' }))),
+			Effect.fail(
+				telegramError(new NetworkError({ message: 'network token:secret' })),
+			),
 		);
-		await Effect.runPromise(Effect.provide(Dispatch.execute(payload), h.layer));
-		await Effect.runPromise(Effect.provide(Dispatch.execute(payload), h.layer));
+		const logs = await Effect.runPromise(
+			captureLogs(
+				Effect.provide(
+					Effect.andThen(Dispatch.execute(payload), Dispatch.execute(payload)),
+					h.layer,
+				),
+			),
+		);
 		expect(h.calls()).toBe(1);
 		expect(h.state()).toBe('unknown');
+		expect(logs).toContainEqual({
+			message: 'carneloot.delivery.outcome_unknown',
+			level: 'Error',
+			annotations: {
+				eventId,
+				petId,
+				foodEntryId,
+				deliveryId,
+				attempt: 1,
+				reason: 'NetworkError',
+				code: 'NetworkError',
+			},
+		});
+		expect(JSON.stringify(logs)).not.toContain('token:secret');
+		expect(JSON.stringify(logs)).not.toContain(String(chatId));
 	});
 	it('preserves interruption with a committed sending fence', async () => {
 		const started = Deferred.makeUnsafe<void>();

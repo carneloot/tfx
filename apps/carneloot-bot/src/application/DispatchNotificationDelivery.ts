@@ -110,20 +110,36 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 					message: 'Delivery lease duration must be finite and positive',
 				}),
 			);
+		const logContext = {
+			eventId: payload.eventId,
+			petId: payload.petId,
+			foodEntryId: payload.foodEntryId,
+		};
 		const now = yield* DateTime.now;
 		const notifications = yield* NotificationRepository;
 		const event = yield* notifications.getDispatchContext(payload.eventId);
 		if (
 			event === undefined ||
 			(event.status !== 'scheduled' && event.status !== 'dispatching')
-		)
+		) {
+			yield* Effect.logDebug('carneloot.delivery.ignored').pipe(
+				Effect.annotateLogs({
+					...logContext,
+					reason: event === undefined ? 'event_missing' : 'event_inactive',
+					...(event === undefined ? {} : { status: event.status }),
+				}),
+			);
 			return;
+		}
 		if (
 			event.botId !== payload.botId ||
 			event.petId !== payload.petId ||
 			event.foodEntryId !== payload.foodEntryId
 		) {
 			yield* notifications.cancelEvent(event.id, now);
+			yield* Effect.logError('carneloot.delivery.cancelled').pipe(
+				Effect.annotateLogs({ ...logContext, reason: 'payload_mismatch' }),
+			);
 			return yield* Effect.fail(
 				new FeedingReminderPermanentError({
 					message: 'Reminder payload does not match persisted event',
@@ -134,12 +150,18 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 		const latest = yield* food.latestEntry(payload.petId);
 		if (latest?.id !== payload.foodEntryId) {
 			yield* notifications.cancelEvent(payload.eventId, now);
+			yield* Effect.logInfo('carneloot.delivery.cancelled').pipe(
+				Effect.annotateLogs({ ...logContext, reason: 'stale_food_entry' }),
+			);
 			return;
 		}
 		const pets = yield* PetRepository;
 		const pet = yield* pets.findById(payload.petId);
 		if (pet === undefined || pet.ownerId !== event.ownerUserId) {
 			yield* notifications.cancelEvent(payload.eventId, now);
+			yield* Effect.logWarning('carneloot.delivery.cancelled').pipe(
+				Effect.annotateLogs({ ...logContext, reason: 'pet_owner_missing' }),
+			);
 			return;
 		}
 		const settings = yield* food.getSettings(payload.petId);
@@ -149,6 +171,9 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 			settings.timeZone === null
 		) {
 			yield* notifications.cancelEvent(payload.eventId, now);
+			yield* Effect.logInfo('carneloot.delivery.cancelled').pipe(
+				Effect.annotateLogs({ ...logContext, reason: 'pet_setup_incomplete' }),
+			);
 			return;
 		}
 		const recipient = yield* (yield* NotificationRecipients).resolveOwner(
@@ -165,7 +190,14 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 			],
 			now,
 		);
-		yield* notifications.recoverExpired(event.id, now);
+		const recovered = yield* notifications.recoverExpired(event.id, now);
+		yield* Effect.logInfo('carneloot.delivery.prepared').pipe(
+			Effect.annotateLogs({
+				...logContext,
+				recipientReachable: recipient._tag === 'Reachable',
+				recoveredLeases: recovered,
+			}),
+		);
 		const window = DayBoundary.current(now, {
 			localTime: settings.dayStart,
 			timeZone: settings.timeZone,
@@ -187,12 +219,24 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 					leaseDuration,
 				);
 				if (claim === undefined) return;
-				if (claim.delivery.recipientChatId === null)
+				const attemptContext = {
+					...logContext,
+					deliveryId: claim.delivery.id,
+					attempt: claim.delivery.attemptCount,
+				};
+				if (claim.delivery.recipientChatId === null) {
+					yield* Effect.logError('carneloot.delivery.unreachable_claimed').pipe(
+						Effect.annotateLogs(attemptContext),
+					);
 					return yield* Effect.fail(
 						new FeedingReminderPermanentError({
 							message: 'Claimed unreachable recipient',
 						}),
 					);
+				}
+				yield* Effect.logInfo('carneloot.delivery.sending').pipe(
+					Effect.annotateLogs(attemptContext),
+				);
 				const sent = yield* Effect.result(
 					telegram.sendMessage({
 						chat_id: claim.delivery.recipientChatId,
@@ -221,7 +265,10 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 							completedAt,
 						)
 						.pipe(Effect.mapError(persistenceRetry));
-					if (!finalized)
+					if (!finalized) {
+						yield* Effect.logWarning('carneloot.delivery.fence_lost').pipe(
+							Effect.annotateLogs(attemptContext),
+						);
 						return yield* Effect.fail(
 							new FeedingReminderRetryError({
 								message: 'Delivery success fence was lost',
@@ -235,6 +282,10 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 								),
 							}),
 						);
+					}
+					yield* Effect.logInfo('carneloot.delivery.sent').pipe(
+						Effect.annotateLogs(attemptContext),
+					);
 				} else {
 					const disposition = classifyTelegramError(sent.failure);
 					if (disposition._tag === 'Unknown') {
@@ -242,6 +293,13 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 							.finalizeUnknown(claim.token, disposition.error, completedAt)
 							.pipe(Effect.mapError(persistenceRetry));
 						if (!finalized) return yield* Effect.fail(persistenceRetry());
+						yield* Effect.logError('carneloot.delivery.outcome_unknown').pipe(
+							Effect.annotateLogs({
+								...attemptContext,
+								reason: disposition.error.message,
+								code: disposition.error.code,
+							}),
+						);
 					} else {
 						const retryable =
 							disposition._tag === 'Retryable' &&
@@ -258,6 +316,18 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 							)
 							.pipe(Effect.mapError(persistenceRetry));
 						if (!finalized) return yield* Effect.fail(persistenceRetry());
+						const log = retryable ? Effect.logWarning : Effect.logError;
+						yield* log(
+							retryable
+								? 'carneloot.delivery.retry_scheduled'
+								: 'carneloot.delivery.failed',
+						).pipe(
+							Effect.annotateLogs({
+								...attemptContext,
+								reason: disposition.error.message,
+								code: disposition.error.code,
+							}),
+						);
 					}
 				}
 				yield* loop;
@@ -269,7 +339,22 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 			event.id,
 			summaryNow,
 		);
-		if (summary.completed) return;
+		const summaryContext = {
+			...logContext,
+			pending: summary.pending,
+			sending: summary.sending,
+			retryableFailed: summary.retryableFailed,
+			terminal: summary.terminal,
+		};
+		if (summary.completed) {
+			yield* Effect.logInfo('carneloot.delivery.event_completed').pipe(
+				Effect.annotateLogs(summaryContext),
+			);
+			return;
+		}
+		yield* Effect.logWarning('carneloot.delivery.event_incomplete').pipe(
+			Effect.annotateLogs(summaryContext),
+		);
 		const target =
 			summary.earliestRetryAt ??
 			summary.earliestSendingLeaseExpiry ??

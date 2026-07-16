@@ -1,4 +1,12 @@
-import { Deferred, Duration, Effect, Fiber, Ref } from 'effect';
+import {
+	Deferred,
+	Duration,
+	Effect,
+	Fiber,
+	Logger,
+	Ref,
+	References,
+} from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
@@ -16,6 +24,28 @@ import {
 
 const telegramError = (reason: TelegramErrorReason): TelegramError =>
 	new TelegramError({ module: 'Telegram', method: 'getUpdates', reason });
+interface CapturedLog {
+	readonly message: unknown;
+	readonly level: string;
+	readonly annotations: Readonly<Record<string, unknown>>;
+}
+const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+	const logs: Array<CapturedLog> = [];
+	const logger = Logger.make((options) => {
+		logs.push({
+			message:
+				Array.isArray(options.message) && options.message.length === 1
+					? options.message[0]
+					: options.message,
+			level: options.logLevel,
+			annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+		});
+	});
+	return Effect.map(
+		Effect.provideService(effect, Logger.CurrentLoggers, new Set([logger])),
+		(result) => ({ result, logs }),
+	);
+};
 describe('Polling', () => {
 	it.each([
 		['invalid timeout', { timeout: 'not a duration' as Duration.Input }],
@@ -90,17 +120,23 @@ describe('Polling', () => {
 			timeout: Duration.seconds(30),
 			retryDelay: Duration.seconds(1),
 		});
-		await expect(
-			Effect.runPromise(
-				source.run((item) =>
-					Effect.succeed(
-						item.update_id === 2
-							? DispatchOutcome.retryableFailure('retry')
-							: DispatchOutcome.handled,
-					),
-				) as Effect.Effect<void, unknown>,
+		const captured = await Effect.runPromise(
+			captureLogs(
+				Effect.result(
+					source.run((item) =>
+						Effect.succeed(
+							item.update_id === 2
+								? DispatchOutcome.retryableFailure('retry')
+								: DispatchOutcome.handled,
+						),
+					) as Effect.Effect<void, unknown>,
+				),
 			),
-		).rejects.toBe(terminal);
+		);
+		expect(captured.result).toMatchObject({
+			_tag: 'Failure',
+			failure: terminal,
+		});
 		expect(calls.map((call) => call.method)).toEqual([
 			'getMe',
 			'deleteWebhook',
@@ -119,6 +155,23 @@ describe('Polling', () => {
 		});
 		expect(calls[4]?.payload).toMatchObject({ offset: 2 });
 		expect(calls[4]?.payload).not.toHaveProperty('allowed_updates');
+		const batchLogs = captured.logs.filter(
+			(log) =>
+				log.message === 'tfx.polling.batch_received' ||
+				log.message === 'tfx.polling.batch_acknowledged',
+		);
+		expect(batchLogs).toEqual([
+			{
+				message: 'tfx.polling.batch_received',
+				level: 'Info',
+				annotations: { received: 3 },
+			},
+			{
+				message: 'tfx.polling.batch_acknowledged',
+				level: 'Info',
+				annotations: { received: 3, acknowledged: 1, nextOffset: 2 },
+			},
+		]);
 	});
 
 	it('reinvokes getUpdates for retries and omits allowed updates after first success', async () => {

@@ -61,6 +61,12 @@ export const make = (
 				commands: options.commands,
 				language_code: options.languageCode ?? 'pt',
 			});
+		yield* Effect.logInfo('tfx.polling.ready').pipe(
+			Effect.annotateLogs({
+				commandsConfigured: options.commands?.length ?? 0,
+				droppedPendingUpdates: options.dropPendingUpdates ?? false,
+			}),
+		);
 		let offset: number | undefined;
 		let first = true;
 		const pollRetrySchedule = Schedule.forever.pipe(
@@ -84,6 +90,24 @@ export const make = (
 							: {}),
 					}),
 				).pipe(
+					Effect.tapError((error) => {
+						const delay = retryDelay(error, options.retryDelay);
+						const log =
+							delay === undefined ? Effect.logError : Effect.logWarning;
+						return log(
+							delay === undefined
+								? 'tfx.polling.request_failed'
+								: 'tfx.polling.request_retrying',
+						).pipe(
+							Effect.annotateLogs({
+								method: error.method,
+								reason: error.reason._tag,
+								...(delay === undefined
+									? {}
+									: { retryDelayMs: Duration.toMillis(delay) }),
+							}),
+						);
+					}),
 					Effect.retry({
 						while: (error) =>
 							retryDelay(error, options.retryDelay) !== undefined,
@@ -92,32 +116,58 @@ export const make = (
 				),
 				(updates: ReadonlyArray<Update>) => {
 					first = false;
-					return Effect.flatMap(
-						Effect.forEach(
-							updates,
-							(update) =>
-								Effect.map(deliver(update), (outcome) => ({
-									update,
-									outcome,
-								})),
-							{ concurrency: 'unbounded' },
+					const receivedLog =
+						updates.length === 0
+							? Effect.void
+							: Effect.logInfo('tfx.polling.batch_received').pipe(
+									Effect.annotateLogs({ received: updates.length }),
+								);
+					return Effect.andThen(
+						receivedLog,
+						Effect.flatMap(
+							Effect.forEach(
+								updates,
+								(update) =>
+									Effect.map(deliver(update), (outcome) => ({
+										update,
+										outcome,
+									})),
+								{ concurrency: 'unbounded' },
+							),
+							(settled) => {
+								const ordered = [...settled].sort(
+									(a, b) => a.update.update_id - b.update.update_id,
+								);
+								let acknowledged = 0;
+								for (const item of ordered) {
+									if (DispatchOutcome.isTerminal(item.outcome))
+										return Effect.andThen(
+											Effect.logError('tfx.polling.dispatch_fatal').pipe(
+												Effect.annotateLogs({
+													updateId: item.update.update_id,
+												}),
+											),
+											Effect.fail(
+												new FatalPollingDispatchError({
+													updateId: item.update.update_id,
+												}),
+											),
+										);
+									if (!DispatchOutcome.isAcknowledgeable(item.outcome)) break;
+									offset = item.update.update_id + 1;
+									acknowledged++;
+								}
+								return updates.length === 0
+									? Effect.void
+									: Effect.logInfo('tfx.polling.batch_acknowledged').pipe(
+											Effect.annotateLogs({
+												received: updates.length,
+												acknowledged,
+												...(offset === undefined ? {} : { nextOffset: offset }),
+											}),
+										);
+							},
 						),
-						(settled) => {
-							const ordered = [...settled].sort(
-								(a, b) => a.update.update_id - b.update.update_id,
-							);
-							for (const item of ordered) {
-								if (DispatchOutcome.isTerminal(item.outcome))
-									return Effect.fail(
-										new FatalPollingDispatchError({
-											updateId: item.update.update_id,
-										}),
-									);
-								if (!DispatchOutcome.isAcknowledgeable(item.outcome)) break;
-								offset = item.update.update_id + 1;
-							}
-							return Effect.void;
-						},
 					);
 				},
 			),

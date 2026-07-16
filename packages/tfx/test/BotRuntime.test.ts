@@ -1,4 +1,13 @@
-import { Deferred, Duration, Effect, Layer, Ref, Schema } from 'effect';
+import {
+	Deferred,
+	Duration,
+	Effect,
+	Layer,
+	Logger,
+	Ref,
+	References,
+	Schema,
+} from 'effect';
 import {
 	Bot,
 	BotRuntime,
@@ -23,6 +32,28 @@ const runtime = (delivery: UpdateDelivery.UpdateDelivery<any, any, never>) =>
 		}),
 		UpdateDeduplicator.layerNoop,
 	);
+interface CapturedLog {
+	readonly message: unknown;
+	readonly level: string;
+	readonly annotations: Readonly<Record<string, unknown>>;
+}
+const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+	const logs: Array<CapturedLog> = [];
+	const logger = Logger.make((options) => {
+		logs.push({
+			message:
+				Array.isArray(options.message) && options.message.length === 1
+					? options.message[0]
+					: options.message,
+			level: options.logLevel,
+			annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+		});
+	});
+	return Effect.as(
+		Effect.provideService(effect, Logger.CurrentLoggers, new Set([logger])),
+		logs,
+	);
+};
 
 describe('BotRuntime', () => {
 	it('supports public manual delivery and direct dispatch', async () => {
@@ -40,6 +71,38 @@ describe('BotRuntime', () => {
 			),
 		);
 		expect(outcome).toEqual({ _tag: 'Handled' });
+	});
+
+	it('logs source and dispatch lifecycle without update payloads', async () => {
+		const logs = await Effect.runPromise(
+			captureLogs(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const context = yield* Layer.build(runtime(UpdateDelivery.manual));
+						yield* Effect.provide(
+							Effect.flatMap(BotRuntime.BotRuntime, (service) =>
+								service.dispatch({
+									update_id: 9,
+									message: { text: 'token:secret' },
+								} as never),
+							),
+							context,
+						);
+					}),
+				),
+			),
+		);
+		expect(logs).toContainEqual({
+			message: 'tfx.bot.source_started',
+			level: 'Info',
+			annotations: { botId: 'bot', concurrency: 1, capacity: 4 },
+		});
+		expect(logs).toContainEqual({
+			message: 'tfx.dispatch.completed',
+			level: 'Info',
+			annotations: { botId: 'bot', updateId: 9, outcome: 'Handled' },
+		});
+		expect(JSON.stringify(logs)).not.toContain('token:secret');
 	});
 
 	it('deduplicates direct public dispatch with configured timings', async () => {

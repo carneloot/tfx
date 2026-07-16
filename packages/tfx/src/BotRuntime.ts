@@ -96,11 +96,13 @@ export const layer = <
 				);
 			const source = yield* UpdateSource;
 			const deduplicator = yield* UpdateDeduplicator;
+			const concurrency = options.concurrency ?? 16;
+			const capacity = options.capacity ?? 1024;
 			const dispatcher = yield* Dispatcher.make({
 				botId: bot.name,
 				partitioning: options.partitioning ?? Partitioning.byChat,
-				concurrency: options.concurrency ?? 16,
-				capacity: options.capacity ?? 1024,
+				concurrency,
+				capacity,
 				deduplicator,
 				router: options.router ?? Router.make(),
 				leaseDuration,
@@ -108,12 +110,31 @@ export const layer = <
 				retention,
 				heartbeatInterval,
 			});
+			yield* Effect.logInfo('tfx.bot.source_started').pipe(
+				Effect.annotateLogs({ botId: bot.name, concurrency, capacity }),
+			);
 			const sourceFiber = yield* Effect.forkScoped(
 				source.run(dispatcher.dispatch),
 			);
 			return {
 				dispatch: dispatcher.dispatch,
 				await: Fiber.join(sourceFiber).pipe(
+					Effect.tap(() =>
+						Effect.logWarning('tfx.bot.source_completed').pipe(
+							Effect.annotateLogs({ botId: bot.name }),
+						),
+					),
+					Effect.tapError((cause) =>
+						Effect.logError('tfx.bot.source_failed').pipe(
+							Effect.annotateLogs({
+								botId: bot.name,
+								causeTag:
+									typeof cause === 'object' && cause !== null && '_tag' in cause
+										? String(cause._tag)
+										: typeof cause,
+							}),
+						),
+					),
 					Effect.mapError((cause) => new BotRuntimeSourceError({ cause })),
 				),
 			};

@@ -1,5 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import * as Effect from 'effect/Effect';
+import * as Ref from 'effect/Ref';
 
 import { DomainPersistenceError } from '../domain/DomainError.js';
 import {
@@ -53,8 +54,18 @@ const migrations: ReadonlyArray<Migration> = Object.freeze([
 const persistence = (cause: unknown) =>
 	new DomainPersistenceError({ message: 'Carneloot migration failed', cause });
 
-export const migrate = Effect.flatMap(PgClient.PgClient, (sql) =>
-	sql.withTransaction(
+export const migrate = Effect.gen(function* () {
+	const sql = yield* PgClient.PgClient;
+	const failureLogged = yield* Ref.make(false);
+	const logFailure = (annotations: Record<string, unknown>) =>
+		Ref.set(failureLogged, true).pipe(
+			Effect.andThen(
+				Effect.logError('carneloot.migrations.failed').pipe(
+					Effect.annotateLogs(annotations),
+				),
+			),
+		);
+	const transaction = sql.withTransaction(
 		Effect.gen(function* () {
 			yield* sql`SELECT pg_advisory_xact_lock(hashtextextended('carneloot:app_migrations', 0))`;
 			yield* sql`CREATE SCHEMA IF NOT EXISTS carneloot`;
@@ -69,14 +80,53 @@ export const migrate = Effect.flatMap(PgClient.PgClient, (sql) =>
 				name: string;
 				checksum: string;
 			}>`SELECT version,name,checksum FROM carneloot.app_migrations ORDER BY version`;
-			yield* validateAppliedMigrations(migrations, applied);
+			yield* Effect.logInfo('carneloot.migrations.started').pipe(
+				Effect.annotateLogs({
+					applied: applied.length,
+					pending: Math.max(0, migrations.length - applied.length),
+				}),
+			);
+			const validation: Effect.Effect<void, DomainPersistenceError> =
+				validateAppliedMigrations(migrations, applied);
+			yield* validation.pipe(
+				Effect.tapError(() => logFailure({ stage: 'ledger_validation' })),
+			);
 			for (const migration of migrations.slice(applied.length)) {
-				yield* sql.unsafe(migration.sql);
-				yield* sql`INSERT INTO carneloot.app_migrations (version,name,checksum) VALUES (${migration.version},${migration.name},${migration.checksum})`;
+				yield* Effect.gen(function* () {
+					yield* sql.unsafe(migration.sql);
+					yield* sql`INSERT INTO carneloot.app_migrations (version,name,checksum) VALUES (${migration.version},${migration.name},${migration.checksum})`;
+				}).pipe(
+					Effect.tapError(() =>
+						logFailure({
+							stage: 'apply',
+							version: migration.version,
+							name: migration.name,
+						}),
+					),
+				);
+				yield* Effect.logInfo('carneloot.migration.applied').pipe(
+					Effect.annotateLogs({
+						version: migration.version,
+						name: migration.name,
+					}),
+				);
 			}
+			yield* Effect.logInfo('carneloot.migrations.completed').pipe(
+				Effect.annotateLogs({
+					total: migrations.length,
+					appliedNow: migrations.length - applied.length,
+				}),
+			);
 		}),
-	),
-).pipe(
+	);
+	yield* transaction.pipe(
+		Effect.tapError(() =>
+			Effect.flatMap(Ref.get(failureLogged), (logged) =>
+				logged ? Effect.void : logFailure({ stage: 'transaction' }),
+			),
+		),
+	);
+}).pipe(
 	Effect.mapError((cause) =>
 		cause instanceof DomainPersistenceError ? cause : persistence(cause),
 	),
