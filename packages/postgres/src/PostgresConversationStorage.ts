@@ -16,24 +16,24 @@ import { migrate } from './internal/Migrator.js';
 import {
 	decode,
 	expectOne,
+	NonNegativeRawInteger,
 	NullableInteger,
 	NullableTimestamp,
 	RawInteger,
 	safeCause,
-	safeInteger,
 } from './internal/RowValidation.js';
 import { make } from './internal/Tables.js';
 import type { Options } from './Options.js';
 
 const RowSchema = Schema.Struct({
-	bot_id: Schema.String,
+	bot_id: Schema.NonEmptyString,
 	chat_id: RawInteger,
 	user_id: RawInteger,
-	conversation_id: Schema.String,
-	version: Schema.Number,
-	step: Schema.String,
+	conversation_id: Schema.NonEmptyString,
+	version: Schema.Int.check(Schema.isGreaterThan(0)),
+	step: Schema.NonEmptyString,
 	state_json: Schema.Unknown,
-	revision: RawInteger,
+	revision: NonNegativeRawInteger,
 	last_update_id: NullableInteger,
 	expires_at: NullableTimestamp,
 });
@@ -81,32 +81,13 @@ const decodeRow = (
 		const row = yield* decode(RowSchema, raw, (cause) =>
 			invariant('Malformed conversation row', cause),
 		);
-		const chatId = yield* safeInteger(row.chat_id, () =>
-			invariant('Unsafe conversation chat_id'),
-		);
-		const userId = yield* safeInteger(row.user_id, () =>
-			invariant('Unsafe conversation user_id'),
-		);
-		const revision = yield* safeInteger(row.revision, () =>
-			invariant('Unsafe conversation revision'),
-		);
+		const chatId = row.chat_id;
+		const userId = row.user_id;
+		const revision = row.revision;
 		const lastUpdateId =
-			row.last_update_id === null
-				? undefined
-				: yield* safeInteger(row.last_update_id, () =>
-						invariant('Unsafe conversation last_update_id'),
-					);
+			row.last_update_id === null ? undefined : row.last_update_id;
 		const expiresAt = row.expires_at === null ? undefined : row.expires_at;
-		if (
-			row.bot_id.length === 0 ||
-			row.conversation_id.length === 0 ||
-			row.step.length === 0
-		)
-			return yield* Effect.fail(invariant('Empty conversation identity field'));
-		if (!Number.isSafeInteger(row.version) || row.version <= 0 || revision < 0)
-			return yield* Effect.fail(
-				invariant('Invalid conversation version/revision'),
-			);
+
 		return {
 			scope: { botId: row.bot_id, chatId, userId },
 			conversationId: row.conversation_id,

@@ -2,14 +2,11 @@ import * as Duration from 'effect/Duration';
 import * as Schema from 'effect/Schema';
 
 import { BotId, PetId, TelegramChatId, UserId } from '../Ids.js';
+import { Uuid } from '../Uuid.js';
 import { FoodAmountMg } from './FoodAmount.js';
 import { IanaTimeZone, LocalTime } from './FoodDateTime.js';
 
-const uuidPattern =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-export const FoodEntryId = Schema.String.check(
-	Schema.isPattern(uuidPattern),
-).pipe(Schema.brand('FoodEntryId'));
+export const FoodEntryId = Uuid.pipe(Schema.brand('FoodEntryId'));
 export type FoodEntryId = typeof FoodEntryId.Type;
 export const ReminderDelay = Schema.Duration.check(
 	Schema.makeFilter(

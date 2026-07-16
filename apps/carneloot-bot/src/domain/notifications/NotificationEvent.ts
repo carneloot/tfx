@@ -2,12 +2,9 @@ import * as Schema from 'effect/Schema';
 
 import { BotId, PetId, UserId } from '../Ids.js';
 import { FoodEntryId } from '../pet-food/PetFood.js';
+import { Uuid } from '../Uuid.js';
 
-const uuid =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-export const EventId = Schema.String.check(Schema.isPattern(uuid)).pipe(
-	Schema.brand('NotificationEventId'),
-);
+export const EventId = Uuid.pipe(Schema.brand('NotificationEventId'));
 export type EventId = typeof EventId.Type;
 export const EventStatus = Schema.Literals([
 	'scheduled',
@@ -26,7 +23,7 @@ export const NotificationEvent = Schema.Struct({
 	scheduledFor: Schema.NullOr(Schema.DateTimeUtc),
 	status: EventStatus,
 	dedupeKey: Schema.NonEmptyString,
-	jobId: Schema.NullOr(Schema.String),
+	jobId: Schema.NullOr(Uuid),
 	createdAt: Schema.DateTimeUtc,
 	updatedAt: Schema.DateTimeUtc,
 	completedAt: Schema.NullOr(Schema.DateTimeUtc),

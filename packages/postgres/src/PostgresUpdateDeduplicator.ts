@@ -17,21 +17,21 @@ import { migrate } from './internal/Migrator.js';
 import {
 	CompletedOutcome,
 	decode,
+	NonNegativeRawInteger,
 	NullableTimestamp,
 	NullableUnknown,
 	RawInteger,
 	Timestamp,
 	safeCause,
-	safeInteger,
 } from './internal/RowValidation.js';
 import { make } from './internal/Tables.js';
 import { defaults, type Options } from './Options.js';
 
 const RowSchema = Schema.Struct({
-	bot_id: Schema.String,
+	bot_id: Schema.NonEmptyString,
 	update_id: RawInteger,
 	status: Schema.Literals(['processing', 'completed', 'released']),
-	lease_generation: RawInteger,
+	lease_generation: NonNegativeRawInteger,
 	lease_expires_at: Timestamp,
 	outcome_json: NullableUnknown,
 	completed_at: NullableTimestamp,
@@ -65,12 +65,8 @@ const decodeRow = (raw: unknown): Effect.Effect<Row, UpdateDeduplicatorError> =>
 		const value = yield* decode(RowSchema, raw, (cause) =>
 			invariant('Malformed update deduplication row', cause),
 		);
-		const updateId = yield* safeInteger(value.update_id, () =>
-			invariant('Unsafe deduplication update_id'),
-		);
-		const generation = yield* safeInteger(value.lease_generation, () =>
-			invariant('Unsafe deduplication generation'),
-		);
+		const updateId = value.update_id;
+		const generation = value.lease_generation;
 		const leaseExpiresAt = value.lease_expires_at;
 		const completedAt =
 			value.completed_at === null ? undefined : value.completed_at;

@@ -2,12 +2,28 @@ import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
-export const RawInteger = Schema.Union([Schema.String, Schema.Number]);
-export const NullableInteger = Schema.Union([
-	Schema.Null,
-	Schema.String,
-	Schema.Number,
+const nilUuid = '00000000-0000-0000-0000-000000000000';
+const maxUuid = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+export const Uuid = Schema.String.check(
+	Schema.isUUID(),
+	Schema.makeFilter(
+		(value) => {
+			const normalized = value.toLowerCase();
+			return normalized !== nilUuid && normalized !== maxUuid;
+		},
+		{ message: 'Expected a non-sentinel UUID' },
+	),
+);
+
+export const RawInteger = Schema.Union([
+	Schema.Int,
+	Schema.NumberFromString.check(Schema.isInt()),
 ]);
+export const NullableInteger = Schema.NullOr(RawInteger);
+export const NonNegativeRawInteger = RawInteger.check(
+	Schema.isGreaterThanOrEqualTo(0),
+);
+export const PositiveRawInteger = RawInteger.check(Schema.isGreaterThan(0));
 export const NullableString = Schema.Union([Schema.Null, Schema.String]);
 export const NullableUnknown = Schema.Union([Schema.Null, Schema.Unknown]);
 
@@ -76,16 +92,6 @@ export const expectOne = <A, E>(
 	const row = rows.at(0);
 	return rows.length === 1 && row !== undefined
 		? Effect.succeed(row)
-		: Effect.fail(error());
-};
-
-export const safeInteger = <E>(
-	value: string | number,
-	error: () => E,
-): Effect.Effect<number, E> => {
-	const decoded = typeof value === 'number' ? value : Number(value);
-	return Number.isSafeInteger(decoded)
-		? Effect.succeed(decoded)
 		: Effect.fail(error());
 };
 

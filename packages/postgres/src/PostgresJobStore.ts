@@ -16,20 +16,20 @@ import {
 	decode,
 	expectOne,
 	JobOutcome as JobOutcomeSchema,
+	NonNegativeRawInteger,
 	NullableString,
 	NullableTimestamp,
 	NullableUnknown,
-	RawInteger,
 	Timestamp,
+	Uuid,
 	safeCause,
-	safeInteger,
 } from './internal/RowValidation.js';
 import { make } from './internal/Tables.js';
 import type { Options } from './Options.js';
 const RowSchema = Schema.Struct({
-	id: Schema.String,
-	declaration: Schema.String,
-	payload_version: Schema.Number,
+	id: Uuid,
+	declaration: Schema.NonEmptyString,
+	payload_version: Schema.Int.check(Schema.isGreaterThan(0)),
 	payload_json: Schema.Unknown,
 	status: Schema.Literals([
 		'scheduled',
@@ -40,10 +40,10 @@ const RowSchema = Schema.Struct({
 		'cancelled',
 	]),
 	conflict_key: NullableString,
-	attempts: Schema.Number,
-	max_attempts: Schema.Number,
+	attempts: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+	max_attempts: Schema.Int.check(Schema.isGreaterThan(0)),
 	run_at: Timestamp,
-	lease_generation: RawInteger,
+	lease_generation: NonNegativeRawInteger,
 	lease_phase: Schema.Union([
 		Schema.Null,
 		Schema.Literals(['migration', 'execution']),
@@ -76,9 +76,7 @@ const decodeRow = (raw: unknown): Effect.Effect<JobRecord, JobStoreError> =>
 		const row = yield* decode(RowSchema, raw, (cause) =>
 			invariant('Malformed job row', cause),
 		);
-		const leaseGeneration = yield* safeInteger(row.lease_generation, () =>
-			invariant('Unsafe job lease generation'),
-		);
+		const leaseGeneration = row.lease_generation;
 		const runAt = row.run_at;
 		const createdAt = row.created_at;
 		const updatedAt = row.updated_at;
@@ -90,23 +88,7 @@ const decodeRow = (raw: unknown): Effect.Effect<JobRecord, JobStoreError> =>
 				: yield* decode(JobOutcomeSchema, row.outcome_json, (cause) =>
 						invariant('Malformed job outcome', cause),
 					);
-		if (
-			!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-				row.id,
-			)
-		)
-			return yield* Effect.fail(invariant('Invalid job UUID'));
-		if (row.declaration.length === 0)
-			return yield* Effect.fail(invariant('Empty job declaration'));
-		if (
-			![row.payload_version, row.attempts, row.max_attempts].every(
-				Number.isSafeInteger,
-			) ||
-			row.payload_version <= 0 ||
-			row.attempts < 0 ||
-			row.max_attempts <= 0 ||
-			row.attempts > row.max_attempts
-		)
+		if (row.attempts > row.max_attempts)
 			return yield* Effect.fail(invariant('Invalid job integer fields'));
 		if ((row.lease_phase === null) !== (leaseExpiresAt === undefined))
 			return yield* Effect.fail(

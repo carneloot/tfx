@@ -1,15 +1,12 @@
 import * as Schema from 'effect/Schema';
 
 import { BotId, TelegramChatId, UserId } from '../Ids.js';
+import { Uuid } from '../Uuid.js';
 import { SafeError } from './DeliveryOutcome.js';
 import { EventId } from './NotificationEvent.js';
 import { RecipientRole } from './RecipientRole.js';
 
-const uuid =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-export const DeliveryId = Schema.String.check(Schema.isPattern(uuid)).pipe(
-	Schema.brand('NotificationDeliveryId'),
-);
+export const DeliveryId = Uuid.pipe(Schema.brand('NotificationDeliveryId'));
 export type DeliveryId = typeof DeliveryId.Type;
 export const DeliveryChannel = Schema.String.check(
 	Schema.makeFilter(
