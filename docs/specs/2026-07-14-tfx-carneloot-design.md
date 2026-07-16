@@ -943,6 +943,8 @@ Deliver:
 - authenticated notification HttpApi with explicit complete, partial, and failed delivery responses;
 - webhook set/info/delete deployment CLI and secret-header receiver;
 - Portuguese Telegram command menu containing all 24 real commands, including `/start`, without synthetic `_`, `__`, or `___` heading commands;
+- named `Effect.fn` boundaries for public and non-trivial workflows;
+- production UUIDv4 generation through `effect/Crypto.randomUUIDv4`, with `BunCrypto.layer`/`NodeCrypto.layer` supplied at runtime edges, counter-based deterministic Crypto fakes in tests, and no direct `crypto.randomUUID()` in handwritten production code;
 - tracing and production deployment.
 
 This slice may use separate plans for general commands, notifications/API keys, webhook/HttpApi, and operations.
