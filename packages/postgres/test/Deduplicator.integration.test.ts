@@ -1,7 +1,8 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import { Deferred, Effect, Fiber, Layer } from 'effect';
+import { Deferred, Duration, Effect, Fiber, Layer } from 'effect';
 import { describe, expect, it } from 'vitest';
 
+import * as DispatchOutcome from '../../tfx/src/DispatchOutcome.js';
 import { UpdateDeduplicator } from '../../tfx/src/UpdateDeduplicator.js';
 import { deduplicatorConformance } from '../../tfx/test/internal/DeduplicatorConformance.js';
 import * as PostgresUpdateDeduplicator from '../src/PostgresUpdateDeduplicator.js';
@@ -23,6 +24,54 @@ if (!enabled)
 else {
 	deduplicatorConformance('postgres', layer);
 	describe('PostgreSQL dedup coordination', () => {
+		it('rejects invalid timing options as typed failures before SQL mutation', async () => {
+			const baseId = Math.floor(Math.random() * 1_000_000_000);
+			const program = Effect.gen(function* () {
+				const dedup = yield* UpdateDeduplicator;
+				const invalid = [Duration.zero, Duration.millis(-1), Duration.infinity];
+				let offset = 0;
+				for (const duration of invalid) {
+					for (const options of [
+						{ leaseDuration: duration },
+						{ waitTimeout: duration },
+					]) {
+						const id = baseId + offset++;
+						const error = yield* Effect.flip(dedup.claim(id, options));
+						expect(error.reason).toBe('InvariantViolation');
+						const claim = yield* dedup.claim(id, {
+							leaseDuration: Duration.seconds(1),
+							waitTimeout: Duration.seconds(1),
+						});
+						expect(claim).toMatchObject({
+							_tag: 'Acquired',
+							token: { generation: 1 },
+						});
+					}
+					const claim = yield* dedup.claim(baseId + offset++);
+					if (claim._tag !== 'Acquired') throw new Error('expected acquired');
+					expect(
+						(yield* Effect.flip(dedup.heartbeat(claim.token, duration))).reason,
+					).toBe('InvariantViolation');
+					expect(yield* dedup.heartbeat(claim.token, Duration.seconds(1))).toBe(
+						true,
+					);
+					expect(
+						(yield* Effect.flip(
+							dedup.complete(claim.token, DispatchOutcome.handled, duration),
+						)).reason,
+					).toBe('InvariantViolation');
+					expect(
+						yield* dedup.complete(
+							claim.token,
+							DispatchOutcome.handled,
+							Duration.seconds(1),
+						),
+					).toBe(true);
+				}
+			});
+			await Effect.runPromise(Effect.provide(program, layer()));
+		});
+
 		it('fences simultaneous claims', async () => {
 			const updateId = Math.floor(Math.random() * 1_000_000_000);
 			const program = Effect.gen(function* () {

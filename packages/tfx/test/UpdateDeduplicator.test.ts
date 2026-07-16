@@ -254,14 +254,47 @@ describe('UpdateDeduplicator', () => {
 		expect(released).toBe(1);
 	});
 
-	it('validates timing options', async () => {
+	it('rejects invalid timing options as typed failures before mutation', async () => {
 		await run(
 			Effect.gen(function* () {
 				const dedup = yield* UpdateDeduplicator;
-				const exit = yield* Effect.exit(
-					dedup.claim(1, { leaseDuration: Duration.infinity }),
-				);
-				expect(exit._tag).toBe('Failure');
+				const invalid = [Duration.zero, Duration.millis(-1), Duration.infinity];
+				let updateId = 10_000;
+				for (const duration of invalid) {
+					for (const options of [
+						{ leaseDuration: duration },
+						{ waitTimeout: duration },
+					]) {
+						const id = updateId++;
+						const error = yield* Effect.flip(dedup.claim(id, options));
+						expect(error.reason).toBe('InvariantViolation');
+						const claim = yield* dedup.claim(id, {
+							leaseDuration: Duration.millis(1),
+							waitTimeout: Duration.millis(1),
+						});
+						expect(claim._tag).toBe('Acquired');
+					}
+					const claim = yield* dedup.claim(updateId++);
+					if (claim._tag !== 'Acquired') throw new Error('expected acquired');
+					expect(
+						(yield* Effect.flip(dedup.heartbeat(claim.token, duration))).reason,
+					).toBe('InvariantViolation');
+					expect(yield* dedup.heartbeat(claim.token, Duration.millis(1))).toBe(
+						true,
+					);
+					expect(
+						(yield* Effect.flip(
+							dedup.complete(claim.token, DispatchOutcome.handled, duration),
+						)).reason,
+					).toBe('InvariantViolation');
+					expect(
+						yield* dedup.complete(
+							claim.token,
+							DispatchOutcome.handled,
+							Duration.millis(1),
+						),
+					).toBe(true);
+				}
 			}),
 		);
 	});

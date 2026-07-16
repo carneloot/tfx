@@ -60,6 +60,15 @@ const persistence = (cause: unknown) =>
 			);
 const protect = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 	effect.pipe(Effect.mapError(persistence));
+const positive = (
+	value: Duration.Duration,
+	name: string,
+): Effect.Effect<void, UpdateDeduplicatorError> =>
+	Duration.isFinite(value) &&
+	!Duration.isZero(value) &&
+	!Duration.isNegative(value)
+		? Effect.void
+		: Effect.fail(invariant(`${name} must be a finite positive duration`));
 const decodeRow = (raw: unknown): Effect.Effect<Row, UpdateDeduplicatorError> =>
 	Effect.gen(function* () {
 		const value = yield* decode(RowSchema, raw, (cause) =>
@@ -133,10 +142,12 @@ export const layer = (
 									return yield* Effect.fail(
 										invariant('Unsafe update identifier'),
 									);
-								const now = yield* DateTime.now;
 								const duration =
 									claimOptions.leaseDuration ?? Duration.seconds(30);
 								const wait = claimOptions.waitTimeout ?? Duration.seconds(5);
+								yield* positive(duration, 'leaseDuration');
+								yield* positive(wait, 'waitTimeout');
+								const now = yield* DateTime.now;
 								return yield* sql.withTransaction(
 									Effect.gen(function* () {
 										const current = yield* read(updateId, true);
@@ -213,21 +224,23 @@ export const layer = (
 						),
 					heartbeat: (token, duration = Duration.seconds(30)) =>
 						protect(
-							Effect.flatMap(DateTime.now, (now) =>
-								Effect.map(
-									sql`UPDATE ${schema}.${table} SET lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, duration))},updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
-									(rows) => rows.length > 0,
-								),
-							),
+							Effect.gen(function* () {
+								yield* positive(duration, 'leaseDuration');
+								const now = yield* DateTime.now;
+								const rows =
+									yield* sql`UPDATE ${schema}.${table} SET lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, duration))},updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`;
+								return rows.length > 0;
+							}),
 						),
 					complete: (token, outcome, retention = Duration.days(1)) =>
 						protect(
-							Effect.flatMap(DateTime.now, (now) =>
-								Effect.map(
-									sql`UPDATE ${schema}.${table} SET status='completed',outcome_json=${sql.json(outcome)},completed_at=${DateTime.toDateUtc(now)},lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, retention))},updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`,
-									(rows) => rows.length > 0,
-								),
-							),
+							Effect.gen(function* () {
+								yield* positive(retention, 'retention');
+								const now = yield* DateTime.now;
+								const rows =
+									yield* sql`UPDATE ${schema}.${table} SET status='completed',outcome_json=${sql.json(outcome)},completed_at=${DateTime.toDateUtc(now)},lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, retention))},updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`;
+								return rows.length > 0;
+							}),
 						),
 					release: (token) =>
 						protect(

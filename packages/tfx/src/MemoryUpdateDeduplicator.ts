@@ -9,6 +9,7 @@ import type { CompletedOutcome } from './DispatchOutcome.js';
 import { makeCursor, sweep } from './internal/BoundedMapSweep.js';
 import {
 	UpdateDeduplicator,
+	UpdateDeduplicatorError,
 	type ObservedCompletion,
 	type UpdateDeduplicatorService,
 } from './UpdateDeduplicator.js';
@@ -20,10 +21,20 @@ interface Row {
 	completion: Deferred.Deferred<ObservedCompletion>;
 	released: boolean;
 }
-const positive = (value: Duration.Duration, name: string): void => {
-	if (!Duration.isFinite(value) || !Duration.isPositive(value))
-		throw new TypeError(`${name} must be finite and positive`);
-};
+const positive = (
+	value: Duration.Duration,
+	name: string,
+): Effect.Effect<void, UpdateDeduplicatorError> =>
+	Duration.isFinite(value) &&
+	!Duration.isZero(value) &&
+	!Duration.isNegative(value)
+		? Effect.void
+		: Effect.fail(
+				new UpdateDeduplicatorError(
+					'InvariantViolation',
+					`${name} must be a finite positive duration`,
+				),
+			);
 const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 	const rows = new Map<number, Row>();
 	const cleanup = makeCursor<number, Row>();
@@ -34,11 +45,11 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 		diagnostics: { mode: 'memory', backend: 'memory' },
 		claim: (updateId, options = {}) =>
 			Effect.gen(function* () {
-				const now = yield* DateTime.now;
 				const duration = options.leaseDuration ?? Duration.seconds(30);
 				const waitTimeout = options.waitTimeout ?? Duration.seconds(5);
-				positive(duration, 'leaseDuration');
-				positive(waitTimeout, 'waitTimeout');
+				yield* positive(duration, 'leaseDuration');
+				yield* positive(waitTimeout, 'waitTimeout');
+				const now = yield* DateTime.now;
 				const result = yield* locked(() => {
 					sweep(
 						rows,
@@ -89,7 +100,7 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 			}),
 		heartbeat: (token, duration = Duration.seconds(30)) =>
 			Effect.gen(function* () {
-				positive(duration, 'leaseDuration');
+				yield* positive(duration, 'leaseDuration');
 				const now = yield* DateTime.now;
 				return yield* locked(() => {
 					const row = rows.get(token.updateId);
@@ -106,7 +117,7 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 			}),
 		complete: (token, outcome, retention = Duration.days(1)) =>
 			Effect.gen(function* () {
-				positive(retention, 'retention');
+				yield* positive(retention, 'retention');
 				const now = yield* DateTime.now;
 				return yield* locked(() => {
 					const row = rows.get(token.updateId);
