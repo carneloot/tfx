@@ -10,15 +10,14 @@ import {
 } from '../../src/domain/Ids.js';
 import { NotificationRecipients } from '../../src/ports/NotificationRecipients.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
-import * as NotificationRecipientsLive from '../../src/postgres/NotificationRecipientsLive.js';
-import * as UserRepositoryLive from '../../src/postgres/UserRepositoryLive.js';
+import * as RepositoriesLive from '../../src/postgres/RepositoriesLive.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
 const layer = Layer.provideMerge(
-	Layer.merge(NotificationRecipientsLive.layer, UserRepositoryLive.layer),
+	RepositoriesLive.layer,
 	PostgresTestLayer.layer,
 );
 const botId = Schema.decodeUnknownSync(BotId)('carneloot');
