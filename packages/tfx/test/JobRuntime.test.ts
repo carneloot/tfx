@@ -127,7 +127,7 @@ describe('JobRuntime', () => {
 		);
 	});
 
-	it('heartbeats at the configured interval', async () => {
+	it('heartbeats at the configured spaced interval', async () => {
 		const implementation = Job.implement(declaration, () => Effect.never);
 		const program = Effect.gen(function* () {
 			const heartbeatCount = yield* Ref.make(0);
@@ -157,13 +157,19 @@ describe('JobRuntime', () => {
 					yield* TestClock.adjust('9 millis');
 					expect(yield* Ref.get(heartbeatCount)).toBe(0);
 					yield* TestClock.adjust('1 millis');
+					expect(yield* Ref.get(heartbeatCount)).toBe(0);
+					yield* TestClock.adjust('5 millis');
 					expect(yield* Ref.get(heartbeatCount)).toBe(1);
 					yield* TestClock.adjust('10 millis');
+					expect(yield* Ref.get(heartbeatCount)).toBe(1);
+					yield* TestClock.adjust('5 millis');
 					expect(yield* Ref.get(heartbeatCount)).toBe(2);
 					yield* Fiber.interrupt(worker);
 				}),
 				implementation,
-				Ref.update(heartbeatCount, (count) => count + 1),
+				Effect.sleep('5 millis').pipe(
+					Effect.andThen(Ref.update(heartbeatCount, (count) => count + 1)),
+				),
 			);
 		});
 		await Effect.runPromise(Effect.provide(program, TestClock.layer()));
