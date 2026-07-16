@@ -27,6 +27,7 @@
 		"access": "public"
 	},
 	"dependencies": {
+		"@tfx/postgres-migrator": "workspace:^",
 		"tfx": "workspace:^"
 	},
 	"peerDependencies": {

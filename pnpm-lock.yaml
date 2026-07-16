@@ -65,6 +65,9 @@ importers:
       '@tfx/postgres':
         specifier: workspace:^
         version: link:../../packages/postgres
+      '@tfx/postgres-migrator':
+        specifier: workspace:^
+        version: link:../../packages/postgres-migrator
       effect:
         specifier: 4.0.0-beta.98
         version: 4.0.0-beta.98
@@ -84,12 +87,24 @@ importers:
       '@effect/sql-pg':
         specifier: 4.0.0-beta.98
         version: 4.0.0-beta.98(effect@4.0.0-beta.98)
+      '@tfx/postgres-migrator':
+        specifier: workspace:^
+        version: link:../postgres-migrator
       effect:
         specifier: 4.0.0-beta.98
         version: 4.0.0-beta.98
       tfx:
         specifier: workspace:^
         version: link:../tfx
+
+  packages/postgres-migrator:
+    dependencies:
+      '@effect/sql-pg':
+        specifier: 4.0.0-beta.98
+        version: 4.0.0-beta.98(effect@4.0.0-beta.98)
+      effect:
+        specifier: 4.0.0-beta.98
+        version: 4.0.0-beta.98
 
   packages/tfx:
     dependencies:

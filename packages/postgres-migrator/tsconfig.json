@@ -5,9 +5,5 @@
 		"outDir": "dist",
 		"tsBuildInfoFile": "dist/.tsbuildinfo"
 	},
-	"include": ["src/**/*.ts"],
-	"references": [
-		{ "path": "../tfx" },
-		{ "path": "../postgres-migrator" }
-	]
+	"include": ["src/**/*.ts"]
 }

@@ -2,6 +2,7 @@
 	"files": [],
 	"references": [
 		{ "path": "packages/tfx" },
+		{ "path": "packages/postgres-migrator" },
 		{ "path": "packages/postgres" },
 		{ "path": "apps/carneloot-bot" }
 	]
