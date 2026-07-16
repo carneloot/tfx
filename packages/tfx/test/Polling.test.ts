@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import * as DispatchOutcome from '../src/DispatchOutcome.js';
 import type { Update } from '../src/internal/telegram/generated/TelegramApi.types.js';
 import * as PollingSource from '../src/internal/update-source/PollingSource.js';
+import * as Polling from '../src/Polling.js';
 import type { TelegramService } from '../src/Telegram.js';
 import {
 	NetworkError,
@@ -16,6 +17,35 @@ import {
 const telegramError = (reason: TelegramErrorReason): TelegramError =>
 	new TelegramError({ module: 'Telegram', method: 'getUpdates', reason });
 describe('Polling', () => {
+	it.each([
+		['invalid timeout', { timeout: 'not a duration' }],
+		['zero timeout', { timeout: Duration.zero }],
+		['sub-second timeout', { timeout: Duration.millis(999) }],
+		['negative timeout', { timeout: Duration.millis(-1) }],
+		['infinite timeout', { timeout: Duration.infinity }],
+		['timeout above maximum', { timeout: Duration.seconds(51) }],
+		['invalid retry delay', { retryDelay: 'not a duration' }],
+		['zero retry delay', { retryDelay: Duration.zero }],
+		['negative retry delay', { retryDelay: Duration.millis(-1) }],
+		['infinite retry delay', { retryDelay: Duration.infinity }],
+		['zero limit', { limit: 0 }],
+		['fractional limit', { limit: 1.5 }],
+		['limit above maximum', { limit: 101 }],
+	])('rejects %s', (_name, options) => {
+		expect(() => Polling.make(options)).toThrow(TypeError);
+	});
+
+	it.each([
+		{ timeout: Duration.seconds(1), retryDelay: Duration.millis(1), limit: 1 },
+		{
+			timeout: Duration.seconds(50),
+			retryDelay: Duration.seconds(1),
+			limit: 100,
+		},
+	])('accepts valid polling boundaries %#', (options) => {
+		expect(() => Polling.make(options)).not.toThrow();
+	});
+
 	it('publishes startup/menu before polling and advances only contiguous acknowledged offsets', async () => {
 		const calls: Array<{
 			readonly method: string;
