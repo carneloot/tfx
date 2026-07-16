@@ -183,6 +183,51 @@ else
 			await Effect.runPromise(Effect.provide(program, layer));
 		});
 
+		it('replaces an unsent reminder when its delay changes', async () => {
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(2_000);
+				const { user, pet, entry } = yield* fixture;
+				const reminderScheduler = yield* ReminderScheduler;
+				yield* reminderScheduler.replaceForLatest({
+					botId,
+					ownerUserId: user.user.id,
+					petId: pet.id,
+					foodEntryId: entry.id,
+					runAt: DateTime.makeUnsafe(3_000),
+				});
+				yield* (yield* PetFoodRepository).setReminderDelay(
+					pet.id,
+					Duration.seconds(2),
+					DateTime.makeUnsafe(2_000),
+				);
+				yield* reminderScheduler.replaceForLatest({
+					botId,
+					ownerUserId: user.user.id,
+					petId: pet.id,
+					foodEntryId: entry.id,
+					runAt: DateTime.makeUnsafe(4_000),
+				});
+				const sql = yield* PgClient.PgClient;
+				const events = yield* sql<{
+					status: string;
+					scheduled_for: Date;
+				}>`SELECT status,scheduled_for FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${pet.id}::uuid ORDER BY scheduled_for`;
+				expect(events).toEqual([
+					{ status: 'cancelled', scheduled_for: new Date(3_000) },
+					{ status: 'scheduled', scheduled_for: new Date(4_000) },
+				]);
+				const jobs = yield* sql<{
+					status: string;
+					run_at: Date;
+				}>`SELECT status,run_at FROM tfx_feeding_test.case_jobs WHERE conflict_key=${`feeding-reminder:${botId}:${pet.id}`} ORDER BY run_at`;
+				expect(jobs).toEqual([
+					{ status: 'cancelled', run_at: new Date(3_000) },
+					{ status: 'scheduled', run_at: new Date(4_000) },
+				]);
+			});
+			await Effect.runPromise(Effect.provide(program, layer));
+		});
+
 		it('rolls back cancellation when event creation conflicts', async () => {
 			const program = Effect.gen(function* () {
 				yield* TestClock.setTime(2_000);

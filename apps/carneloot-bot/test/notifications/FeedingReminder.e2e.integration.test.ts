@@ -10,6 +10,7 @@ import { Telegram } from 'tfx/Telegram';
 import { NetworkError, RateLimitError, TelegramError } from 'tfx/TelegramError';
 import { describe, expect, it } from 'vitest';
 
+import * as ConfigureReminderDelay from '../../src/application/ConfigureReminderDelay.js';
 import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import { FoodAmountMg } from '../../src/domain/pet-food/FoodAmount.js';
@@ -33,12 +34,13 @@ import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
-type Mode = 'success' | 'network' | 'rate' | 'block';
+type Mode = 'success' | 'network' | 'rate' | 'block' | 'controlled';
 const control: {
 	mode: Mode;
 	calls: number;
 	started: Deferred.Deferred<void> | undefined;
-} = { mode: 'success', calls: 0, started: undefined };
+	release: Deferred.Deferred<void> | undefined;
+} = { mode: 'success', calls: 0, started: undefined, release: undefined };
 const botId = Schema.decodeUnknownSync(BotId)('carneloot');
 const PersistedRetryOutcome = Schema.Struct({
 	outcome_json: Schema.Struct({
@@ -57,6 +59,14 @@ const telegram = Layer.succeed(Telegram, {
 				return Effect.andThen(
 					Deferred.succeed(control.started!, undefined),
 					Effect.never,
+				);
+			if (control.mode === 'controlled')
+				return Effect.andThen(
+					Deferred.succeed(control.started!, undefined),
+					Effect.andThen(
+						Deferred.await(control.release!),
+						Effect.succeed({ message_id: 77 }),
+					),
 				);
 			if (control.mode === 'network')
 				return Effect.fail(
@@ -210,6 +220,69 @@ else
 					telegram_message_id: '77',
 				});
 				expect(event?.status).toBe('completed');
+			});
+			await Effect.runPromise(Effect.provide(program, layer));
+			expect(control.calls).toBe(1);
+		});
+
+		it('does not resend a completed reminder after its delay changes', async () => {
+			control.mode = 'success';
+			control.calls = 0;
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(2_000);
+				const fixture = yield* scheduleFixture;
+				yield* TestClock.setTime(3_000);
+				expect(yield* runFresh).toMatchObject({ status: 'completed' });
+				yield* ConfigureReminderDelay.set(
+					{
+						ownerId: fixture.user.user.id,
+						botId,
+						telegramUserId: fixture.user.profile.telegramUserId,
+						petId: fixture.pet.id,
+					},
+					Duration.seconds(2),
+				);
+				yield* TestClock.setTime(4_000);
+				expect(yield* runFresh).toBeUndefined();
+				const sql = yield* PgClient.PgClient;
+				const [counts] = yield* sql<{
+					events: number;
+					sent: number;
+				}>`SELECT count(DISTINCT e.id)::int events,count(d.id) FILTER (WHERE d.status='sent')::int sent FROM carneloot.notification_events e LEFT JOIN carneloot.notification_deliveries d ON d.event_id=e.id WHERE e.bot_id=${botId} AND e.pet_id=${fixture.pet.id}::uuid AND e.food_entry_id=${fixture.entry.id}::uuid`;
+				expect(counts).toEqual({ events: 1, sent: 1 });
+			});
+			await Effect.runPromise(Effect.provide(program, layer));
+			expect(control.calls).toBe(1);
+		});
+
+		it('does not replace a reminder while its send is in flight', async () => {
+			control.mode = 'controlled';
+			control.calls = 0;
+			control.started = Deferred.makeUnsafe<void>();
+			control.release = Deferred.makeUnsafe<void>();
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(2_000);
+				const fixture = yield* scheduleFixture;
+				yield* TestClock.setTime(3_000);
+				const send = yield* Effect.forkChild(runFresh);
+				yield* Deferred.await(control.started!);
+				yield* ConfigureReminderDelay.set(
+					{
+						ownerId: fixture.user.user.id,
+						botId,
+						telegramUserId: fixture.user.profile.telegramUserId,
+						petId: fixture.pet.id,
+					},
+					Duration.seconds(2),
+				);
+				yield* Deferred.succeed(control.release!, undefined);
+				expect(yield* Fiber.join(send)).toMatchObject({ status: 'completed' });
+				yield* TestClock.setTime(4_000);
+				expect(yield* runFresh).toBeUndefined();
+				const events = yield* (yield* PgClient.PgClient)<{
+					status: string;
+				}>`SELECT status FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${fixture.pet.id}::uuid AND food_entry_id=${fixture.entry.id}::uuid`;
+				expect(events).toEqual([{ status: 'completed' }]);
 			});
 			await Effect.runPromise(Effect.provide(program, layer));
 			expect(control.calls).toBe(1);

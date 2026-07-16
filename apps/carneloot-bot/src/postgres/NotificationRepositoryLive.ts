@@ -313,6 +313,9 @@ export const layer = Layer.effect(
 				protect(
 					sql.withTransaction(
 						Effect.gen(function* () {
+							const active =
+								yield* sql`SELECT id FROM carneloot.notification_events WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`;
+							if (active.length === 0) return undefined;
 							const leaseExpiresAt = DateTime.addDuration(now, leaseDuration);
 							const rows = yield* sql<
 								Record<string, unknown>

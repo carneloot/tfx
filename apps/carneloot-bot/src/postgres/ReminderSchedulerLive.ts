@@ -89,12 +89,27 @@ export const layer = Layer.effect(
 								yield* cancelLocked(request.botId, request.petId, now);
 								return;
 							}
+							const sent =
+								yield* sql`SELECT 1 FROM carneloot.notification_events e JOIN carneloot.notification_deliveries d ON d.event_id=e.id WHERE e.bot_id=${request.botId} AND e.owner_user_id=${request.ownerUserId}::uuid AND e.pet_id=${request.petId}::uuid AND e.food_entry_id=${request.foodEntryId}::uuid AND e.kind='feeding-reminder' AND d.status='sent' LIMIT 1`;
+							if (sent.length > 0) {
+								yield* cancelLocked(request.botId, request.petId, now);
+								return;
+							}
 							const active = yield* sql<{
 								id: string;
 								food_entry_id: string | null;
 								scheduled_for: Date | string | null;
 								job_id: string | null;
-							}>`SELECT id,food_entry_id,scheduled_for,job_id FROM carneloot.notification_events WHERE bot_id=${request.botId} AND pet_id=${request.petId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`;
+								status: 'scheduled' | 'dispatching';
+							}>`SELECT id,food_entry_id,scheduled_for,job_id,status FROM carneloot.notification_events WHERE bot_id=${request.botId} AND pet_id=${request.petId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`;
+							if (
+								active.some(
+									(event) =>
+										event.food_entry_id === request.foodEntryId &&
+										event.status === 'dispatching',
+								)
+							)
+								return;
 							const matching = active.find(
 								(event) =>
 									event.food_entry_id === request.foodEntryId &&
