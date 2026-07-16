@@ -15,9 +15,9 @@ import { Telegram } from 'tfx/Telegram';
 import * as TelegramSchemas from 'tfx/TelegramSchemas';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
 
-import type { AppConfigService } from './Config.js';
+import * as AppLive from './AppLive.js';
+import { AppConfig, type AppConfigService } from './Config.js';
 import * as DemoSummary from './DemoSummary.js';
-import * as Layers from './Layers.js';
 import * as Program from './Program.js';
 
 class DemoTestError extends Data.TaggedError('DemoTestError')<{
@@ -126,13 +126,15 @@ const program = Effect.scoped(
 		const sql = yield* PgClient.PgClient;
 		yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
 		yield* sql.unsafe('DROP SCHEMA IF EXISTS tfx_demo_test CASCADE');
-		const suppliedPg = Layer.succeed(PgClient.PgClient, sql);
-		const graph = Layers.portable(config, {
-			pg: suppliedPg,
-			telegram,
-			delivery: UpdateDelivery.manual,
-			botUsername: config.botUsername,
-		});
+		const pg = Layer.succeed(PgClient.PgClient, sql);
+		const infrastructure = Layer.merge(pg, telegram);
+		const graph = Layer.provide(
+			Layer.provide(
+				AppLive.layer(() => UpdateDelivery.manual),
+				infrastructure,
+			),
+			Layer.succeed(AppConfig, config),
+		);
 		const context = yield* Layer.build(graph);
 		for (const [index, text] of transcript.entries()) {
 			const outcome = yield* Effect.provide(

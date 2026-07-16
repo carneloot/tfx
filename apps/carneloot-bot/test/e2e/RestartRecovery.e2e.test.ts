@@ -10,8 +10,8 @@ import { Telegram } from 'tfx/Telegram';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
 import { describe, expect, it } from 'vitest';
 
-import type { AppConfigService } from '../../src/Config.js';
-import * as Layers from '../../src/Layers.js';
+import * as AppLive from '../../src/AppLive.js';
+import { AppConfig, type AppConfigService } from '../../src/Config.js';
 
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -84,12 +84,14 @@ const build = (sent: string[], reminder?: Deferred.Deferred<void>) => {
 		setMessageReaction: () => Effect.succeed(true),
 		answerCallbackQuery: () => Effect.succeed(true),
 	} as never);
-	return Layers.portable(config, {
-		pg: postgres,
-		telegram,
-		delivery: UpdateDelivery.manual,
-		botUsername: config.botUsername,
-	});
+	const infrastructure = Layer.merge(postgres, telegram);
+	return Layer.provide(
+		Layer.provide(
+			AppLive.layer(() => UpdateDelivery.manual),
+			infrastructure,
+		),
+		Layer.succeed(AppConfig, config),
+	);
 };
 const dispatch = (context: any, value: unknown) =>
 	Effect.provide(

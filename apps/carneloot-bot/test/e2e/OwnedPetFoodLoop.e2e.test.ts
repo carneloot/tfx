@@ -7,8 +7,8 @@ import { Telegram } from 'tfx/Telegram';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
 import { describe, expect, it } from 'vitest';
 
-import type { AppConfigService } from '../../src/Config.js';
-import * as Layers from '../../src/Layers.js';
+import * as AppLive from '../../src/AppLive.js';
+import { AppConfig, type AppConfigService } from '../../src/Config.js';
 
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -110,13 +110,16 @@ const fixture = Effect.gen(function* () {
 		setMessageReaction: () => Effect.succeed(true),
 		answerCallbackQuery: () => Effect.succeed(true),
 	} as never);
-	const graph = Layers.portable(config, {
-		pg: postgres,
-		telegram,
-		delivery: UpdateDelivery.manual,
-		botUsername: config.botUsername,
-	});
-	const context = yield* Layer.build(Layer.merge(graph, postgres));
+	const pg = Layer.succeed(PgClient.PgClient, sql);
+	const infrastructure = Layer.merge(pg, telegram);
+	const graph = Layer.provide(
+		Layer.provide(
+			AppLive.layer(() => UpdateDelivery.manual),
+			infrastructure,
+		),
+		Layer.succeed(AppConfig, config),
+	);
+	const context = yield* Layer.build(graph);
 	const dispatch = (update: unknown) =>
 		Effect.provide(
 			Effect.flatMap(BotRuntime, (runtime) =>
@@ -128,6 +131,7 @@ const fixture = Effect.gen(function* () {
 		context,
 		dispatch,
 		sent,
+		sql,
 		failNext: () => {
 			failNext = true;
 		},
@@ -203,7 +207,7 @@ else
 								'Foram adicionados 50 g de ração para o pet Rex.',
 								'- Rex: 50 g, última vez há menos de 1 minuto',
 							]);
-							const sql = yield* Effect.provide(PgClient.PgClient, f.context);
+							const sql = f.sql;
 							const [profile] = yield* sql<{
 								username: string;
 								first_name: string;
@@ -255,7 +259,7 @@ else
 								'Qual o nome do seu pet?',
 								'Conversa cancelada.',
 							]);
-							const sql = yield* Effect.provide(PgClient.PgClient, f.context);
+							const sql = f.sql;
 							expect(
 								yield* sql`SELECT id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(0);
