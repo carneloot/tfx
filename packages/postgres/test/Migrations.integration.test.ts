@@ -109,10 +109,14 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 			const id = crypto.randomUUID();
 			yield* sql`INSERT INTO tfx_corrupt_test.case_jobs (id,declaration,payload_version,payload_json,status,attempts,max_attempts,run_at,lease_generation,cancellation_requested,outcome_json,created_at,updated_at) VALUES (${id}::uuid,'corrupt',1,'{}'::jsonb,'completed',0,1,now(),0,false,NULL,now(),now())`;
 			const result = yield* Effect.result(migrate(options));
-			const failedLedger = yield* sql<{ count: string }>`SELECT count(*)::text AS count FROM tfx_corrupt_test.case_migrations`;
+			const failedLedger = yield* sql<{
+				count: string;
+			}>`SELECT count(*)::text AS count FROM tfx_corrupt_test.case_migrations`;
 			yield* sql`DELETE FROM tfx_corrupt_test.case_jobs WHERE id=${id}::uuid`;
 			yield* migrate(options);
-			const repairedLedger = yield* sql<{ count: string }>`SELECT count(*)::text AS count FROM tfx_corrupt_test.case_migrations`;
+			const repairedLedger = yield* sql<{
+				count: string;
+			}>`SELECT count(*)::text AS count FROM tfx_corrupt_test.case_migrations`;
 			return {
 				result,
 				failedCount: failedLedger[0]?.count,

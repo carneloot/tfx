@@ -18,13 +18,13 @@ const telegramError = (reason: TelegramErrorReason): TelegramError =>
 	new TelegramError({ module: 'Telegram', method: 'getUpdates', reason });
 describe('Polling', () => {
 	it.each([
-		['invalid timeout', { timeout: 'not a duration' }],
+		['invalid timeout', { timeout: 'not a duration' as Duration.Input }],
 		['zero timeout', { timeout: Duration.zero }],
 		['sub-second timeout', { timeout: Duration.millis(999) }],
 		['negative timeout', { timeout: Duration.millis(-1) }],
 		['infinite timeout', { timeout: Duration.infinity }],
 		['timeout above maximum', { timeout: Duration.seconds(51) }],
-		['invalid retry delay', { retryDelay: 'not a duration' }],
+		['invalid retry delay', { retryDelay: 'not a duration' as Duration.Input }],
 		['zero retry delay', { retryDelay: Duration.zero }],
 		['negative retry delay', { retryDelay: Duration.millis(-1) }],
 		['infinite retry delay', { retryDelay: Duration.infinity }],
