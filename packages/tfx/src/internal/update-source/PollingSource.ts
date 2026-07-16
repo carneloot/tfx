@@ -77,22 +77,22 @@ export const make = (
 				TelegramError | FatalPollingDispatchError
 			> = Effect.suspend(() =>
 				Effect.flatMap(
-					telegram
-						.getUpdates({
+					Effect.suspend(() =>
+						telegram.getUpdates({
 							...(offset === undefined ? {} : { offset }),
 							limit: options.limit ?? 100,
 							timeout: Duration.toSeconds(options.timeout),
 							...(first && options.allowedUpdates !== undefined
 								? { allowed_updates: options.allowedUpdates }
 								: {}),
-						})
-						.pipe(
-							Effect.retry({
-								while: (error) =>
-									retryDelay(error, options.retryDelay) !== undefined,
-								schedule: pollRetrySchedule,
-							}),
-						),
+						}),
+					).pipe(
+						Effect.retry({
+							while: (error) =>
+								retryDelay(error, options.retryDelay) !== undefined,
+							schedule: pollRetrySchedule,
+						}),
+					),
 					(updates: ReadonlyArray<Update>) => {
 						first = false;
 						return Effect.flatMap(

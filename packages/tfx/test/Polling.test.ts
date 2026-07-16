@@ -91,36 +91,59 @@ describe('Polling', () => {
 		expect(calls[4]?.payload).not.toHaveProperty('allowed_updates');
 	});
 
-	it('retries network failures after fallback delay', async () => {
+	it('reinvokes getUpdates for retries and omits allowed updates after first success', async () => {
 		const program = Effect.gen(function* () {
-			const attempts = yield* Ref.make(0);
-			const firstAttempt = yield* Deferred.make<void>();
+			const requests: Array<Record<string, unknown>> = [];
+			const invocations = [
+				yield* Deferred.make<void>(),
+				yield* Deferred.make<void>(),
+				yield* Deferred.make<void>(),
+				yield* Deferred.make<void>(),
+			];
 			const failure = telegramError(new NetworkError({ message: 'offline' }));
+			const terminal = {
+				reason: { _tag: 'AuthenticationError' },
+			} as TelegramError;
 			const telegram = {
 				getMe: () => Effect.succeed({ id: 1 }),
 				deleteWebhook: () => Effect.succeed(true),
-				getUpdates: () =>
-					Ref.updateAndGet(attempts, (count) => count + 1).pipe(
-						Effect.tap((count) =>
-							count === 1 ? Deferred.succeed(firstAttempt, undefined) : Effect.void,
-						),
-						Effect.andThen(Effect.fail(failure)),
-					),
+				getUpdates: (request: Record<string, unknown>) => {
+					requests.push(request);
+					const attempt = requests.length;
+					const result =
+						attempt <= 2
+							? Effect.fail(failure)
+							: attempt === 3
+								? Effect.succeed([{ update_id: 10 }] as ReadonlyArray<Update>)
+								: Effect.fail(terminal);
+					return Deferred.succeed(invocations[attempt - 1]!, undefined).pipe(
+						Effect.andThen(result),
+					);
+				},
 			} as unknown as TelegramService;
 			const source = PollingSource.make(telegram, {
+				allowedUpdates: ['message'],
 				timeout: Duration.seconds(30),
 				retryDelay: Duration.millis(25),
 			});
-			const fiber = yield* Effect.forkChild(
+			yield* Effect.forkChild(
 				source.run(() => Effect.succeed(DispatchOutcome.handled)),
 			);
-			yield* Deferred.await(firstAttempt);
-			expect(yield* Ref.get(attempts)).toBe(1);
+			yield* Deferred.await(invocations[0]!);
+			expect(requests).toHaveLength(1);
+			yield* Effect.yieldNow;
 			yield* TestClock.adjust('24 millis');
-			expect(yield* Ref.get(attempts)).toBe(1);
-			yield* TestClock.adjust('1 millis');
-			expect(yield* Ref.get(attempts)).toBe(2);
-			yield* Fiber.interrupt(fiber);
+			expect(requests).toHaveLength(1);
+			yield* TestClock.adjust('26 millis');
+			expect(requests).toHaveLength(4);
+			expect(requests.slice(0, 3)).toEqual(
+				requests.slice(0, 3).map((request) => ({
+					...request,
+					allowed_updates: ['message'],
+				})),
+			);
+			expect(requests[3]).toMatchObject({ offset: 11 });
+			expect(requests[3]).not.toHaveProperty('allowed_updates');
 		});
 		await Effect.runPromise(Effect.provide(program, TestClock.layer()));
 	});
@@ -142,7 +165,9 @@ describe('Polling', () => {
 				getUpdates: () =>
 					Ref.updateAndGet(attempts, (count) => count + 1).pipe(
 						Effect.tap((count) =>
-							count === 1 ? Deferred.succeed(firstAttempt, undefined) : Effect.void,
+							count === 1
+								? Deferred.succeed(firstAttempt, undefined)
+								: Effect.void,
 						),
 						Effect.andThen(Effect.fail(failure)),
 					),
