@@ -5,10 +5,10 @@ import * as Layer from 'effect/Layer';
 import * as Polling from 'tfx/Polling';
 import * as Telegram from 'tfx/Telegram';
 
+import * as AppLive from './AppLive.js';
 import { menuCommands } from './bot/Declaration.js';
 import { AppConfig, type AppConfigService } from './Config.js';
 import * as AppConfigLive from './Config.js';
-import * as Layers from './Layers.js';
 
 export const pollingOptions = (config: AppConfigService) =>
 	({
@@ -31,18 +31,16 @@ export const pollingOptions = (config: AppConfigService) =>
 		languageCode: 'pt',
 	}) satisfies Polling.Options;
 
-export const fromConfig = (config: AppConfigService) => {
-	const pg = PgClient.layer({ url: config.databaseUrl });
-	const telegram = Layer.provide(
-		Telegram.layer(config.botToken),
-		BunHttpClient.layer,
-	);
-	return Layers.portable(config, {
-		pg,
-		telegram,
-		delivery: Polling.make(pollingOptions(config)),
-		botUsername: config.botUsername,
-	});
-};
-const configuredLayer = Layer.unwrap(Effect.map(AppConfig, fromConfig));
-export const appLayer = Layer.provide(configuredLayer, AppConfigLive.layer);
+const infrastructure = Layer.unwrap(
+	Effect.map(AppConfig, (config) =>
+		Layer.merge(
+			PgClient.layer({ url: config.databaseUrl }),
+			Layer.provide(Telegram.layer(config.botToken), BunHttpClient.layer),
+		),
+	),
+);
+const application = Layer.provide(
+	AppLive.layer((config) => Polling.make(pollingOptions(config))),
+	infrastructure,
+);
+export const appLayer = Layer.provide(application, AppConfigLive.layer);

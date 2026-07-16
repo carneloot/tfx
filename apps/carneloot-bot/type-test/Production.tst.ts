@@ -1,8 +1,15 @@
 import type * as Layer from 'effect/Layer';
+import { BotRuntime } from 'tfx/BotRuntime';
+import { UpdateDeduplicator } from 'tfx/UpdateDeduplicator';
 
+import { JobWorker } from '../src/JobWorker.js';
 import { appLayer } from '../src/Production.js';
 
 type Assert<T extends true> = T;
+type Equal<A, B> =
+	(<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
+		? true
+		: false;
 type IsNever<T> = [T] extends [never] ? true : false;
 type IsTagged<T> = [T] extends [{ readonly _tag: string }] ? true : false;
 type IsUnknown<T> = unknown extends T
@@ -22,4 +29,10 @@ export type AppLayerErrorsAreConcrete = Assert<
 >;
 export type AppLayerErrorsAreNotUnknown = Assert<
 	IsUnknown<Layer.Error<typeof appLayer>> extends false ? true : false
+>;
+export type AppLayerOutputIsNarrow = Assert<
+	Equal<
+		Layer.Success<typeof appLayer>,
+		BotRuntime | JobWorker | UpdateDeduplicator
+	>
 >;
