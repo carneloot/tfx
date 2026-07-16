@@ -129,15 +129,19 @@ export const layer = (options: Options) =>
 				),
 				Effect.withSpan('JobWorker.runOnePass'),
 			);
-			const loop: Effect.Effect<void, JobStoreError | JobRuntimeOptionsError> =
-				Effect.suspend(() =>
-					Effect.flatMap(runOnePass, (record) =>
-						record === undefined
-							? Effect.andThen(Effect.sleep(idleDelay), loop)
-							: loop,
-					),
-				);
+			const loopSchedule = Schedule.forever.pipe(
+				Schedule.setInputType<JobRecord | undefined>(),
+				Schedule.modifyDelay(({ input }) =>
+					Effect.succeed(input === undefined ? idleDelay : Duration.zero),
+				),
+			);
+			const loop = runOnePass.pipe(
+				Effect.repeat(loopSchedule),
+				Effect.andThen(Effect.never),
+			);
+
 			const fiber = yield* Effect.forkScoped(loop);
+
 			return Object.freeze({
 				await: Fiber.join(fiber),
 				diagnostics: Object.freeze({
