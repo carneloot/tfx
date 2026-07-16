@@ -8,7 +8,7 @@
 
 ---
 
-> **Prerequisite:** Implement `docs/plans/2026-07-15-effect-native-temporal-types.md` first. Temporal snippets in this plan that use epoch numbers, JavaScript `Date`, or millisecond-number durations are superseded until Task 12 of that prerequisite rebases this plan onto `DateTime.Utc` and `Duration.Duration`.
+> **Prerequisite:** Implement `docs/plans/2026-07-15-effect-native-temporal-types.md` first. This plan assumes its `DateTime.Utc` instant contracts, `Duration.Duration` runtime interval contracts, and `Duration.Input` configuration boundaries throughout.
 
 ## Scope and sequencing
 
@@ -26,10 +26,10 @@ Use Schema for untrusted boundary data, reusable scalar constraints, structural 
 | Nil/max UUID exclusion | Schema custom filter | Domain policy beyond generic UUID syntax; centralize once. |
 | Positive/non-negative safe integers | Schema | `Schema.isInt()` uses `Number.isSafeInteger`; combine with range checks. |
 | PostgreSQL bigint string normalization | Schema transformation | `Schema.NumberFromString` plus `Schema.isInt()` replaces repeated `Number(...)` checks. |
-| PostgreSQL timestamp normalization | Schema transformation | Decode `Date`, ISO string, or epoch millis once; map decoded `Date` to millis. |
+| PostgreSQL timestamp normalization | Schema transformation | Reuse the prerequisite plan’s `DateTime.Utc` row codec; PostgreSQL adapters alone convert database `Date` values at the boundary. |
 | Job status/lease/outcome relationship | Manual predicate plus SQL CHECK | Cross-field state-machine invariant must match database transitions. |
 | Heartbeat less than lease | Manual after scalar Schema decode | Relationship between two already-valid values. |
-| Retry timestamp after `finishedAt + delay` | Manual after scalar Schema decode | Computed overflow/date-range check depends on current timestamp. |
+| Retry instant after `DateTime.addDuration(finishedAt, delay)` | Manual after duration normalization | Computed instant validity depends on the current `DateTime.Utc`. |
 | PostgreSQL identifier 63-byte limit | Manual byte-length filter inside Schema | Limit is UTF-8 bytes, not JavaScript string length. |
 | Authorization, dedupe ownership, lease fencing | Manual Effect workflow | Decisions require services/current state, not data-shape validation. |
 
@@ -42,7 +42,7 @@ Full conversion of Carneloot's five application PostgreSQL adapters (`UserReposi
 ### New files
 
 - `apps/carneloot-bot/src/domain/Uuid.ts` — shared non-sentinel RFC UUID schema for branded application identifiers.
-- `packages/postgres/test/RowValidation.test.ts` — focused row-codec tests for bigint and timestamp normalization.
+- `packages/postgres/test/RowValidation.test.ts` — focused row-codec tests for bigint normalization and the prerequisite `DateTime.Utc` timestamp codec.
 - `packages/tfx/src/internal/BoundedMapSweep.ts` — resumable bounded `Map` cleanup used by memory deduplication.
 - `packages/tfx/test/BoundedMapSweep.test.ts` — proves bounded scans eventually reach entries beyond first batch.
 - `packages/postgres/src/internal/JobStateInvariant.ts` — one TypeScript predicate for decoded job status/lease/outcome combinations.
@@ -142,7 +142,7 @@ Preserving nil/max rejection avoids silently widening existing identifier semant
 Create `packages/postgres/test/RowValidation.test.ts`:
 
 ```ts
-import { Schema } from 'effect';
+import { DateTime, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -181,19 +181,13 @@ describe('PostgreSQL row validation schemas', () => {
 		expect(Schema.decodeUnknownSync(NullableInteger)(null)).toBeNull();
 	});
 
-	it('normalizes supported timestamp representations to valid Dates', () => {
+	it('normalizes supported timestamp representations to DateTime.Utc', () => {
 		const decode = Schema.decodeUnknownSync(Timestamp);
 		const instant = '2024-01-02T03:04:05.000Z';
-		expect(decode(new Date(instant)).toISOString()).toBe(instant);
-		expect(decode(instant).toISOString()).toBe(instant);
-		expect(decode(Date.parse(instant)).toISOString()).toBe(instant);
+		expect(DateTime.formatIso(decode(instant))).toBe(instant);
+		expect(DateTime.formatIso(decode(Date.parse(instant)))).toBe(instant);
 		expect(Schema.decodeUnknownSync(NullableTimestamp)(null)).toBeNull();
-		for (const invalid of [
-			'not-a-date',
-			Number.NaN,
-			new Date(Number.NaN),
-			{},
-		])
+		for (const invalid of ['not-a-date', Number.NaN, {}])
 			expect(() => decode(invalid)).toThrow();
 	});
 });
@@ -271,12 +265,7 @@ export const PositiveRawInteger = RawInteger.check(
 	Schema.isGreaterThan(0),
 );
 
-export const Timestamp = Schema.Union([
-	Schema.Date,
-	Schema.DateFromString,
-	Schema.DateFromMillis,
-]).check(Schema.isDateValid());
-export const NullableTimestamp = Schema.NullOr(Timestamp);
+Reuse `Timestamp` and `NullableTimestamp` from the prerequisite temporal migration. They decode supported PostgreSQL timestamp representations directly to `DateTime.Utc`; do not add a parallel `Date`-returning schema.
 ```
 
 Remove exported `safeInteger` and `timestamp` functions after all three adapters use these schemas. Keep `expectOne`, `safeCause`, outcome schemas, and `decode` error mapping.
@@ -335,7 +324,7 @@ lease_expires_at: Timestamp,
 completed_at: NullableTimestamp,
 ```
 
-After decode, map timestamps with `.getTime()` and use decoded integer values directly. Keep only relational checks such as `attempts <= maxAttempts`, status/outcome pairing, generation overflow after increment, and lease/current-time comparisons.
+After decode, keep timestamps as `DateTime.Utc` and use decoded integer values directly. Convert with `DateTime.toDateUtc` only when binding PostgreSQL parameters. Keep only relational checks such as `attempts <= maxAttempts`, status/outcome pairing, generation overflow after increment, and lease/current-time comparisons.
 
 - [ ] **Step 7: Run row, adapter, and domain tests**
 
@@ -359,346 +348,94 @@ git commit -m "refactor(schema): centralize boundary scalar validation"
 ### Task 1: Make job retry policies total and reject duplicate declarations
 
 **Files:**
-- Modify: `packages/tfx/src/Job.ts:1-72`
-- Modify: `packages/tfx/src/JobRuntime.ts:45-66,235-265`
+- Modify: `packages/tfx/src/Job.ts`
+- Modify: `packages/tfx/src/JobRuntime.ts`
 - Modify: `packages/tfx/test/Job.test.ts`
 - Modify: `packages/tfx/test/JobRuntime.test.ts`
 
-- [ ] **Step 1: Add constructor-level retry-delay tests**
+- [ ] **Step 1: Extend duration-native retry tests**
 
-Add this case to `packages/tfx/test/Job.test.ts`:
+Verify `Job.retry` accepts `Duration.Input`, normalizes once to `Duration.Duration`, keeps `Duration.zero` valid for immediate retry, and rejects invalid, negative, or infinite inputs. Add arbitrary-policy tests using valid durations plus forged negative/infinite `Duration.Duration` values; invalid policy output must quarantine the job rather than defect the worker. Use `DateTime.Utc` fixtures for finish/retry instants and compare computed retry instants with `DateTime.Equivalence`.
 
-```ts
-it.each([
-	[-1, 'negative'],
-	[1.5, 'fractional'],
-	[Number.NaN, 'NaN'],
-	[Number.POSITIVE_INFINITY, 'infinite'],
-] as const)('rejects %s retry delay (%s)', (retryAfter) => {
-	expect(() => Job.retry(retryAfter)).toThrow();
-});
-```
+- [ ] **Step 2: Evaluate callback output safely inside `JobRuntime`**
 
-Keep `Job.retry(0)` valid so an explicitly immediate retry remains representable.
-
-- [ ] **Step 2: Add runtime tests for arbitrary policy callbacks**
-
-Add two tests to `packages/tfx/test/JobRuntime.test.ts`:
-
-```ts
-it.each([Number.NaN, Number.MAX_SAFE_INTEGER])(
-	'quarantines jobs when a custom schedule returns %s',
-	async (delay) => {
-		const invalid = Job.make(`invalid-schedule-${String(delay)}`, {
-			payload: history,
-			error: RetryFailure,
-			maxAttempts: 3,
-			retry: () => Job.retry(),
-			schedule: () => delay,
-		});
-		const implementation = Job.implement(invalid, () =>
-			Effect.fail(new RetryFailure()),
-		);
-		const program = Effect.gen(function* () {
-			const runtime = yield* JobRuntime;
-			yield* runtime.schedule(invalid, { value: 'bad' });
-			return yield* runtime.runOne();
-		});
-		const result = await Effect.runPromise(
-			Effect.provide(
-				Effect.provide(
-					Effect.provide(
-						program,
-						JobRuntimeLive.layer(implementation),
-					),
-					MemoryJobStore.layer,
-				),
-				TestClock.layer(),
-			),
-		);
-		expect(result).toMatchObject({
-			status: 'quarantined',
-			outcome: {
-				_tag: 'FatalFailure',
-				cause: 'Invalid job retry policy',
-			},
-		});
-	},
-);
-
-it('rejects duplicate job declarations before layer acquisition', () => {
-	const first = Job.implement(declaration, () => Effect.void);
-	const second = Job.implement(declaration, () => Effect.void);
-	expect(() => JobRuntimeLive.layer(first, second)).toThrow(
-		"Duplicate job declaration 'work'",
-	);
-});
-```
-
-- [ ] **Step 3: Run focused tests and verify failure**
-
-Run:
-
-```bash
-pnpm exec vitest run packages/tfx/test/Job.test.ts packages/tfx/test/JobRuntime.test.ts
-```
-
-Expected: new delay tests fail because `Job.retry` accepts every number; duplicate declaration test fails because `Map` overwrites; invalid schedule test either defects or fails to return quarantined record.
-
-- [ ] **Step 4: Validate explicit retry delays with Schema**
-
-Import `effect/Schema` and replace the manual predicate with a reusable scalar schema:
-
-```ts
-export const RetryDelay = Schema.Number.check(
-	Schema.isInt(),
-	Schema.isGreaterThanOrEqualTo(0),
-).annotate({ identifier: 'JobRetryDelay' });
-
-const decodeRetryDelay = Schema.decodeUnknownSync(RetryDelay);
-
-export const retry = (retryAfter?: number): RetryDecision => {
-	const validated =
-		retryAfter === undefined ? undefined : decodeRetryDelay(retryAfter);
-	return Object.freeze({
-		_tag: 'Retry',
-		...(validated === undefined ? {} : { retryAfter: validated }),
-	});
-};
-```
-
-Synchronous decode is appropriate here because `Job.retry` is a pure declaration/policy constructor; runtime callback failures are still caught by `JobRuntime`.
-
-- [ ] **Step 5: Evaluate callback output safely inside `JobRuntime`**
-
-Import `effect/Schema`, then add a file-local evaluation type and helper near `CancelSignal`/`LeaseSignal` in `packages/tfx/src/JobRuntime.ts`:
+Keep retry evaluation duration-native:
 
 ```ts
 type RetryEvaluation =
 	| {
 			readonly _tag: 'Retry';
-			readonly delay: number;
-			readonly retryAt: number;
+			readonly delay: Duration.Duration;
+			readonly retryAt: DateTime.Utc;
 	  }
 	| { readonly _tag: 'Permanent' };
 
-class InvalidRetryPolicy extends Data.TaggedError('InvalidRetryPolicy')<{
-	readonly cause: unknown;
-}> {}
+const validRetryDuration = (value: Duration.Duration): boolean =>
+	Duration.isFinite(value) && !Duration.isNegative(value);
 
-const evaluateRetryPolicy = (
-	declaration: Job.Job<any, any, any>,
-	error: unknown,
-	attempt: number,
-	finishedAt: number,
-): Effect.Effect<RetryEvaluation, InvalidRetryPolicy> =>
-	Effect.try({
-		try: () => {
-			const decision = declaration.retry(error);
-			if (decision?._tag !== 'Retry')
-				return { _tag: 'Permanent' as const };
-			const delay = Schema.decodeUnknownSync(Job.RetryDelay)(
-				decision.retryAfter ?? declaration.schedule(attempt),
-			);
-			const retryAt = finishedAt + delay;
-			if (
-				!Number.isSafeInteger(retryAt) ||
-				!Number.isFinite(new Date(retryAt).getTime())
-			)
-				throw new TypeError(
-					'Job retry delay must produce a valid timestamp',
-				);
-			return { _tag: 'Retry' as const, delay, retryAt };
-		},
-		catch: (cause) => new InvalidRetryPolicy({ cause }),
-	});
+const retryAt = DateTime.addDuration(finishedAt, delay);
+if (!validRetryDuration(delay) || !Number.isFinite(DateTime.toDateUtc(retryAt).getTime()))
+	throw new TypeError('Job retry delay must produce a valid instant');
 ```
 
-Replace direct calls to `declaration.retry(...)` and `declaration.schedule(...)` in `runOne` with `Effect.result(evaluateRetryPolicy(...))`. Handle all three outcomes explicitly:
+`Job.retry(input)` performs `Duration.Input` normalization at the helper boundary. Custom `schedule` callbacks already return `Duration.Duration`; catch thrown callbacks and reject forged invalid durations. Persist retry outcomes with the normalized duration and pass `DateTime.Utc` directly to `JobStore.finalize`. Never convert duration to milliseconds for runtime validation.
 
-```ts
-const evaluation = yield* Effect.result(
-	evaluateRetryPolicy(
-		declaration,
-		failure.value,
-		running.attempts,
-		finishedAt,
-	),
-);
-if (evaluation._tag === 'Failure') {
-	yield* Effect.logError(
-		'JobRuntime.invalid_retry_policy',
-		evaluation.failure,
-	);
-	yield* store.finalize(
-		claim.token,
-		JobOutcome.fatalFailure('Invalid job retry policy'),
-		finishedAt,
-	);
-} else if (evaluation.success._tag === 'Retry') {
-	const retryAfter = evaluation.success.delay;
-	yield* store.finalize(
-		claim.token,
-		JobOutcome.retryableFailure(failure.value, retryAfter),
-		finishedAt,
-		evaluation.success.retryAt,
-	);
-} else {
-	yield* store.finalize(
-		claim.token,
-		JobOutcome.permanentFailure(failure.value),
-		finishedAt,
-	);
-}
-```
+- [ ] **Step 3: Reject duplicate declaration names synchronously**
 
-This preserves interruption, prevents policy defects from killing worker, and quarantines configuration/programmer errors visibly.
+At start of `JobRuntime.layer`, before constructing `Layer.effect`, validate declaration names with a `Set` and throw `TypeError("Duplicate job declaration '<name>'")` on duplicates. This remains a programmer configuration error detected before acquisition.
 
-- [ ] **Step 6: Reject duplicate declaration names synchronously**
-
-At start of `JobRuntime.layer`, before constructing `Layer.effect`, validate names:
-
-```ts
-export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
-	...implementations: I
-): Layer.Layer<JobRuntime, never, JobStore | Requirements<I>> => {
-	const names = new Set<string>();
-	for (const implementation of implementations) {
-		const name = implementation.declaration.name;
-		if (names.has(name))
-			throw new TypeError(`Duplicate job declaration '${name}'`);
-		names.add(name);
-	}
-	return Layer.effect(
-		JobRuntime,
-		Effect.gen(function* () {
-			const store = yield* JobStore;
-			const infrastructure = yield* Effect.context<Requirements<I>>();
-			const byName = new Map(
-				implementations.map((implementation) => [
-					implementation.declaration.name,
-					implementation,
-				]),
-			);
-```
-
-Close returned `Layer.effect` and function with `);` and `};` instead of current expression-bodied ending. No layer error type changes are required because duplicate registrations are programmer configuration errors detected before acquisition.
-
-- [ ] **Step 7: Run focused tests and type-check**
-
-Run:
+- [ ] **Step 4: Run focused tests, type-check, and commit**
 
 ```bash
 pnpm exec vitest run packages/tfx/test/Job.test.ts packages/tfx/test/JobRuntime.test.ts
 pnpm check
-```
-
-Expected: both test files pass; no new TypeScript diagnostics.
-
-- [ ] **Step 8: Commit**
-
-```bash
 git add packages/tfx/src/Job.ts packages/tfx/src/JobRuntime.ts packages/tfx/test/Job.test.ts packages/tfx/test/JobRuntime.test.ts
 git commit -m "fix(tfx): validate job retry policies"
 ```
 
+Expected: duration-native policy tests pass, invalid callbacks quarantine jobs, duplicate declarations fail before layer acquisition, and no numeric temporal API is introduced.
+
 ---
 
-### Task 2: Validate all polling numeric options
+### Task 2: Validate polling options without numeric duration contracts
 
 **Files:**
-- Modify: `packages/tfx/src/Polling.ts:34-50`
+- Modify: `packages/tfx/src/Polling.ts`
 - Modify: `packages/tfx/test/Polling.test.ts`
 
 - [ ] **Step 1: Add public constructor tests**
 
-Import `* as Polling from '../src/Polling.js'` and add:
+Test `timeout` and `retryDelay` with `Duration.Input` values. Reject invalid, zero, negative, and infinite durations; accept boundaries from `Duration.seconds(1)` through `Duration.seconds(50)` for Telegram long polling. Keep `limit` as an integer number in `[1, 100]`.
+
+- [ ] **Step 2: Normalize temporal options once in `Polling.make`**
+
+Use the prerequisite plan's duration normalizer. Store `Duration.Duration` in normalized polling options. Validate timeout bounds with `Duration.compare`; validate `limit` with Schema integer/range checks. Convert timeout through `Duration.toSeconds` only when constructing Telegram `getUpdates` request, where protocol requires integer seconds. Pass `retryDelay` directly to `Effect.sleep`.
 
 ```ts
-it.each([
-	{ timeout: 0 },
-	{ timeout: 51 },
-	{ timeout: Number.NaN },
-	{ limit: 0 },
-	{ limit: 101 },
-	{ limit: 1.5 },
-	{ retryDelay: 0 },
-	{ retryDelay: -1 },
-	{ retryDelay: Number.POSITIVE_INFINITY },
-] as const)('rejects invalid polling options %o', (options) => {
-	expect(() => Polling.make(options)).toThrow();
-});
-
-it('accepts polling option boundaries', () => {
-	expect(() =>
-		Polling.make({ timeout: 1, limit: 1, retryDelay: 1 }),
-	).not.toThrow();
-	expect(() =>
-		Polling.make({ timeout: 50, limit: 100, retryDelay: 60_000 }),
-	).not.toThrow();
-});
+const timeout = normalizeDuration(options.timeout ?? '30 seconds', 'timeout');
+const retryDelay = normalizeDuration(
+	options.retryDelay ?? '1 second',
+	'retryDelay',
+);
+if (
+	Duration.isZero(timeout) ||
+	Duration.isNegative(timeout) ||
+	Duration.isInfinite(timeout) ||
+	Duration.greaterThan(timeout, Duration.seconds(50))
+)
+	throw new TypeError('Polling timeout must be between 1 and 50 seconds');
 ```
 
-- [ ] **Step 2: Run test and verify failure**
-
-Run:
+- [ ] **Step 3: Run tests, type-check, and commit**
 
 ```bash
-pnpm exec vitest run packages/tfx/test/Polling.test.ts
-```
-
-Expected: invalid `timeout` cases beyond zero, all invalid `limit` cases, and all invalid `retryDelay` cases fail.
-
-- [ ] **Step 3: Add scalar schemas in `Polling.make`**
-
-Import `effect/Schema` and define:
-
-```ts
-const PollingTimeout = Schema.Number.check(
-	Schema.isInt(),
-	Schema.isGreaterThanOrEqualTo(1),
-	Schema.isLessThanOrEqualTo(50),
-).annotate({ identifier: 'PollingTimeoutSeconds' });
-const PollingLimit = Schema.Number.check(
-	Schema.isInt(),
-	Schema.isGreaterThanOrEqualTo(1),
-	Schema.isLessThanOrEqualTo(100),
-).annotate({ identifier: 'PollingLimit' });
-const PollingRetryDelay = Schema.Number.check(
-	Schema.isInt(),
-	Schema.isGreaterThan(0),
-).annotate({ identifier: 'PollingRetryDelayMillis' });
-```
-
-Decode in synchronous public constructor:
-
-```ts
-const validated: Options = {
-	...options,
-	timeout: Schema.decodeUnknownSync(PollingTimeout)(options.timeout ?? 30),
-	limit: Schema.decodeUnknownSync(PollingLimit)(options.limit ?? 100),
-	retryDelay: Schema.decodeUnknownSync(PollingRetryDelay)(
-		options.retryDelay ?? 1_000,
-	),
-};
-return UpdateDelivery.make({
-	id: options.id ?? 'polling',
-	layer: Layer.effect(UpdateSource, PollingSource.fromContext(validated)),
-});
-```
-
-Keep duplicate/unknown `allowedUpdates` loop manual because it validates collection semantics, not one scalar field.
-
-- [ ] **Step 4: Run test and commit**
-
-```bash
-pnpm exec vitest run packages/tfx/test/Polling.test.ts
+pnpm exec vitest run packages/tfx/test/Polling.test.ts packages/tfx/test/PollingSource.test.ts
 pnpm check
-git add packages/tfx/src/Polling.ts packages/tfx/test/Polling.test.ts
+git add packages/tfx/src/Polling.ts packages/tfx/src/internal/update-source/PollingSource.ts packages/tfx/test/Polling.test.ts packages/tfx/test/PollingSource.test.ts
 git commit -m "fix(tfx): validate polling options"
 ```
 
-Expected: polling tests and type-check pass.
+Expected: temporal options remain Effect durations internally; only Telegram request serialization uses numeric seconds.
 
 ---
 
@@ -834,165 +571,52 @@ Expected: sweep regression and existing deduplication behavior pass.
 **Files:**
 - Modify: `packages/tfx/src/MemoryUpdateDeduplicator.ts`
 - Modify: `packages/tfx/test/UpdateDeduplicator.test.ts`
-- Modify: `packages/postgres/src/PostgresUpdateDeduplicator.ts:136-237`
+- Modify: `packages/postgres/src/PostgresUpdateDeduplicator.ts`
 - Modify: `packages/postgres/test/Deduplicator.integration.test.ts`
 
-- [ ] **Step 1: Expand memory adapter validation matrix**
+- [ ] **Step 1: Expand adapter validation matrices**
 
-Replace the single Infinity assertion in `packages/tfx/test/UpdateDeduplicator.test.ts` with:
+Exercise `claim` lease/wait options, `heartbeat` lease duration, and `complete` retention with valid `Duration.Duration` values plus forged zero, negative, and infinite durations. Both adapters must return typed `UpdateDeduplicatorError` failures before mutation or SQL. Configuration-facing option construction may accept `Duration.Input`, but service methods receive normalized `Duration.Duration` from the prerequisite migration.
 
-```ts
-it('validates every timing option as a typed failure', async () => {
-	await run(
-		Effect.gen(function* () {
-			const dedup = yield* UpdateDeduplicator;
-			for (const invalid of [
-				0,
-				-1,
-				1.5,
-				Number.NaN,
-				Number.POSITIVE_INFINITY,
-				Number.MAX_VALUE,
-			]) {
-				const operations = [
-					dedup.claim(1, { leaseDuration: invalid }),
-					dedup.claim(1, { waitTimeout: invalid }),
-					dedup.heartbeat({ updateId: 1, generation: 1 }, invalid),
-					dedup.complete(
-						{ updateId: 1, generation: 1 },
-						DispatchOutcome.handled,
-						invalid,
-					),
-				];
-				const exits = yield* Effect.forEach(operations, Effect.exit);
-				for (const exit of exits)
-					expect(exit).toMatchObject({
-						_tag: 'Failure',
-						failure: {
-							_tag: 'UpdateDeduplicatorError',
-							reason: 'InvariantViolation',
-						},
-					});
-			}
-		}),
-	);
-});
-```
+- [ ] **Step 2: Share duration-native validation behavior**
 
-- [ ] **Step 2: Add equivalent PostgreSQL integration matrix**
-
-Import `* as DispatchOutcome from '../../tfx/src/DispatchOutcome.js'` in `packages/postgres/test/Deduplicator.integration.test.ts`, then add inside `PostgreSQL dedup coordination`:
+Validate without converting to milliseconds:
 
 ```ts
-it('rejects every invalid timing option before SQL', async () => {
-	const program = Effect.gen(function* () {
-		const dedup = yield* UpdateDeduplicator;
-		for (const invalid of [
-			0,
-			-1,
-			1.5,
-			Number.NaN,
-			Number.POSITIVE_INFINITY,
-			Number.MAX_VALUE,
-		]) {
-			const operations = [
-				dedup.claim(1, { leaseDuration: invalid }),
-				dedup.claim(1, { waitTimeout: invalid }),
-				dedup.heartbeat({ updateId: 1, generation: 1 }, invalid),
-				dedup.complete(
-					{ updateId: 1, generation: 1 },
-					DispatchOutcome.handled,
-					invalid,
-				),
-			];
-			const exits = yield* Effect.forEach(operations, Effect.exit);
-			for (const exit of exits)
-				expect(exit).toMatchObject({
-					_tag: 'Failure',
-					failure: {
-						_tag: 'UpdateDeduplicatorError',
-						reason: 'InvariantViolation',
-					},
-				});
-		}
-	});
-	await Effect.runPromise(Effect.provide(program, layer()));
-});
-```
-
-- [ ] **Step 3: Run tests and verify PostgreSQL mismatch**
-
-```bash
-pnpm exec vitest run packages/tfx/test/UpdateDeduplicator.test.ts
-RUN_TESTCONTAINERS=true pnpm exec vitest run --config vitest.integration.config.ts packages/postgres/test/Deduplicator.integration.test.ts
-```
-
-Expected: memory test initially defects until helper changes; PostgreSQL cases fail through driver/persistence paths or accept invalid values.
-
-- [ ] **Step 4: Return typed Schema validation failures from memory adapter**
-
-Import `effect/Schema` and replace throwing `positive` helper with:
-
-```ts
-const PositiveMillis = Schema.Number.check(
-	Schema.isInt(),
-	Schema.isGreaterThan(0),
-).annotate({ identifier: 'PositiveMillis' });
-
 const positive = (
-	value: number,
+	value: Duration.Duration,
 	name: string,
 ): Effect.Effect<void, UpdateDeduplicatorError> =>
-	Schema.decodeUnknownEffect(PositiveMillis)(value).pipe(
-		Effect.asVoid,
-		Effect.mapError(
-			(cause) =>
+	Duration.isFinite(value) &&
+	!Duration.isZero(value) &&
+	!Duration.isNegative(value)
+		? Effect.void
+		: Effect.fail(
 				new UpdateDeduplicatorError(
 					'InvariantViolation',
-					`${name} must be a safe positive integer`,
-					cause,
+					`${name} must be a finite positive duration`,
 				),
-		),
-	);
+			);
 ```
 
-Change each use to `yield* positive(...)` inside its existing `Effect.gen` workflow.
-
-- [ ] **Step 5: Apply same Schema helper before every PostgreSQL operation**
-
-Add same schema/helper to `packages/postgres/src/PostgresUpdateDeduplicator.ts`. Validate:
+Run validation inside each existing `Effect.gen` workflow before reading `DateTime.now` or opening a transaction. PostgreSQL operations compute expiry with `DateTime.addDuration` and bind instants with `DateTime.toDateUtc`:
 
 ```ts
-yield* positive(duration, 'leaseDuration');
-yield* positive(wait, 'waitTimeout');
-```
-
-inside `claim`, before reading clock or opening transaction. Rewrite `heartbeat` and `complete` as `Effect.gen` workflows so they validate before calling `Clock.currentTimeMillis`:
-
-```ts
-heartbeat: (token, duration = 30_000) =>
-	protect(
-		Effect.gen(function* () {
-			yield* positive(duration, 'leaseDuration');
-			const now = yield* Clock.currentTimeMillis;
-			const rows = yield* sql`UPDATE ${schema}.${table} SET lease_expires_at=${new Date(now + duration)},updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`;
-			return rows.length > 0;
-		}),
-	),
-complete: (token, outcome, retention = 86_400_000) =>
-	protect(
-		Effect.gen(function* () {
-			yield* positive(retention, 'retention');
-			const now = yield* Clock.currentTimeMillis;
-			const rows = yield* sql`UPDATE ${schema}.${table} SET status='completed',outcome_json=${sql.json(outcome)},completed_at=${new Date(now)},lease_expires_at=${new Date(now + retention)},updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`;
-			return rows.length > 0;
-		}),
-	),
+const now = yield* DateTime.now;
+const leaseExpiresAt = DateTime.addDuration(now, duration);
+const rows = yield* sql`UPDATE ${schema}.${table}
+  SET lease_expires_at=${DateTime.toDateUtc(leaseExpiresAt)},
+      updated_at=${DateTime.toDateUtc(now)}
+  WHERE bot_id=${botId}
+    AND update_id=${token.updateId}
+    AND lease_generation=${token.generation}
+    AND status='processing'
+  RETURNING update_id`;
 ```
 
 Because `protect` preserves existing `UpdateDeduplicatorError`, invalid arguments remain `InvariantViolation` rather than becoming `PersistenceFailure`.
 
-- [ ] **Step 6: Run parity tests and commit**
+- [ ] **Step 3: Run parity tests and commit**
 
 ```bash
 pnpm exec vitest run packages/tfx/test/UpdateDeduplicator.test.ts
@@ -1086,7 +710,7 @@ it('enforces persisted status, lease, and outcome combinations', async () => {
 			payload: {},
 			payloadVersion: 1,
 			maxAttempts: 2,
-			runAt: 0,
+			runAt: DateTime.makeUnsafe(0),
 			now: 0,
 		});
 		const id = scheduled.record.id;
@@ -1382,12 +1006,12 @@ getDispatchContext: () =>
 				ownerUserId: ownerId,
 				petId,
 				foodEntryId,
-				scheduledFor: 0,
+				scheduledFor: DateTime.makeUnsafe(0),
 				status: options.eventStatus ?? 'scheduled',
 				dedupeKey: 'key',
 				jobId: null,
-				createdAt: 0,
-				updatedAt: 0,
+				createdAt: DateTime.makeUnsafe(0),
+				updatedAt: DateTime.makeUnsafe(0),
 				completedAt: null,
 				cancelledAt: null,
 			})
@@ -1411,7 +1035,7 @@ it('retries repository persistence failures', async () => {
 	);
 	expect(result).toMatchObject({
 		_tag: 'Failure',
-		failure: { _tag: 'FeedingReminderRetryError', retryAfter: 1_000 },
+		failure: { _tag: 'FeedingReminderRetryError', retryAfter: Duration.seconds(1) },
 	});
 	expect(h.calls()).toBe(0);
 });
@@ -1453,7 +1077,7 @@ const mapRepositoryError = (
 	error.reason === 'PersistenceFailure'
 		? new FeedingReminderRetryError({
 				message: 'Reminder delivery persistence failed',
-				retryAfter: 1_000,
+				retryAfter: Duration.seconds(1),
 			})
 		: new FeedingReminderPermanentError({
 				message: `Reminder delivery ${error.reason}`,
@@ -1471,7 +1095,7 @@ Effect.mapError((cause) =>
 			? mapRepositoryError(cause)
 			: new FeedingReminderRetryError({
 					message: 'Reminder delivery infrastructure failed',
-					retryAfter: 1_000,
+					retryAfter: Duration.seconds(1),
 				}),
 ),
 ```
@@ -1492,233 +1116,57 @@ git commit -m "fix(carneloot): preserve notification failure semantics"
 ### Task 7: Keep transient job-store failures from stopping bot runtime
 
 **Files:**
-- Modify: `apps/carneloot-bot/src/JobWorker.ts:1-105`
-- Modify: `apps/carneloot-bot/test/JobWorker.test.ts:103-126`
+- Modify: `apps/carneloot-bot/src/JobWorker.ts`
+- Modify: `apps/carneloot-bot/test/JobWorker.test.ts`
 
 - [ ] **Step 1: Replace fail-fast persistence test with deterministic recovery test**
 
-Import `* as Random from 'effect/Random'`. Replace current `surfaces loop failure through await` test with:
+Use `TestClock.adjust('10 seconds')` and deterministic `Random` to prove six transient `PersistenceFailure` results are retried and a later pass succeeds. Preserve a separate assertion that non-transient `InvariantViolation` still surfaces through `JobWorker.await`.
+
+- [ ] **Step 2: Validate normalized worker durations**
+
+`JobWorkerLive.layer` remains a configuration boundary: its options accept `Duration.Input`, normalize once, and store `Duration.Duration`. Test valid Effect duration values and invalid inputs for `idleDelay`, `leaseDuration`, and `heartbeatInterval`. Keep `heartbeatInterval < leaseDuration` as explicit relational validation using `Duration.lessThan` after normalization.
 
 ```ts
-it('retries persistence failures and keeps worker alive', async () => {
-	let calls = 0;
-	const recovered = Deferred.makeUnsafe<void>();
-	const jobs = runtime(() =>
-		Effect.suspend(() => {
-			calls++;
-			return calls <= 6
-				? Effect.fail(
-						new JobStoreError(
-							'PersistenceFailure',
-							'store unavailable',
-						),
-					)
-				: Effect.andThen(
-						Deferred.succeed(recovered, undefined),
-						Effect.succeed(undefined),
-					);
-		}),
-	);
-	const clock = TestClock.layer();
-	await Effect.runPromise(
-		Effect.provideService(
-			Effect.scoped(
-				Effect.gen(function* () {
-					const context = yield* Layer.build(
-						Layer.merge(Layer.provide(worker(jobs), clock), clock),
-					);
-					yield* Effect.provide(TestClock.adjust('10 seconds'), context);
-					yield* Deferred.await(recovered);
-					expect(calls).toBeGreaterThanOrEqual(7);
-				}),
-			),
-			Random.Random,
-			{
-				nextIntUnsafe: () => 0,
-				nextDoubleUnsafe: () => 0.5,
-			},
-		),
-	);
-});
-```
-
-- [ ] **Step 2: Preserve non-transient fail-fast behavior**
-
-Add:
-
-```ts
-it('surfaces non-transient store failures through await', async () => {
-	const contextProgram = Effect.scoped(
-		Effect.gen(function* () {
-			const context = yield* Layer.build(
-				worker(
-					runtime(() =>
-						Effect.fail(
-							new JobStoreError('InvariantViolation', 'bad row'),
-						),
-					),
-				),
-			);
-			return yield* Effect.provide(
-				Effect.flatMap(JobWorker, (service) =>
-					Effect.result(service.await),
-				),
-				context,
-			);
-		}),
-	);
-	expect(await Effect.runPromise(contextProgram)).toMatchObject({
-		_tag: 'Failure',
-		failure: { _tag: 'JobStoreError', reason: 'InvariantViolation' },
-	});
-});
-```
-
-Replace current invalid-idle-only table with a shared assertion and three complete tables:
-
-```ts
-type WorkerOptions = Parameters<typeof JobWorkerLive.layer>[0];
-
-const expectRejectedOptions = async (options: WorkerOptions) => {
-	const exit = await Effect.runPromiseExit(
-		Effect.scoped(
-			Layer.build(
-				Layer.provide(
-					JobWorkerLive.layer(options),
-					Layer.merge(
-						runtime(() => Effect.never),
-						notifications(0),
-					),
-				),
-			),
-		),
-	);
-	expect(exit._tag).toBe('Failure');
-};
-
-it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_VALUE])(
-	'rejects invalid idle delay %s',
-	(idleDelay) =>
-		expectRejectedOptions({
-			idleDelay,
-			leaseDuration: 300,
-			heartbeatInterval: 100,
-		}),
-);
-
-it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_VALUE])(
-	'rejects invalid lease duration %s',
-	(leaseDuration) =>
-		expectRejectedOptions({
-			idleDelay: 100,
-			leaseDuration,
-			heartbeatInterval: 1,
-		}),
-);
-
-it.each([
-	0,
-	-1,
-	1.5,
-	Number.NaN,
-	Number.POSITIVE_INFINITY,
-	Number.MAX_VALUE,
-	300,
-])('rejects invalid heartbeat interval %s', (heartbeatInterval) =>
-	expectRejectedOptions({
-		idleDelay: 100,
-		leaseDuration: 300,
-		heartbeatInterval,
-	}),
-);
-```
-
-- [ ] **Step 3: Run worker tests and verify recovery test fails**
-
-```bash
-pnpm exec vitest run apps/carneloot-bot/test/JobWorker.test.ts
-```
-
-Expected: worker exits on first persistence failure, so recovery signal is never reached.
-
-- [ ] **Step 4: Add bounded exponential retry burst**
-
-Import `effect/Schedule` and `effect/Schema`. Replace manual scalar validation before schedule construction:
-
-```ts
-const WorkerDuration = Schema.Number.check(
-	Schema.isInt(),
-	Schema.isGreaterThan(0),
-).annotate({ identifier: 'JobWorkerDurationMillis' });
-
 const validate = (
-	value: number,
+	value: Duration.Duration,
 	option: 'idleDelay' | 'leaseDuration' | 'heartbeatInterval',
 ) =>
-	Schema.decodeUnknownEffect(WorkerDuration)(value).pipe(
-		Effect.asVoid,
-		Effect.mapError(
-			() =>
+	Duration.isFinite(value) &&
+	!Duration.isZero(value) &&
+	!Duration.isNegative(value)
+		? Effect.void
+		: Effect.fail(
 				new JobWorkerOptionsError({
 					option,
-					message: `${option} must be a safe positive integer`,
+					message: `${option} must be a finite positive duration`,
 				}),
-		),
-	);
+			);
 ```
 
-Keep `heartbeatInterval < leaseDuration` as explicit relational validation after all three scalar decodes.
+- [ ] **Step 3: Add bounded exponential retry burst**
 
-Build retry policy after option validation:
+Build schedule directly from normalized duration:
 
 ```ts
 const persistenceRetry = Schedule.exponential(options.idleDelay).pipe(
 	Schedule.jittered,
 	Schedule.upTo({ times: 5 }),
 );
-
-const runOnePass = jobs
-	.runOne({
-		leaseDuration: options.leaseDuration,
-		heartbeatInterval: options.heartbeatInterval,
-	})
-	.pipe(
-		Effect.retry({
-			while: (error) =>
-				error instanceof JobStoreError &&
-				error.reason === 'PersistenceFailure',
-			schedule: persistenceRetry,
-		}),
-		Effect.catchIf(
-			(error) =>
-				error instanceof JobStoreError &&
-				error.reason === 'PersistenceFailure',
-			(error) =>
-				Effect.logError(
-					'JobWorker.persistence_retry_exhausted',
-					error,
-				).pipe(Effect.as(undefined)),
-		),
-	);
 ```
 
-Use `runOnePass` inside recursive loop. Exhausted persistence burst becomes an empty pass, then existing idle delay runs before another burst. `JobRuntimeOptionsError`, invariant failures, defects, and interruption still terminate/surface.
+Retry only `JobStoreError` with reason `PersistenceFailure`. After exhaustion, log `JobWorker.persistence_retry_exhausted`, sleep `idleDelay`, and continue outer loop. Let all non-transient errors fail the worker. Pass normalized lease and heartbeat durations directly into `jobs.runOne` and `Effect.sleep`.
 
-- [ ] **Step 5: Run deterministic worker and program tests**
+- [ ] **Step 4: Run focused tests and commit**
 
 ```bash
-pnpm exec vitest run apps/carneloot-bot/test/JobWorker.test.ts apps/carneloot-bot/test/Program.test.ts
+pnpm exec vitest run apps/carneloot-bot/test/JobWorker.test.ts
 pnpm check
-```
-
-Expected: persistence failures recover under `TestClock`; invariant failure still reaches `await`; scope interruption test remains green.
-
-- [ ] **Step 6: Commit**
-
-```bash
 git add apps/carneloot-bot/src/JobWorker.ts apps/carneloot-bot/test/JobWorker.test.ts
-git commit -m "fix(carneloot): isolate transient worker failures"
+git commit -m "fix(carneloot): recover job worker persistence failures"
 ```
+
+Expected: worker recovers deterministically from transient bursts, permanent errors remain visible, and worker temporal contracts contain no numeric units.
 
 ---
 
@@ -1775,9 +1223,12 @@ For `DispatchNotificationDelivery.execute`, replace its arrow-plus-`Effect.gen` 
 export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 	function* (
 		payload: DispatchPayload,
-		options: { readonly leaseDuration?: number } = {},
+		options: { readonly leaseDuration?: Duration.Input } = {},
 	) {
-		const leaseDuration = options.leaseDuration ?? 30_000;
+		const leaseDuration = normalizeDuration(
+			options.leaseDuration ?? '30 seconds',
+			'leaseDuration',
+		);
 ```
 
 The current generator's final `}).pipe(Effect.mapError(...))` becomes the whole-function transform passed after generator:
@@ -1794,7 +1245,7 @@ The current generator's final `}).pipe(Effect.mapError(...))` becomes the whole-
 						? mapRepositoryError(cause)
 						: new FeedingReminderRetryError({
 								message: 'Reminder delivery infrastructure failed',
-								retryAfter: 1_000,
+								retryAfter: Duration.seconds(1),
 							}),
 			),
 		),
@@ -1806,10 +1257,11 @@ For service object members, preserve interface signatures:
 ```ts
 const heartbeat: UpdateDeduplicatorService['heartbeat'] = Effect.fn(
 	'PostgresUpdateDeduplicator.heartbeat',
-)(function* (token, duration = 30_000) {
+)(function* (token, duration = Duration.seconds(30)) {
 	yield* positive(duration, 'leaseDuration');
-	const now = yield* Clock.currentTimeMillis;
-	const rows = yield* sql`UPDATE ${schema}.${table} SET lease_expires_at=${new Date(now + duration)},updated_at=${new Date(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`;
+	const now = yield* DateTime.now;
+	const leaseExpiresAt = DateTime.addDuration(now, duration);
+	const rows = yield* sql`UPDATE ${schema}.${table} SET lease_expires_at=${DateTime.toDateUtc(leaseExpiresAt)},updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND update_id=${token.updateId} AND lease_generation=${token.generation} AND status='processing' RETURNING update_id`;
 	return rows.length > 0;
 });
 ```
@@ -1999,12 +1451,12 @@ Fix critical/important findings with follow-up commits; do not amend existing co
 
 - Duplicated UUID regexes are removed; application and PostgreSQL row boundaries use shared RFC UUID schemas while preserving nil/max rejection.
 - PostgreSQL bigint and timestamp normalization is schema-backed; manual checks remain only for cross-field, computed, or contextual invariants.
-- Scalar retry, polling, deduplication, and worker duration constraints use Schema rather than ad hoc numeric predicates.
-- `Job.retry` rejects unsafe explicit delays; arbitrary custom retry callbacks cannot defect `JobRuntime` or write invalid dates.
+- Retry, polling, deduplication, and worker boundaries normalize `Duration.Input` once and retain `Duration.Duration` internally.
+- `Job.retry` rejects invalid explicit durations; arbitrary custom retry callbacks cannot defect `JobRuntime` or write invalid instants.
 - Duplicate job declaration names fail before layer acquisition.
-- Polling timeout is integer `1..50`, limit is integer `1..100`, and retry delay is finite positive integer.
+- Polling timeout is a duration from 1 through 50 seconds, limit is integer `1..100`, and retry delay is a finite positive duration.
 - Memory cleanup reaches entries beyond first 16 and released entries are removed immediately.
-- Memory and PostgreSQL deduplicators return typed `InvariantViolation` failures unless lease, wait, heartbeat, and retention values are safe positive integers.
+- Memory and PostgreSQL deduplicators return typed `InvariantViolation` failures unless lease, wait, heartbeat, and retention values are finite positive durations.
 - Job status, lease phase/expiry, and outcome combinations are checked by both decoder and PostgreSQL migration 3.
 - Repository persistence failures retry; invariant/not-found/conflict notification failures become permanent.
 - Transient `JobStoreError('PersistenceFailure')` uses bounded exponential/jittered retry bursts without stopping Telegram runtime; non-transient failures still surface.

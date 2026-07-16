@@ -80,6 +80,16 @@ Do not create `@tfx/platform-node` or `@tfx/platform-bun`. Core tfx requires Eff
 
 This keeps tfx host-neutral, avoids Layer-only wrapper packages, and lets applications use any Effect-supported platform without waiting for a tfx adapter.
 
+### 4.1.1 Temporal contracts
+
+- Runtime absolute instants use `DateTime.Utc`.
+- Runtime elapsed intervals use `Duration.Duration`.
+- Configuration-facing options accept `Duration.Input` and normalize once.
+- Environment duration values use Effect strings such as `"10 seconds"` via `Config.duration`.
+- PostgreSQL adapters alone convert `DateTime.Utc` to `Date`.
+- Config/storage codecs alone convert `Duration.Duration` to and from milliseconds.
+- IDs, counters, capacities, and protocol-native scalar units remain numbers.
+
 ### 4.2 Workspace toolchain
 
 Use **pnpm workspaces** as the package manager and workspace implementation. Pin the initial package manager through `packageManager: "pnpm@10.17.1"` and commit `pnpm-lock.yaml`. Use `workspace:` dependency ranges for internal packages.
