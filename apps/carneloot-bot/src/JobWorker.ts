@@ -6,6 +6,7 @@ import * as Effect from 'effect/Effect';
 import * as Fiber from 'effect/Fiber';
 import * as Layer from 'effect/Layer';
 import * as Option from 'effect/Option';
+import * as Schedule from 'effect/Schedule';
 import { JobRuntime, type JobRuntimeOptionsError } from 'tfx/JobRuntime';
 import { JobStoreError, type JobRecord } from 'tfx/JobStore';
 
@@ -45,6 +46,20 @@ export interface Options {
 	readonly leaseDuration: Duration.Input;
 	readonly heartbeatInterval: Duration.Input;
 }
+const validate = (
+	value: Duration.Duration,
+	option: 'idleDelay' | 'leaseDuration' | 'heartbeatInterval',
+) =>
+	Duration.isFinite(value) &&
+	!Duration.isZero(value) &&
+	!Duration.isNegative(value)
+		? Effect.void
+		: Effect.fail(
+				new JobWorkerOptionsError({
+					option,
+					message: `${option} must be a finite positive duration`,
+				}),
+			);
 const normalize = (
 	input: Duration.Input,
 	option: 'idleDelay' | 'leaseDuration' | 'heartbeatInterval',
@@ -57,15 +72,7 @@ const normalize = (
 					message: `${option} must be a valid duration`,
 				}),
 			),
-		onSome: (value) =>
-			!Duration.isFinite(value) || !Duration.isPositive(value)
-				? Effect.fail(
-						new JobWorkerOptionsError({
-							option,
-							message: `${option} must be finite and positive`,
-						}),
-					)
-				: Effect.succeed(value),
+		onSome: (value) => Effect.as(validate(value, option), value),
 	});
 export const layer = (options: Options) =>
 	Layer.effect(
@@ -98,14 +105,35 @@ export const layer = (options: Options) =>
 			const quarantinedJobIds = startupProblems
 				.filter((job) => job.status === 'quarantined')
 				.map((job) => job.id);
+			const persistenceRetry = Schedule.exponential(idleDelay).pipe(
+				Schedule.jittered,
+				Schedule.upTo({ times: 5 }),
+			);
+			const runOnePass = Effect.suspend(() =>
+				jobs.runOne({ leaseDuration, heartbeatInterval }),
+			).pipe(
+				Effect.retry({
+					while: (error) =>
+						error instanceof JobStoreError &&
+						error.reason === 'PersistenceFailure',
+					schedule: persistenceRetry,
+				}),
+				Effect.catchIf(
+					(error) =>
+						error instanceof JobStoreError &&
+						error.reason === 'PersistenceFailure',
+					() =>
+						Effect.logWarning('JobWorker.persistence_retry_exhausted').pipe(
+							Effect.as(undefined),
+						),
+				),
+			);
 			const loop: Effect.Effect<void, JobStoreError | JobRuntimeOptionsError> =
 				Effect.suspend(() =>
-					Effect.flatMap(
-						jobs.runOne({ leaseDuration, heartbeatInterval }),
-						(record) =>
-							record === undefined
-								? Effect.andThen(Effect.sleep(idleDelay), loop)
-								: loop,
+					Effect.flatMap(runOnePass, (record) =>
+						record === undefined
+							? Effect.andThen(Effect.sleep(idleDelay), loop)
+							: loop,
 					),
 				);
 			const fiber = yield* Effect.forkScoped(loop);

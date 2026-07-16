@@ -1,4 +1,4 @@
-import { Deferred, Effect, Layer, Ref } from 'effect';
+import { Deferred, Duration, Effect, Layer, Random, Ref } from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { JobRuntime, type JobRuntimeService } from 'tfx/JobRuntime';
 import { JobStoreError } from 'tfx/JobStore';
@@ -23,12 +23,16 @@ const notifications = (recovered: number) =>
 	Layer.succeed(NotificationRepository, {
 		recoverAllExpired: () => Effect.succeed(recovered),
 	} as never);
-const worker = (jobs: Layer.Layer<JobRuntime>, recovered = 0) =>
+const worker = (
+	jobs: Layer.Layer<JobRuntime>,
+	recovered = 0,
+	idleDelay: Duration.Input = '100 millis',
+) =>
 	Layer.provide(
 		JobWorkerLive.layer({
-			idleDelay: 100,
-			leaseDuration: 300,
-			heartbeatInterval: 100,
+			idleDelay,
+			leaseDuration: '300 millis',
+			heartbeatInterval: '100 millis',
 		}),
 		Layer.merge(jobs, notifications(recovered)),
 	);
@@ -100,14 +104,62 @@ describe('JobWorker', () => {
 		expect(Ref.getUnsafe(interrupted)).toBe(true);
 	});
 
-	it('surfaces loop failure through await', async () => {
+	it('recovers after a bounded burst of persistence failures', async () => {
+		let calls = 0;
+		const started = Deferred.makeUnsafe<void>();
+		const recovered = Deferred.makeUnsafe<void>();
+		const clock = TestClock.layer();
+		await Effect.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					const context = yield* Layer.build(
+						Layer.merge(
+							Layer.provide(
+								worker(
+									runtime(() => {
+										calls++;
+										const result =
+											calls <= 6
+												? Effect.fail(
+														new JobStoreError(
+															'PersistenceFailure',
+															'store failed',
+														),
+													)
+												: Effect.andThen(
+														Deferred.succeed(recovered, undefined),
+														Effect.never,
+													);
+										return Effect.andThen(
+											Deferred.succeed(started, undefined),
+											result,
+										);
+									}),
+									0,
+									'1 milli',
+								),
+								clock,
+							),
+							clock,
+						),
+					);
+					yield* Deferred.await(started);
+					yield* Effect.provide(TestClock.adjust('10 seconds'), context);
+					yield* Deferred.await(recovered);
+					expect(calls).toBe(7);
+				}),
+			).pipe(Random.withSeed('job-worker-recovery')),
+		);
+	});
+
+	it('surfaces invariant violations through await', async () => {
 		const contextProgram = Effect.scoped(
 			Effect.gen(function* () {
 				const context = yield* Layer.build(
 					worker(
 						runtime(() =>
 							Effect.fail(
-								new JobStoreError('PersistenceFailure', 'store failed'),
+								new JobStoreError('InvariantViolation', 'invalid state'),
 							),
 						),
 					),
@@ -120,31 +172,61 @@ describe('JobWorker', () => {
 		);
 		expect(await Effect.runPromise(contextProgram)).toMatchObject({
 			_tag: 'Failure',
-			failure: { _tag: 'JobStoreError', reason: 'PersistenceFailure' },
+			failure: { _tag: 'JobStoreError', reason: 'InvariantViolation' },
 		});
 	});
 
-	it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
-		'rejects invalid idle delay %s',
-		async (idleDelay) => {
-			const exit = await Effect.runPromiseExit(
-				Effect.scoped(
-					Layer.build(
-						Layer.provide(
-							JobWorkerLive.layer({
-								idleDelay,
-								leaseDuration: 2,
-								heartbeatInterval: 1,
-							}),
-							Layer.merge(
-								runtime(() => Effect.never),
-								notifications(0),
-							),
+	it('accepts normalized Effect durations', async () => {
+		const exit = await Effect.runPromiseExit(
+			Effect.scoped(
+				Layer.build(
+					Layer.provide(
+						JobWorkerLive.layer({
+							idleDelay: Duration.millis(100),
+							leaseDuration: Duration.seconds(2),
+							heartbeatInterval: Duration.seconds(1),
+						}),
+						Layer.merge(
+							runtime(() => Effect.never),
+							notifications(0),
 						),
 					),
 				),
-			);
-			expect(exit._tag).toBe('Failure');
+			),
+		);
+		expect(exit._tag).toBe('Success');
+	});
+
+	it.each(['idleDelay', 'leaseDuration', 'heartbeatInterval'] as const)(
+		'rejects invalid %s values',
+		async (option) => {
+			for (const invalid of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+				const values = {
+					idleDelay: Duration.seconds(1),
+					leaseDuration: Duration.seconds(2),
+					heartbeatInterval: Duration.seconds(1),
+					[option]: invalid,
+				};
+				const error = await Effect.runPromise(
+					Effect.flip(
+						Effect.scoped(
+							Layer.build(
+								Layer.provide(
+									JobWorkerLive.layer(values),
+									Layer.merge(
+										runtime(() => Effect.never),
+										notifications(0),
+									),
+								),
+							),
+						),
+					),
+				);
+				expect(error).toMatchObject({
+					_tag: 'JobWorkerOptionsError',
+					option,
+				});
+			}
 		},
 	);
 });
