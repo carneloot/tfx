@@ -6,6 +6,7 @@ import * as Layer from 'effect/Layer';
 import * as Semaphore from 'effect/Semaphore';
 
 import type { CompletedOutcome } from './DispatchOutcome.js';
+import { makeCursor, sweep } from './internal/BoundedMapSweep.js';
 import {
 	UpdateDeduplicator,
 	type ObservedCompletion,
@@ -25,6 +26,7 @@ const positive = (value: Duration.Duration, name: string): void => {
 };
 const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 	const rows = new Map<number, Row>();
+	const cleanup = makeCursor<number, Row>();
 	let generation = 0;
 	const semaphore = yield* Semaphore.make(1);
 	const locked = <A>(f: () => A) => semaphore.withPermit(Effect.sync(f));
@@ -38,16 +40,15 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 				positive(duration, 'leaseDuration');
 				positive(waitTimeout, 'waitTimeout');
 				const result = yield* locked(() => {
-					let scanned = 0;
-					for (const [id, row] of rows) {
-						if (scanned++ >= 16) break;
-						if (
+					sweep(
+						rows,
+						cleanup,
+						(row) =>
 							row.released ||
 							(row.completed !== undefined &&
-								DateTime.isLessThanOrEqualTo(row.retentionUntil!, now))
-						)
-							rows.delete(id);
-					}
+								DateTime.isLessThanOrEqualTo(row.retentionUntil!, now)),
+						16,
+					);
 					const current = rows.get(updateId);
 					if (
 						current?.completed !== undefined &&
@@ -136,11 +137,11 @@ const make: Effect.Effect<UpdateDeduplicatorService> = Effect.gen(function* () {
 				)
 					return false;
 				row.released = true;
-				row.leaseExpiresAt = DateTime.makeUnsafe(0);
 				Deferred.doneUnsafe(
 					row.completion,
 					Effect.succeed({ _tag: 'Released' }),
 				);
+				rows.delete(token.updateId);
 				return true;
 			}),
 	};
