@@ -134,9 +134,7 @@ describe('UpdateDeduplicator', () => {
 						),
 					heartbeat: () =>
 						Effect.sleep('5 millis').pipe(
-							Effect.andThen(
-								Ref.update(heartbeatCount, (count) => count + 1),
-							),
+							Effect.andThen(Ref.update(heartbeatCount, (count) => count + 1)),
 							Effect.as(true),
 						),
 					complete: () => Effect.succeed(true),
