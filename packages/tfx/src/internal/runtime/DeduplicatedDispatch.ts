@@ -3,6 +3,7 @@ import * as Effect from 'effect/Effect';
 import * as Schedule from 'effect/Schedule';
 
 import * as DispatchOutcome from '../../DispatchOutcome.js';
+import { isRetryableError } from '../../TaggedError.js';
 import type {
 	UpdateDeduplicatorError,
 	UpdateDeduplicatorService,
@@ -11,6 +12,12 @@ import type { Update } from '../telegram/generated/TelegramApi.types.js';
 class ClaimLost {
 	readonly _tag = 'ClaimLost';
 }
+const deduplicationFailure = (error: UpdateDeduplicatorError) =>
+	Effect.succeed(
+		isRetryableError(error)
+			? DispatchOutcome.retryableFailure('update-deduplication-unavailable')
+			: DispatchOutcome.fatal('update-deduplication-invariant'),
+	);
 export const dispatch = Effect.fn('DeduplicatedDispatch.dispatch')(function (
 	dedup: UpdateDeduplicatorService,
 	update: Update,
@@ -91,17 +98,19 @@ export const dispatch = Effect.fn('DeduplicatedDispatch.dispatch')(function (
 				}
 				return outcome;
 			}).pipe(
-				// Release is fenced; after completion this is a harmless stale release.
+				// Release is fenced; a stale release succeeds with false.
 				Effect.ensuring(
-					dedup.release(claim.token).pipe(Effect.catch(() => Effect.void)),
+					dedup
+						.release(claim.token)
+						.pipe(
+							Effect.catch((error) =>
+								Effect.logError('tfx.deduplication.release_failed').pipe(
+									Effect.annotateLogs({ reason: error.reason }),
+								),
+							),
+						),
 				),
 			);
 		}),
-	).pipe(
-		Effect.catch(() =>
-			Effect.succeed(
-				DispatchOutcome.retryableFailure('Update deduplication unavailable'),
-			),
-		),
-	);
+	).pipe(Effect.catch(deduplicationFailure));
 });

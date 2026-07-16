@@ -45,6 +45,9 @@ export class ConversationStorageError extends Error {
 	) {
 		super(message);
 	}
+	get isRetryable(): boolean {
+		return this.reason === 'PersistenceFailure';
+	}
 }
 export interface ConversationStorageService {
 	readonly load: (

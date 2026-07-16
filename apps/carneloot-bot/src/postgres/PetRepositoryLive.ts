@@ -42,7 +42,11 @@ const decode = (value: unknown) =>
 			};
 		},
 		catch: (cause) =>
-			new DomainPersistenceError({ message: 'Malformed pet row', cause }),
+			new DomainPersistenceError({
+				reason: 'InvariantViolation',
+				message: 'Malformed pet row',
+				cause,
+			}),
 	});
 const constraint = (cause: unknown): unknown => {
 	if (typeof cause !== 'object' || cause === null) return undefined;
@@ -59,7 +63,11 @@ const constraint = (cause: unknown): unknown => {
 const persistence = (cause: unknown) =>
 	cause instanceof DomainPersistenceError || cause instanceof UserNotRegistered
 		? cause
-		: new DomainPersistenceError({ message: 'Pet repository failed', cause });
+		: new DomainPersistenceError({
+				reason: 'PersistenceFailure',
+				message: 'Pet repository failed',
+				cause,
+			});
 
 export const layer = Layer.effect(
 	PetRepository,
@@ -91,6 +99,7 @@ export const layer = Layer.effect(
 						cause instanceof DomainPersistenceError
 							? cause
 							: new DomainPersistenceError({
+									reason: 'PersistenceFailure',
 									message: 'Pet lookup failed',
 									cause,
 								}),

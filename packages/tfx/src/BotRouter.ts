@@ -13,7 +13,7 @@ import * as InternalRouter from './internal/runtime/Router.js';
 import type { Update } from './internal/telegram/generated/TelegramApi.types.js';
 import * as MessageContext from './MessageContext.js';
 import { MiddlewareRegistry } from './Middleware.js';
-import type { TaggedError } from './TaggedError.js';
+import { isRetryableError, type TaggedError } from './TaggedError.js';
 import * as UpdateContext from './UpdateContext.js';
 import * as UpdateRoutingScope from './UpdateRoutingScope.js';
 
@@ -76,6 +76,41 @@ const outputFailure = (error: unknown) =>
 	error instanceof Conversations.HandledWithOutputFailure
 		? DispatchOutcome.handledWithOutputFailure('conversation-output-failed')
 		: undefined;
+const reasonOf = (error: TaggedError): string | undefined =>
+	'reason' in error && typeof error.reason === 'string'
+		? error.reason
+		: undefined;
+export const classifyFrameworkError = (
+	error: TaggedError,
+): DispatchOutcome.DispatchOutcome | undefined => {
+	switch (error._tag) {
+		case 'HandledWithOutputFailure':
+			return DispatchOutcome.handledWithOutputFailure(
+				'conversation-output-failed',
+			);
+		case 'ConversationScopeUnavailable':
+		case 'ConversationRawInputError':
+		case 'CallbackDataError':
+		case 'ConversationChoiceError':
+		case 'CommandInputError':
+		case 'SchemaError':
+			return DispatchOutcome.permanentInvalid('invalid-framework-input');
+		case 'ConversationStorageError':
+			return isRetryableError(error)
+				? DispatchOutcome.retryableFailure('conversation-storage-unavailable')
+				: reasonOf(error) === 'Conflict'
+					? DispatchOutcome.permanentInvalid('conversation-conflict')
+					: DispatchOutcome.fatal('conversation-storage-invariant');
+		case 'VersionedSchemaError':
+			return DispatchOutcome.fatal('conversation-version-invariant');
+		case 'UnknownPersistedConversationError':
+			return DispatchOutcome.fatal('unknown-persisted-conversation');
+		case 'ConversationExecutionError':
+			return DispatchOutcome.fatal('conversation-execution-invariant');
+		default:
+			return undefined;
+	}
+};
 const safeIds = (update: Update): boolean => {
 	const context = UpdateContext.make(update);
 	return (
@@ -125,8 +160,11 @@ export const make = <
 				declarations.set(command.name, { groupId: group.id, command });
 		const mapError = (error: TaggedError) =>
 			outputFailure(error) ??
+			classifyFrameworkError(error) ??
 			options.mapError?.(error) ??
-			DispatchOutcome.retryableFailure('router-handler-failed');
+			(isRetryableError(error)
+				? DispatchOutcome.retryableFailure('retryable-router-error')
+				: DispatchOutcome.fatal('unclassified-router-error'));
 		const provideContexts = (
 			update: Update,
 			effect: Effect.Effect<any, any, any>,

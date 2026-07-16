@@ -8,11 +8,13 @@ import {
 	Conversation,
 	ConversationBuilder,
 	ConversationInput,
+	ConversationStorage,
 	Conversations,
 	MemoryConversationStorage,
 	MessageContext,
 	Middleware,
 	UpdateContext,
+	VersionedSchema,
 } from 'tfx';
 import { describe, expect, it } from 'vitest';
 
@@ -97,6 +99,47 @@ const build = <
 	) as Effect.Effect<BotRouter.Router, never, never>;
 
 describe('public BotRouter', () => {
+	it('classifies framework failures with retry opt-in and fatal defaults', () => {
+		expect(
+			BotRouter.classifyFrameworkError(
+				new ConversationStorage.ConversationStorageError(
+					'PersistenceFailure',
+					'unavailable',
+				),
+			),
+		).toEqual({
+			_tag: 'RetryableFailure',
+			error: 'conversation-storage-unavailable',
+		});
+		expect(
+			BotRouter.classifyFrameworkError(
+				new ConversationStorage.ConversationStorageError('Conflict', 'active'),
+			),
+		).toEqual({
+			_tag: 'PermanentInvalid',
+			reason: 'conversation-conflict',
+		});
+		expect(
+			BotRouter.classifyFrameworkError(
+				new ConversationStorage.ConversationStorageError(
+					'InvariantViolation',
+					'corrupt',
+				),
+			),
+		).toEqual({
+			_tag: 'Fatal',
+			cause: 'conversation-storage-invariant',
+		});
+		expect(
+			BotRouter.classifyFrameworkError(
+				new VersionedSchema.VersionedSchemaError('MissingMigration', 'missing'),
+			),
+		).toEqual({
+			_tag: 'Fatal',
+			cause: 'conversation-version-invariant',
+		});
+	});
+
 	it('aggregates multiple built groups and provides update/message contexts', async () => {
 		const invoked: string[] = [];
 		const accountHandlers = BotBuilder.buildGroup(bot, 'account', (handlers) =>
@@ -186,6 +229,23 @@ describe('public BotRouter', () => {
 				router.route(commandUpdate(4, '/start') as never),
 			),
 		).toEqual({ _tag: 'RetryableFailure', error: 'safe-domain-error' });
+	});
+
+	it('defaults unclassified handler errors to fatal', async () => {
+		const handlers = BotBuilder.buildGroup(bot, 'account', (value) =>
+			value.handle('start', () =>
+				Effect.fail(new TestHandlerError({ message: 'not retryable' })),
+			),
+		);
+		const router = await Effect.runPromise(build([handlers]));
+		expect(
+			await Effect.runPromise(
+				router.route(commandUpdate(1, '/start') as never),
+			),
+		).toEqual({
+			_tag: 'Fatal',
+			cause: 'unclassified-router-error',
+		});
 	});
 
 	it('rejects unsafe ingress ids and returns safe output-failure markers', async () => {

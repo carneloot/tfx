@@ -105,6 +105,54 @@ describe('BotRuntime', () => {
 		expect(JSON.stringify(logs)).not.toContain('token:secret');
 	});
 
+	it('logs only sanitized dispatch outcome codes', async () => {
+		const logs = await Effect.runPromise(
+			captureLogs(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const context = yield* Layer.build(
+							Layer.provide(
+								BotRuntime.layer(Bot.make('bot'), {
+									delivery: UpdateDelivery.manual,
+									concurrency: 1,
+									capacity: 4,
+									router: {
+										route: (item) =>
+											Effect.succeed(
+												DispatchOutcome.retryableFailure(
+													item.update_id === 10 ? 'safe-code' : 'token:secret',
+												),
+											),
+									},
+								}),
+								UpdateDeduplicator.layerNoop,
+							),
+						);
+						yield* Effect.provide(
+							Effect.gen(function* () {
+								const service = yield* BotRuntime.BotRuntime;
+								yield* service.dispatch(update(10));
+								yield* service.dispatch(update(11));
+							}),
+							context,
+						);
+					}),
+				),
+			),
+		);
+		expect(logs).toContainEqual({
+			message: 'tfx.dispatch.completed',
+			level: 'Warn',
+			annotations: {
+				botId: 'bot',
+				updateId: 10,
+				outcome: 'RetryableFailure',
+				outcomeCode: 'safe-code',
+			},
+		});
+		expect(JSON.stringify(logs)).not.toContain('token:secret');
+	});
+
 	it('deduplicates direct public dispatch with configured timings', async () => {
 		let calls = 0;
 		const outcome = await Effect.runPromise(

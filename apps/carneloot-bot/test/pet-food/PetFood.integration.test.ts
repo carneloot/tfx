@@ -146,6 +146,7 @@ else
 
 		it('rolls back scheduler actions, food, and settings when scheduler fails', async () => {
 			const failure = new ReminderSchedulerError({
+				reason: 'PersistenceFailure',
 				message: 'scheduler failed',
 			});
 			const failing: Layer.Layer<ReminderScheduler, never, PgClient.PgClient> =
@@ -160,6 +161,7 @@ else
 										Effect.mapError(
 											(cause) =>
 												new ReminderSchedulerError({
+													reason: 'PersistenceFailure',
 													message: 'scheduler write failed',
 													cause,
 												}),
@@ -171,6 +173,7 @@ else
 										Effect.mapError(
 											(cause) =>
 												new ReminderSchedulerError({
+													reason: 'PersistenceFailure',
 													message: 'scheduler write failed',
 													cause,
 												}),

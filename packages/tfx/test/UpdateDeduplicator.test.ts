@@ -118,6 +118,34 @@ describe('UpdateDeduplicator', () => {
 		).resolves.toMatchObject({ _tag: 'RetryableFailure' });
 	});
 
+	it('maps deduplication invariants to fatal outcomes', async () => {
+		const service: UpdateDeduplicatorModule.UpdateDeduplicatorService = {
+			diagnostics: { mode: 'durable', backend: 'test' },
+			claim: () =>
+				Effect.fail(
+					new UpdateDeduplicatorModule.UpdateDeduplicatorError(
+						'InvariantViolation',
+						'malformed state',
+					),
+				),
+			heartbeat: () => Effect.succeed(true),
+			complete: () => Effect.succeed(true),
+			release: () => Effect.succeed(true),
+		};
+		await expect(
+			Effect.runPromise(
+				DeduplicatedDispatch.dispatch(
+					service,
+					{ update_id: 1 } as Update,
+					Effect.succeed(DispatchOutcome.handled),
+				),
+			),
+		).resolves.toEqual({
+			_tag: 'Fatal',
+			cause: 'update-deduplication-invariant',
+		});
+	});
+
 	it('heartbeats dispatch at the configured spaced interval', async () => {
 		await Effect.runPromise(
 			Effect.gen(function* () {

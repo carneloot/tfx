@@ -62,12 +62,20 @@ const decode = (value: unknown) =>
 			};
 		},
 		catch: (cause) =>
-			new DomainPersistenceError({ message: 'Malformed user row', cause }),
+			new DomainPersistenceError({
+				reason: 'InvariantViolation',
+				message: 'Malformed user row',
+				cause,
+			}),
 	});
 const persistence = (cause: unknown) =>
 	cause instanceof DomainPersistenceError
 		? cause
-		: new DomainPersistenceError({ message: 'User repository failed', cause });
+		: new DomainPersistenceError({
+				reason: 'PersistenceFailure',
+				message: 'User repository failed',
+				cause,
+			});
 const select = (
 	sql: PgClient.PgClient,
 	botId: string,

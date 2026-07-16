@@ -49,6 +49,7 @@ export const migrate = PostgresMigrator.run({
 	Effect.mapError(
 		(cause) =>
 			new DomainPersistenceError({
+				reason: 'PersistenceFailure',
 				message: 'Carneloot migration failed',
 				cause,
 			}),

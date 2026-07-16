@@ -56,17 +56,10 @@ const retryDelay = (
 	error: TelegramError,
 	fallback: Duration.Duration,
 ): Duration.Duration | undefined => {
-	const reason = error.reason;
-	if (
-		reason._tag === 'AuthenticationError' ||
-		reason._tag === 'ConflictError' ||
-		reason._tag === 'ForbiddenError' ||
-		reason._tag === 'InvalidRequestError' ||
-		reason._tag === 'InvalidResponseError' ||
-		reason._tag === 'UnknownError'
-	)
-		return undefined;
-	return reason._tag === 'RateLimitError' ? reason.retryAfter : fallback;
+	if (!error.isRetryable) return undefined;
+	return error.reason._tag === 'RateLimitError'
+		? error.reason.retryAfter
+		: fallback;
 };
 export const make = (
 	telegram: TelegramService,

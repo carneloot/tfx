@@ -9,10 +9,15 @@ import type { FoodEntryId } from '../domain/pet-food/PetFood.js';
 export class ReminderSchedulerError extends Schema.TaggedErrorClass<ReminderSchedulerError>()(
 	'ReminderSchedulerError',
 	{
+		reason: Schema.Literals(['PersistenceFailure', 'InvariantViolation']),
 		message: Schema.String,
 		cause: Schema.optionalKey(Schema.Unknown),
 	},
-) {}
+) {
+	get isRetryable(): boolean {
+		return this.reason === 'PersistenceFailure';
+	}
+}
 export interface ReminderSchedule {
 	readonly botId: BotId;
 	readonly ownerUserId: UserId;

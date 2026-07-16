@@ -32,7 +32,19 @@ const safeInteger = (value: unknown, minimum = 0) => {
 const persistence = (message: string, cause: unknown) =>
 	cause instanceof DomainPersistenceError || cause instanceof PetAccessDenied
 		? cause
-		: new DomainPersistenceError({ message, cause });
+		: new DomainPersistenceError({
+				reason: 'PersistenceFailure',
+				message,
+				cause,
+			});
+const invariant = (message: string, cause: unknown) =>
+	cause instanceof DomainPersistenceError || cause instanceof PetAccessDenied
+		? cause
+		: new DomainPersistenceError({
+				reason: 'InvariantViolation',
+				message,
+				cause,
+			});
 const protect = <A, E, R>(effect: Effect.Effect<A, E, R>, message: string) =>
 	effect.pipe(Effect.mapError((cause) => persistence(message, cause)));
 
@@ -152,7 +164,7 @@ export const layer = Layer.effect(
 				Effect.flatMap((rows) =>
 					Effect.try({
 						try: () => rows.map(decodeEntry),
-						catch: (cause) => persistence('Malformed pet food row', cause),
+						catch: (cause) => invariant('Malformed pet food row', cause),
 					}),
 				),
 			);
@@ -172,7 +184,7 @@ export const layer = Layer.effect(
 									)
 								: Effect.try({
 										try: () => decodePet(rows[0]),
-										catch: (cause) => persistence('Malformed pet row', cause),
+										catch: (cause) => invariant('Malformed pet row', cause),
 									}),
 					),
 					'Pet ownership query failed',
@@ -184,8 +196,7 @@ export const layer = Layer.effect(
 							? Effect.succeed(undefined)
 							: Effect.try({
 									try: () => decodeSettings(rows[0]),
-									catch: (cause) =>
-										persistence('Malformed settings row', cause),
+									catch: (cause) => invariant('Malformed settings row', cause),
 								}),
 					),
 				),
@@ -198,7 +209,7 @@ export const layer = Layer.effect(
 						(rows) =>
 							Effect.try({
 								try: () => decodeOne(rows, decodeSettings),
-								catch: (cause) => persistence('Malformed settings row', cause),
+								catch: (cause) => invariant('Malformed settings row', cause),
 							}),
 					),
 					'Settings update failed',
@@ -212,7 +223,7 @@ export const layer = Layer.effect(
 						(rows) =>
 							Effect.try({
 								try: () => decodeOne(rows, decodeSettings),
-								catch: (cause) => persistence('Malformed settings row', cause),
+								catch: (cause) => invariant('Malformed settings row', cause),
 							}),
 					),
 					'Delay update failed',
@@ -226,7 +237,7 @@ export const layer = Layer.effect(
 						(rows) =>
 							Effect.try({
 								try: () => decodeOne(rows, decodeSettings),
-								catch: (cause) => persistence('Malformed settings row', cause),
+								catch: (cause) => invariant('Malformed settings row', cause),
 							}),
 					),
 					'Delay deletion failed',
@@ -262,7 +273,7 @@ export const layer = Layer.effect(
 							Effect.try({
 								try: () => decodeOne(rows, decodeEntry),
 								catch: (cause) =>
-									persistence('Malformed inserted food row', cause),
+									invariant('Malformed inserted food row', cause),
 							}),
 					),
 					'Food insert failed',
@@ -290,7 +301,7 @@ export const layer = Layer.effect(
 													),
 									};
 								},
-								catch: (cause) => persistence('Malformed status row', cause),
+								catch: (cause) => invariant('Malformed status row', cause),
 							}),
 					),
 					'Status query failed',

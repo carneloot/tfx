@@ -13,6 +13,20 @@ import type { Router } from './Router.js';
 export interface Dispatcher {
 	readonly dispatch: (update: Update) => Effect.Effect<DispatchOutcome, never>;
 }
+const outcomeCode = (outcome: DispatchOutcome): string | undefined => {
+	const code =
+		outcome._tag === 'RetryableFailure' ||
+		outcome._tag === 'HandledWithOutputFailure'
+			? outcome.error
+			: outcome._tag === 'PermanentInvalid'
+				? outcome.reason
+				: outcome._tag === 'Fatal'
+					? outcome.cause
+					: undefined;
+	return code !== undefined && /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(code)
+		? code
+		: undefined;
+};
 export const make = (options: {
 	readonly botId: string;
 	readonly partitioning: Partitioning;
@@ -60,11 +74,13 @@ export const make = (options: {
 									  outcome._tag === 'HandledWithOutputFailure'
 									? Effect.logWarning
 									: Effect.logInfo;
+						const code = outcomeCode(outcome);
 						return log('tfx.dispatch.completed').pipe(
 							Effect.annotateLogs({
 								botId: options.botId,
 								updateId: update.update_id,
 								outcome: outcome._tag,
+								...(code === undefined ? {} : { outcomeCode: code }),
 							}),
 						);
 					}),

@@ -1,4 +1,5 @@
 import { BotBuilder, BotRouter, DispatchOutcome } from 'tfx';
+import { isRetryableError, type TaggedError } from 'tfx/TaggedError';
 
 import * as AccountHandlers from './bot/AccountHandlers.js';
 import * as AddPetConversation from './bot/AddPetConversation.js';
@@ -43,6 +44,53 @@ export const conversations = Object.freeze([
 	ConfigureReminderDelayConversation.built,
 	AddFoodConversation.built,
 ]);
+const isTaggedError = (value: unknown): value is TaggedError =>
+	typeof value === 'object' &&
+	value !== null &&
+	'_tag' in value &&
+	typeof value._tag === 'string';
+const taggedCause = (error: TaggedError): TaggedError | undefined =>
+	'cause' in error && isTaggedError(error.cause) ? error.cause : undefined;
+export const classifyError = (
+	error: TaggedError,
+): DispatchOutcome.DispatchOutcome => {
+	const framework = BotRouter.classifyFrameworkError(error);
+	if (framework !== undefined) return framework;
+	if (error._tag === 'ConversationOperationError') {
+		const cause = taggedCause(error);
+		return cause === undefined
+			? DispatchOutcome.fatal('conversation-operation-invalid-cause')
+			: classifyError(cause);
+	}
+	switch (error._tag) {
+		case 'InvalidDomainInput':
+		case 'UserNotRegistered':
+		case 'PetNameAlreadyExists':
+		case 'PetAccessDenied':
+		case 'PetFoodSetupMissing':
+		case 'DuplicateFoodEntry':
+		case 'PetFoodError':
+		case 'MissingConversationScope':
+			return DispatchOutcome.permanentInvalid('invalid-application-update');
+		case 'DomainPersistenceError':
+			return isRetryableError(error)
+				? DispatchOutcome.retryableFailure(
+						'application-persistence-unavailable',
+					)
+				: DispatchOutcome.fatal('application-persistence-invariant');
+		case 'ReminderSchedulerError':
+			return isRetryableError(error)
+				? DispatchOutcome.retryableFailure('reminder-scheduler-unavailable')
+				: DispatchOutcome.fatal('reminder-scheduler-invariant');
+		case 'TelegramError':
+			// All Telegram operations exposed by Carneloot handlers are outputs.
+			return DispatchOutcome.handledWithOutputFailure('telegram-output-failed');
+		default:
+			return isRetryableError(error)
+				? DispatchOutcome.retryableFailure('retryable-application-error')
+				: DispatchOutcome.fatal('unclassified-application-error');
+	}
+};
 export const make = (botUsername: string) =>
 	BotRouter.make({
 		bot: Carneloot,
@@ -50,23 +98,5 @@ export const make = (botUsername: string) =>
 		conversations,
 		botUsername,
 		cancel: () => CancelConversation.cancelCurrent,
-		mapError: (error) => {
-			if (
-				error._tag === 'ConversationOperationError' &&
-				'cause' in error &&
-				typeof error.cause === 'object' &&
-				error.cause !== null &&
-				'_tag' in error.cause &&
-				error.cause._tag === 'HandledWithOutputFailure'
-			)
-				return DispatchOutcome.handledWithOutputFailure(
-					'conversation-output-failed',
-				);
-			if (
-				error._tag === 'UserNotRegistered' ||
-				error._tag === 'InvalidDomainInput'
-			)
-				return DispatchOutcome.permanentInvalid(error._tag);
-			return DispatchOutcome.retryableFailure('application-handler-failed');
-		},
+		mapError: classifyError,
 	});

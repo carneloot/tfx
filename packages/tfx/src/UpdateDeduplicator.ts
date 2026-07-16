@@ -21,6 +21,9 @@ export class UpdateDeduplicatorError extends Error {
 	) {
 		super(message);
 	}
+	get isRetryable(): boolean {
+		return this.reason === 'PersistenceFailure';
+	}
 }
 export type Claim =
 	| { readonly _tag: 'Acquired'; readonly token: ClaimToken }

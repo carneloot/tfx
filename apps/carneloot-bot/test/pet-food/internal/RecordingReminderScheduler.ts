@@ -10,7 +10,14 @@ import {
 } from '../../../src/ports/ReminderScheduler.js';
 const mapSql = <A, E, R>(effect: Effect.Effect<A, E, R>, message: string) =>
 	effect.pipe(
-		Effect.mapError((cause) => new ReminderSchedulerError({ message, cause })),
+		Effect.mapError(
+			(cause) =>
+				new ReminderSchedulerError({
+					reason: 'PersistenceFailure',
+					message,
+					cause,
+				}),
+		),
 	);
 export const layer: Layer.Layer<ReminderScheduler, never, PgClient.PgClient> =
 	Layer.effect(

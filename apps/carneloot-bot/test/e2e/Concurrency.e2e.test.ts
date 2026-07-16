@@ -248,7 +248,7 @@ else
 				) as Effect.Effect<any, unknown, never>,
 			);
 			expect(result._tag).toBe('Failure');
-			expect(offsets).toEqual([undefined, 2, 4]);
+			expect(offsets).toEqual([undefined, 4, 4]);
 			expect(Object.fromEntries(counts)).toEqual({ 1: 1, 2: 2, 3: 1 });
 		});
 

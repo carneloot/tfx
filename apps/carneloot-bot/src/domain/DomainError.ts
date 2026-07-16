@@ -21,7 +21,12 @@ export class PetNameAlreadyExists extends Schema.TaggedErrorClass<PetNameAlready
 export class DomainPersistenceError extends Schema.TaggedErrorClass<DomainPersistenceError>()(
 	'DomainPersistenceError',
 	{
+		reason: Schema.Literals(['PersistenceFailure', 'InvariantViolation']),
 		message: Schema.String,
 		cause: Schema.optionalKey(Schema.Unknown),
 	},
-) {}
+) {
+	get isRetryable(): boolean {
+		return this.reason === 'PersistenceFailure';
+	}
+}

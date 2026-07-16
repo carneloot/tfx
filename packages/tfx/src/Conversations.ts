@@ -209,10 +209,15 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 														`Missing conversation migration ${row.version}→${built.declaration.version}`,
 													),
 												)
-											: yield* built.declaration.migrations.migrate(
-													row.version,
-													row.state,
-												);
+											: yield* built.declaration.migrations
+													.migrate(row.version, row.state)
+													.pipe(
+														Effect.mapError((cause) =>
+															cause instanceof VersionedSchemaError
+																? cause
+																: invariant('Invalid migrated state', cause),
+														),
+													);
 								const state = yield* decodeState(
 									step.state,
 									migrated,

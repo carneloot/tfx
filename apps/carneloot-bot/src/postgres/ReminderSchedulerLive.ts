@@ -36,8 +36,13 @@ const safeCause = (cause: unknown) => {
 			: {}),
 	};
 };
-const schedulerError = (message: string, cause?: unknown) =>
+const schedulerError = (
+	message: string,
+	cause?: unknown,
+	reason: 'PersistenceFailure' | 'InvariantViolation' = 'PersistenceFailure',
+) =>
 	new ReminderSchedulerError({
+		reason,
 		message,
 		...(cause === undefined ? {} : { cause: safeCause(cause) }),
 	});
@@ -132,7 +137,11 @@ export const layer = Layer.effect(
 									);
 									if (restored === undefined)
 										return yield* Effect.fail(
-											schedulerError('Revived reminder event disappeared'),
+											schedulerError(
+												'Revived reminder event disappeared',
+												undefined,
+												'InvariantViolation',
+											),
 										);
 									event = restored;
 								} else {
@@ -187,7 +196,11 @@ export const layer = Layer.effect(
 							);
 							if (!attached)
 								return yield* Effect.fail(
-									schedulerError('Failed to attach feeding reminder job'),
+									schedulerError(
+										'Failed to attach feeding reminder job',
+										undefined,
+										'InvariantViolation',
+									),
 								);
 						}).pipe(
 							Effect.mapError((cause) =>
