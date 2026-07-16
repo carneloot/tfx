@@ -220,7 +220,7 @@ else
 								yield* sql`SELECT id FROM carneloot.pets WHERE name='Rex'`,
 							).toHaveLength(1);
 							expect(
-								yield* sql`SELECT id FROM carneloot.pet_food_settings WHERE day_start='00:00' AND time_zone='America/Sao_Paulo' AND reminder_delay_ms=28800000`,
+								yield* sql`SELECT pet_id FROM carneloot.pet_food_settings WHERE day_start='00:00' AND timezone='America/Sao_Paulo' AND reminder_delay_ms=28800000`,
 							).toHaveLength(1);
 							expect(
 								yield* sql`SELECT id FROM carneloot.pet_food_entries WHERE amount_mg=50000`,
@@ -261,7 +261,7 @@ else
 							]);
 							const sql = f.sql;
 							expect(
-								yield* sql`SELECT id FROM tfx_owned_pet_e2e.case_conversations`,
+								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(0);
 
 							// Invalid selections stay active and emit correction prompts.
@@ -279,7 +279,7 @@ else
 								[116, '/colocar_racao'],
 								[117, 'Rex'],
 								[118, 'quantidade ruim'],
-								[119, '10g'],
+								[119, '10g 00:00'],
 							] as const)
 								yield* f.dispatch(messageUpdate(id, text, sender));
 							expect(
@@ -313,16 +313,19 @@ else
 							).toHaveLength(1);
 							// Duplicate update/source is acknowledged from durable dedup state.
 							yield* f.dispatch(messageUpdate(127, '50g', sender));
-							expect(
-								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
-							).toHaveLength(2);
+							const entries = yield* sql<{
+								amount_mg: string;
+							}>`SELECT amount_mg::text amount_mg FROM carneloot.pet_food_entries ORDER BY amount_mg`;
+							expect(entries.map(({ amount_mg }) => Number(amount_mg))).toEqual(
+								[10_000, 50_000],
+							);
 							// Conversation state commits before configured Telegram output failure.
 							f.failNext();
 							expect(
 								yield* f.dispatch(messageUpdate(128, '/adicionar_pet', sender)),
 							).toMatchObject({ _tag: 'HandledWithOutputFailure' });
 							expect(
-								yield* sql`SELECT id FROM tfx_owned_pet_e2e.case_conversations`,
+								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(1);
 							yield* f.dispatch(messageUpdate(129, '/cancelar', sender));
 							// Force scheduler persistence failure and prove food transaction rollback.
@@ -345,7 +348,7 @@ else
 							);
 							yield* sql.unsafe('DROP FUNCTION carneloot.fail_e2e_event()');
 							// Retry same active step with a backdated entry; current reminder stays on 50g.
-							yield* f.dispatch(messageUpdate(133, '5g 00:00', sender));
+							yield* f.dispatch(messageUpdate(133, '5g 01:00', sender));
 							expect(
 								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
 							).toHaveLength(3);

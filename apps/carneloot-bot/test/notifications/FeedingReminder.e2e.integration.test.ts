@@ -160,12 +160,28 @@ const scheduleFixture = Effect.gen(function* () {
 	}>`SELECT id,job_id FROM carneloot.notification_events WHERE pet_id=${pet.id}::uuid AND status='scheduled'`;
 	return { user, pet, entry, event: event! };
 });
-const runFresh = Effect.provide(
-	Effect.flatMap(JobRuntime, (jobs) =>
-		jobs.runOne({ leaseDuration: Duration.millis(100) }),
-	),
-	Layer.fresh(runtime),
+const runOne = Effect.flatMap(JobRuntime, (jobs) =>
+	jobs.runOne({ leaseDuration: Duration.millis(100) }),
 );
+const runFresh = Effect.gen(function* () {
+	const sql = yield* PgClient.PgClient;
+	const sharedPg = Layer.succeed(PgClient.PgClient, sql);
+	const freshStores = Layer.provideMerge(
+		Layer.merge(
+			RepositoriesLive.layer,
+			TfxPostgres.layer({
+				schema: 'tfx_feeding_e2e',
+				tablePrefix: 'case_',
+			}),
+		),
+		sharedPg,
+	);
+	const freshRuntime = Layer.provideMerge(
+		JobRuntimeLive.layer(FeedingReminderJobLive.implementation),
+		Layer.merge(freshStores, telegram),
+	);
+	return yield* Effect.provide(runOne, Layer.fresh(freshRuntime));
+});
 
 if (!enabled)
 	describe.skip('feeding reminder e2e PostgreSQL', () => {
@@ -299,10 +315,10 @@ else
 					status: string;
 				}>`SELECT status FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
 				expect(sending?.status).toBe('sending');
-				yield* TestClock.setTime(3_101);
+				yield* TestClock.setTime(33_001);
 				yield* (yield* NotificationRepository).recoverExpired(
 					Schema.decodeUnknownSync(EventId)(fixture.event.id),
-					DateTime.makeUnsafe(3_101),
+					DateTime.makeUnsafe(33_001),
 				);
 				const [unknown] = yield* sql<{
 					status: string;

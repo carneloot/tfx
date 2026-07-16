@@ -44,10 +44,18 @@ const decode = (value: unknown) =>
 		catch: (cause) =>
 			new DomainPersistenceError({ message: 'Malformed pet row', cause }),
 	});
-const constraint = (cause: unknown) =>
-	typeof cause === 'object' && cause !== null && 'constraint' in cause
-		? cause.constraint
-		: undefined;
+const constraint = (cause: unknown): unknown => {
+	if (typeof cause !== 'object' || cause === null) return undefined;
+	if ('constraint' in cause) return cause.constraint;
+	if (
+		'reason' in cause &&
+		typeof cause.reason === 'object' &&
+		cause.reason !== null &&
+		'constraint' in cause.reason
+	)
+		return cause.reason.constraint;
+	return undefined;
+};
 const persistence = (cause: unknown) =>
 	cause instanceof DomainPersistenceError || cause instanceof UserNotRegistered
 		? cause

@@ -1,7 +1,16 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import * as TfxPostgres from '@tfx/postgres/TfxPostgres';
-import { Deferred, Effect, Fiber, Layer, Redacted, Ref, Schema } from 'effect';
+import {
+	Deferred,
+	Duration,
+	Effect,
+	Fiber,
+	Layer,
+	Redacted,
+	Ref,
+	Schema,
+} from 'effect';
 import {
 	Bot,
 	BotBuilder,
@@ -86,10 +95,10 @@ const runtimeLayer = (router: BotRouter.Router, pg = postgres) =>
 			router,
 			concurrency: 4,
 			capacity: 8,
-			leaseDuration: 300,
-			heartbeatInterval: 100,
-			waitTimeout: 300,
-			retention: 10_000,
+			leaseDuration: Duration.millis(300),
+			heartbeatInterval: Duration.millis(100),
+			waitTimeout: Duration.millis(300),
+			retention: Duration.millis(10_000),
 		}),
 		Layer.provide(
 			TfxPostgres.layer({
@@ -119,17 +128,6 @@ if (!enabled)
 else
 	describe.sequential('concurrency E2E', () => {
 		it('deduplicates one update across independently scoped replica runtimes', async () => {
-			await Effect.runPromise(
-				Effect.provide(
-					Effect.gen(function* () {
-						const sql = yield* PgClient.PgClient;
-						yield* sql.unsafe(
-							'DROP SCHEMA IF EXISTS tfx_concurrency_e2e CASCADE',
-						);
-					}),
-					postgres,
-				),
-			);
 			const count = Ref.makeUnsafe(0);
 			const entered = Deferred.makeUnsafe<void>();
 			const release = Deferred.makeUnsafe<void>();
@@ -144,28 +142,33 @@ else
 					),
 				),
 			);
-			const first = Effect.runFork(
-				runInScope(runtimeLayer(router), update(1, 10)) as Effect.Effect<
-					DispatchOutcome.DispatchOutcome,
-					unknown,
-					never
-				>,
+			const outcomes = await Effect.runPromise(
+				Effect.provide(
+					Effect.gen(function* () {
+						const sql = yield* PgClient.PgClient;
+						yield* sql.unsafe(
+							'DROP SCHEMA IF EXISTS tfx_concurrency_e2e CASCADE',
+						);
+						const pg = Layer.succeed(PgClient.PgClient, sql);
+						const first = yield* Effect.forkChild(
+							runInScope(runtimeLayer(router, pg), update(1, 10)),
+						);
+						yield* Deferred.await(entered);
+						const second = yield* Effect.forkChild(
+							runInScope(runtimeLayer(router, pg), update(1, 10)),
+						);
+						yield* Deferred.succeed(release, undefined);
+						return yield* Effect.all([Fiber.join(first), Fiber.join(second)], {
+							concurrency: 'unbounded',
+						});
+					}),
+					postgres,
+				),
 			);
-			await Effect.runPromise(Deferred.await(entered));
-			const second = Effect.runFork(
-				runInScope(runtimeLayer(router), update(1, 10)) as Effect.Effect<
-					DispatchOutcome.DispatchOutcome,
-					unknown,
-					never
-				>,
-			);
-			await Effect.runPromise(Deferred.succeed(release, undefined));
-			expect(await Effect.runPromise(Fiber.join(first))).toEqual(
+			expect(outcomes).toEqual([
 				DispatchOutcome.handled,
-			);
-			expect(await Effect.runPromise(Fiber.join(second))).toEqual(
 				DispatchOutcome.handled,
-			);
+			]);
 			expect(Ref.getUnsafe(count)).toBe(1);
 		});
 
@@ -224,7 +227,7 @@ else
 			);
 			const runtime = Layer.provide(
 				BotRuntimeLive.layer(declaration, {
-					delivery: Polling.make({ timeout: 1 }),
+					delivery: Polling.make({ timeout: Duration.seconds(1) }),
 					router,
 					concurrency: 4,
 					capacity: 8,

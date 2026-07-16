@@ -1,6 +1,7 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { Deferred, Effect, Fiber, Layer, Schema } from 'effect';
 import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
@@ -82,7 +83,7 @@ else
 				yield* TestClock.setTime(new Date('2024-01-02T12:00:00Z').getTime());
 				const { sql, access, pet } = yield* setup;
 				yield* ConfigureDayStart.execute(access, '00:00', 'UTC');
-				yield* ConfigureReminderDelay.set(access, 60_000);
+				yield* ConfigureReminderDelay.set(access, Duration.millis(60_000));
 				const first = yield* AddFood.execute(
 					access,
 					'50g',
@@ -183,10 +184,10 @@ else
 				yield* TestClock.setTime(new Date('2024-01-02T12:00:00Z').getTime());
 				const { sql, access, pet } = yield* setup;
 				yield* ConfigureDayStart.execute(access, '23:00', 'UTC');
-				yield* ConfigureReminderDelay.set(access, 60_000);
+				yield* ConfigureReminderDelay.set(access, Duration.millis(60_000));
 				yield* sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${pet.id}::uuid,${access.ownerId}::uuid,1000,${new Date('2024-01-02T09:00:00Z')},${access.botId},9,${new Date('2024-01-02T09:00:00Z')},${new Date('2024-01-02T09:00:00Z')})`;
 				const setDelay = yield* Effect.result(
-					ConfigureReminderDelay.set(access, 120_000),
+					ConfigureReminderDelay.set(access, Duration.millis(120_000)),
 				);
 				expect(setDelay).toMatchObject({
 					_tag: 'Failure',
@@ -274,8 +275,11 @@ else
 				expect(status[0]).toMatchObject({
 					_tag: 'Configured',
 					totalMg: 5_000,
-					latestFedAt: windowEnd - 1,
-					window: { start: windowStart, end: windowEnd },
+					latestFedAt: DateTime.makeUnsafe(windowEnd - 1),
+					window: {
+						start: DateTime.makeUnsafe(windowStart),
+						end: DateTime.makeUnsafe(windowEnd),
+					},
 				});
 			});
 			await Effect.runPromise(
@@ -305,7 +309,7 @@ else
 				expect(
 					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
 				).toHaveLength(0);
-				yield* ConfigureReminderDelay.set(access, 120_000);
+				yield* ConfigureReminderDelay.set(access, Duration.millis(120_000));
 				const sourceGate = yield* Deferred.make<void>();
 				const sourceFiber = yield* Effect.forkChild(
 					Effect.all(

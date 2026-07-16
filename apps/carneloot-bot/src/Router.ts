@@ -52,6 +52,17 @@ export const make = (botUsername: string) =>
 		cancel: () => CancelConversation.cancelCurrent,
 		mapError: (error) => {
 			if (
+				error._tag === 'ConversationOperationError' &&
+				'cause' in error &&
+				typeof error.cause === 'object' &&
+				error.cause !== null &&
+				'_tag' in error.cause &&
+				error.cause._tag === 'HandledWithOutputFailure'
+			)
+				return DispatchOutcome.handledWithOutputFailure(
+					'conversation-output-failed',
+				);
+			if (
 				error._tag === 'UserNotRegistered' ||
 				error._tag === 'InvalidDomainInput'
 			)

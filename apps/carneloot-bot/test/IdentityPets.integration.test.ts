@@ -1,5 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { Effect, Layer, Redacted, Schema } from 'effect';
+import * as DateTime from 'effect/DateTime';
 import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
@@ -103,11 +104,11 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 			Effect.provide(program, Layer.merge(adapters, TestClock.layer())),
 		);
 		expect(result.refreshed.user.id).toBe(result.first.user.id);
-		expect(result.first.user.createdAt).toBe(1_000);
-		expect(result.first.user.updatedAt).toBe(1_000);
-		expect(result.createdPet.createdAt).toBe(1_000);
-		expect(result.createdPet.updatedAt).toBe(1_000);
-		expect(result.refreshed.user.updatedAt).toBe(2_000);
+		expect(DateTime.toEpochMillis(result.first.user.createdAt)).toBe(1_000);
+		expect(DateTime.toEpochMillis(result.first.user.updatedAt)).toBe(1_000);
+		expect(DateTime.toEpochMillis(result.createdPet.createdAt)).toBe(1_000);
+		expect(DateTime.toEpochMillis(result.createdPet.updatedAt)).toBe(1_000);
+		expect(DateTime.toEpochMillis(result.refreshed.user.updatedAt)).toBe(2_000);
 		expect(result.refreshed.profile).toMatchObject({
 			username: null,
 			firstName: 'Ana Maria',

@@ -71,6 +71,7 @@ const persistence = (cause: unknown) =>
 			);
 const protect = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 	effect.pipe(Effect.mapError(persistence));
+const encodeJson = (value: unknown) => JSON.stringify(value) ?? 'null';
 const decodeRow = (raw: unknown): Effect.Effect<JobRecord, JobStoreError> =>
 	Effect.gen(function* () {
 		const row = yield* decode(RowSchema, raw, (cause) =>
@@ -205,7 +206,7 @@ export const layer = (
 								const id = crypto.randomUUID();
 								const rows = yield* sql<
 									Record<string, unknown>
-								>`INSERT INTO ${schema}.${jobs} (id,declaration,payload_version,payload_json,status,conflict_key,attempts,max_attempts,run_at,lease_generation,cancellation_requested,created_at,updated_at) VALUES (${id}::uuid,${request.name},${request.payloadVersion},${sql.json(request.payload)},'scheduled',${request.conflictKey ?? null},0,${request.maxAttempts},${DateTime.toDateUtc(request.runAt)},0,false,${DateTime.toDateUtc(request.now)},${DateTime.toDateUtc(request.now)}) RETURNING *`;
+								>`INSERT INTO ${schema}.${jobs} (id,declaration,payload_version,payload_json,status,conflict_key,attempts,max_attempts,run_at,lease_generation,cancellation_requested,created_at,updated_at) VALUES (${id}::uuid,${request.name},${request.payloadVersion},${encodeJson(request.payload)}::jsonb,'scheduled',${request.conflictKey ?? null},0,${request.maxAttempts},${DateTime.toDateUtc(request.runAt)},0,false,${DateTime.toDateUtc(request.now)},${DateTime.toDateUtc(request.now)}) RETURNING *`;
 								return {
 									record: yield* decodeOne(rows),
 									...(replacedId === undefined ? {} : { replacedId }),
@@ -235,7 +236,7 @@ export const layer = (
 										const expired = yield* decodeRow(expiredRows[0]);
 										yield* sql`UPDATE ${schema}.${attempts} SET finished_at=${DateTime.toDateUtc(now)}, outcome='LeaseLost' WHERE job_id=${expired.id}::uuid AND attempt=${expired.attempts} AND finished_at IS NULL`;
 										if (expired.attempts >= expired.maxAttempts) {
-											yield* sql`UPDATE ${schema}.${jobs} SET status='failed',lease_phase=NULL,lease_expires_at=NULL,outcome_json=${sql.json({ _tag: 'LeaseLost' })},last_error_json=${sql.json('AttemptsExhausted')},failed_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${expired.id}::uuid`;
+											yield* sql`UPDATE ${schema}.${jobs} SET status='failed',lease_phase=NULL,lease_expires_at=NULL,outcome_json=${sql.json({ _tag: 'LeaseLost' })},last_error_json=${encodeJson('AttemptsExhausted')}::jsonb,failed_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${expired.id}::uuid`;
 											continue;
 										}
 										const rows = yield* sql<
@@ -281,7 +282,7 @@ export const layer = (
 									const next = current.attempts + 1;
 									const rows = yield* sql<
 										Record<string, unknown>
-									>`UPDATE ${schema}.${jobs} SET payload_json=${sql.json(payload)},payload_version=${version},status='running',attempts=${next},lease_phase='execution',lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, duration))},outcome_json=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE id=${claim.id}::uuid RETURNING *`;
+									>`UPDATE ${schema}.${jobs} SET payload_json=${encodeJson(payload)}::jsonb,payload_version=${version},status='running',attempts=${next},lease_phase='execution',lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, duration))},outcome_json=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE id=${claim.id}::uuid RETURNING *`;
 									yield* sql`INSERT INTO ${schema}.${attempts} (job_id,attempt,lease_generation,started_at) VALUES (${claim.id}::uuid,${next},${claim.generation},${DateTime.toDateUtc(now)})`;
 									return yield* decodeOne(rows);
 								}),
@@ -309,7 +310,7 @@ export const layer = (
 										);
 									const rows = yield* sql<
 										Record<string, unknown>
-									>`UPDATE ${schema}.${jobs} SET status='quarantined',lease_phase=NULL,lease_expires_at=NULL,outcome_json=NULL,last_error_json=${sql.json(reason)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${claim.id}::uuid RETURNING *`;
+									>`UPDATE ${schema}.${jobs} SET status='quarantined',lease_phase=NULL,lease_expires_at=NULL,outcome_json=NULL,last_error_json=${encodeJson(reason)}::jsonb,updated_at=${DateTime.toDateUtc(now)} WHERE id=${claim.id}::uuid RETURNING *`;
 									return yield* decodeOne(rows);
 								}),
 							),
@@ -403,7 +404,7 @@ export const layer = (
 									);
 								const rows = yield* sql<
 									Record<string, unknown>
-								>`UPDATE ${schema}.${jobs} SET status='scheduled',attempts=${release.resetAttempts ? 0 : current.attempts},run_at=${DateTime.toDateUtc(now)},last_error_json=${sql.json(release.reason)},outcome_json=NULL,failed_at=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE id=${id}::uuid RETURNING *`;
+								>`UPDATE ${schema}.${jobs} SET status='scheduled',attempts=${release.resetAttempts ? 0 : current.attempts},run_at=${DateTime.toDateUtc(now)},last_error_json=${encodeJson(release.reason)}::jsonb,outcome_json=NULL,failed_at=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE id=${id}::uuid RETURNING *`;
 								return yield* decodeOne(rows);
 							}),
 						),

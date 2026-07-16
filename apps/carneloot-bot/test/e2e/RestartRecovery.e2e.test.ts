@@ -8,7 +8,7 @@ import { BotRuntime } from 'tfx/BotRuntime';
 import { JobStore } from 'tfx/JobStore';
 import { Telegram } from 'tfx/Telegram';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import * as AppLive from '../../src/AppLive.js';
 import { AppConfig, type AppConfigService } from '../../src/Config.js';
@@ -18,24 +18,29 @@ const enabled =
 	process.env.RUN_TESTCONTAINERS === 'true';
 if (process.env.CI === 'true' && !enabled)
 	throw new Error('CI must run restart E2E with PostgreSQL');
-const postgres: Layer.Layer<PgClient.PgClient, unknown, never> =
-	process.env.TEST_DATABASE_URL === undefined
-		? Layer.unwrap(
-				Effect.map(
-					Effect.acquireRelease(
-						Effect.promise(() =>
-							new PostgreSqlContainer('postgres:17-alpine').start(),
-						),
-						(container) =>
-							Effect.promise(() => container.stop()).pipe(Effect.asVoid),
-					),
-					(container) =>
-						PgClient.layer({
-							url: Redacted.make(container.getConnectionUri()),
-						}),
-				),
-			)
-		: PgClient.layer({ url: Redacted.make(process.env.TEST_DATABASE_URL) });
+let containerUrl: string | undefined;
+let stopContainer: (() => Promise<void>) | undefined;
+beforeEach(async () => {
+	if (process.env.TEST_DATABASE_URL !== undefined) return;
+	const container = await new PostgreSqlContainer('postgres:17-alpine').start();
+	containerUrl = container.getConnectionUri();
+	stopContainer = async () => {
+		await container.stop();
+	};
+});
+afterEach(async () => {
+	await stopContainer?.();
+	containerUrl = undefined;
+	stopContainer = undefined;
+});
+const postgres = Layer.unwrap(
+	Effect.sync(() => {
+		const url = process.env.TEST_DATABASE_URL ?? containerUrl;
+		if (url === undefined)
+			throw new Error('PostgreSQL test database unavailable');
+		return PgClient.layer({ url: Redacted.make(url) });
+	}),
+);
 const config: AppConfigService = {
 	botToken: Redacted.make('test'),
 	databaseUrl: Redacted.make('postgres://test'),
@@ -144,7 +149,7 @@ else
 						yield* dispatch(context, update(3, 'Rex'));
 						const sql = yield* Effect.provide(PgClient.PgClient, context);
 						expect(
-							yield* sql`SELECT id FROM tfx_restart_e2e.case_conversations`,
+							yield* sql`SELECT bot_id FROM tfx_restart_e2e.case_conversations`,
 						).toHaveLength(0);
 						expect(
 							yield* sql`SELECT id FROM carneloot.pets WHERE name='Rex'`,
@@ -201,12 +206,28 @@ else
 						);
 						yield* Deferred.await(reminder);
 						const sql = yield* Effect.provide(PgClient.PgClient, context);
-						expect(
-							yield* sql`SELECT id FROM carneloot.notification_events WHERE id=${ids.event}::uuid AND status='completed'`,
-						).toHaveLength(1);
-						expect(
-							yield* sql`SELECT id FROM carneloot.notification_deliveries WHERE event_id=${ids.event}::uuid AND status='sent'`,
-						).toHaveLength(1);
+						const awaitCompleted = (
+							remaining: number,
+						): Effect.Effect<void, Error> =>
+							Effect.flatMap(
+								sql<{
+									ready: boolean;
+								}>`SELECT EXISTS(SELECT 1 FROM carneloot.notification_events WHERE id=${ids.event}::uuid AND status='completed') AND EXISTS(SELECT 1 FROM carneloot.notification_deliveries WHERE event_id=${ids.event}::uuid AND status='sent') AS ready`,
+								(rows) =>
+									rows[0]?.ready === true
+										? Effect.void
+										: remaining === 0
+											? Effect.fail(
+													new RestartRecoveryTimeoutError({
+														message: 'Timed out awaiting reminder completion',
+													}),
+												)
+											: Effect.andThen(
+													Effect.sleep(Duration.millis(10)),
+													awaitCompleted(remaining - 1),
+												),
+							);
+						yield* awaitCompleted(100);
 					}),
 				),
 			);
@@ -256,7 +277,7 @@ else
 													}),
 												)
 											: Effect.andThen(
-													Effect.sleep(10),
+													Effect.sleep(Duration.millis(10)),
 													awaitTerminal(remaining - 1),
 												),
 							);
