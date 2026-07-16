@@ -12,6 +12,7 @@ import {
 	type UpdateDeduplicatorService,
 } from 'tfx/UpdateDeduplicator';
 
+import * as Observer from './internal/DeduplicationObserver.js';
 import { migrate } from './internal/Migrator.js';
 import {
 	CompletedOutcome,
@@ -178,44 +179,37 @@ export const layer = (
 												token: { updateId, generation },
 											};
 										}
-										const started = now;
-										const observe: Effect.Effect<
-											ObservedCompletion,
+										const check: Effect.Effect<
+											ObservedCompletion | Observer.Pending,
 											UpdateDeduplicatorError
-										> = Effect.suspend(() =>
-											Effect.flatMap(DateTime.now, (time) => {
-												if (
-													Duration.isGreaterThanOrEqualTo(
-														DateTime.distance(started, time),
-														wait,
-													)
-												)
-													return Effect.succeed({ _tag: 'TimedOut' });
-												return Effect.flatMap(
-													protect(read(updateId)),
-													(row) => {
-														if (row === undefined || row.status === 'released')
-															return Effect.succeed({ _tag: 'Released' });
-														if (row.status === 'completed') {
-															if (row.outcome === undefined)
-																return Effect.fail(
-																	invariant('Completed update has no outcome'),
-																);
-															return Effect.succeed({
-																_tag: 'Completed',
-																outcome: row.outcome,
-															});
-														}
-														return Effect.andThen(
-															Effect.sleep(
-																Duration.min(Duration.millis(50), wait),
-															),
-															observe,
+										> = Effect.flatMap(
+											protect(read(updateId)),
+											(
+												row,
+											): Effect.Effect<
+												ObservedCompletion | Observer.Pending,
+												UpdateDeduplicatorError
+											> => {
+												if (row === undefined || row.status === 'released')
+													return Effect.succeed({ _tag: 'Released' as const });
+												if (row.status === 'completed') {
+													if (row.outcome === undefined)
+														return Effect.fail(
+															invariant('Completed update has no outcome'),
 														);
-													},
-												);
-											}),
+													return Effect.succeed({
+														_tag: 'Completed' as const,
+														outcome: row.outcome,
+													});
+												}
+												return Effect.succeed(Observer.pending);
+											},
 										);
+										const observe = Observer.observe({
+											startedAt: now,
+											waitTimeout: wait,
+											check,
+										});
 										return { _tag: 'InProgress' as const, await: observe };
 									}),
 								);
