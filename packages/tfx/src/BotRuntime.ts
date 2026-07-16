@@ -110,11 +110,11 @@ export const layer = <
 				retention,
 				heartbeatInterval,
 			});
-			yield* Effect.logInfo('tfx.bot.source_started').pipe(
-				Effect.annotateLogs({ botId: bot.name, concurrency, capacity }),
-			);
 			const sourceFiber = yield* Effect.forkScoped(
 				source.run(dispatcher.dispatch),
+			);
+			yield* Effect.logInfo('tfx.bot.source_forked').pipe(
+				Effect.annotateLogs({ botId: bot.name, concurrency, capacity }),
 			);
 			return {
 				dispatch: dispatcher.dispatch,

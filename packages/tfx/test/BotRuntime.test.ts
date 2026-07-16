@@ -93,7 +93,7 @@ describe('BotRuntime', () => {
 			),
 		);
 		expect(logs).toContainEqual({
-			message: 'tfx.bot.source_started',
+			message: 'tfx.bot.source_forked',
 			level: 'Info',
 			annotations: { botId: 'bot', concurrency: 1, capacity: 4 },
 		});
