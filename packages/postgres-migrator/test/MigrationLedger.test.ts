@@ -36,6 +36,10 @@ describe('migration manifest validation', () => {
 		[migration(2, 'one', checksum('a'))],
 		[known[0], migration(3, 'three', checksum('c'))],
 		[migration(1, '', checksum('a'))],
+		[migration(1, '   ', checksum('a'))],
+		[migration(1, 'one', checksum('A'))],
+		[migration(1, 'one', 'a'.repeat(63))],
+		[migration(1, 'one', 'a'.repeat(65))],
 		[migration(1, 'one', 'not-a-sha256')],
 	] as const)('rejects malformed source manifests', async (...manifest) => {
 		expect(await result(validateManifest(manifest))).toMatchObject({
