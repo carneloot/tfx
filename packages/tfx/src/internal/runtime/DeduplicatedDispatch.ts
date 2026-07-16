@@ -1,5 +1,6 @@
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
+import * as Schedule from 'effect/Schedule';
 
 import * as DispatchOutcome from '../../DispatchOutcome.js';
 import type {
@@ -56,14 +57,15 @@ export const dispatch = (
 								: 'Concurrent dispatch still in progress',
 						);
 			}
+			const heartbeat = Effect.flatMap(
+				dedup.heartbeat(claim.token, leaseDuration),
+				(alive) => (alive ? Effect.void : Effect.fail(new ClaimLost())),
+			);
 			const monitor: Effect.Effect<never, ClaimLost | UpdateDeduplicatorError> =
-				Effect.suspend(() =>
-					Effect.flatMap(Effect.sleep(heartbeatInterval), () =>
-						Effect.flatMap(
-							dedup.heartbeat(claim.token, leaseDuration),
-							(alive) => (alive ? monitor : Effect.fail(new ClaimLost())),
-						),
-					),
+				heartbeat.pipe(
+					Effect.repeat(Schedule.spaced(heartbeatInterval)),
+					Effect.delay(heartbeatInterval),
+					Effect.andThen(Effect.never),
 				);
 			return yield* Effect.gen(function* () {
 				const outcome = yield* restore(

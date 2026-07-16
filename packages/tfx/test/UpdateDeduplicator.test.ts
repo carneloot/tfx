@@ -1,4 +1,4 @@
-import { Deferred, Duration, Effect, Fiber } from 'effect';
+import { Deferred, Duration, Effect, Fiber, Ref } from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
@@ -116,6 +116,51 @@ describe('UpdateDeduplicator', () => {
 				),
 			),
 		).resolves.toMatchObject({ _tag: 'RetryableFailure' });
+	});
+
+	it('delays the first dispatch heartbeat and repeats while behavior runs', async () => {
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const claimed = yield* Deferred.make<void>();
+				const heartbeatCount = yield* Ref.make(0);
+				const service: UpdateDeduplicatorModule.UpdateDeduplicatorService = {
+					diagnostics: { mode: 'memory', backend: 'test' },
+					claim: () =>
+						Deferred.succeed(claimed, undefined).pipe(
+							Effect.as({
+								_tag: 'Acquired' as const,
+								token: { updateId: 1, generation: 1 },
+							}),
+						),
+					heartbeat: () =>
+						Ref.update(heartbeatCount, (count) => count + 1).pipe(
+							Effect.as(true),
+						),
+					complete: () => Effect.succeed(true),
+					release: () => Effect.succeed(true),
+				};
+				const fiber = yield* Effect.forkChild(
+					DeduplicatedDispatch.dispatch(
+						service,
+						{ update_id: 1 } as Update,
+						Effect.never,
+						{
+							leaseDuration: Duration.millis(40),
+							heartbeatInterval: Duration.millis(10),
+						},
+					),
+				);
+				yield* Deferred.await(claimed);
+				expect(yield* Ref.get(heartbeatCount)).toBe(0);
+				yield* TestClock.adjust('9 millis');
+				expect(yield* Ref.get(heartbeatCount)).toBe(0);
+				yield* TestClock.adjust('1 millis');
+				expect(yield* Ref.get(heartbeatCount)).toBe(1);
+				yield* TestClock.adjust('10 millis');
+				expect(yield* Ref.get(heartbeatCount)).toBe(2);
+				yield* Fiber.interrupt(fiber);
+			}).pipe(Effect.provide(TestClock.layer())),
+		);
 	});
 
 	it('returns retryable when the completion fence is lost', async () => {
