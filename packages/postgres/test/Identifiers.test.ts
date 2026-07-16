@@ -14,6 +14,7 @@ describe('PostgreSQL identifiers', () => {
 		expect(make({ tablePrefix: 'case_' })).toMatchObject({
 			migrations: 'case_migrations',
 			dedupOutcomeConstraint: 'case_dedup_outcome_chk',
+			jobStateConstraint: 'case_jobs_state_chk',
 		});
 	});
 

@@ -196,5 +196,33 @@ else {
 			const claims = await Effect.runPromise(Effect.provide(program, layer()));
 			expect(new Set(claims.map((claim) => claim?.record.id)).size).toBe(2);
 		});
+
+		it('enforces persisted status, lease, and outcome combinations', async () => {
+			const program = Effect.gen(function* () {
+				const sql = yield* PgClient.PgClient;
+				const store = yield* JobStore;
+				const scheduled = yield* store.schedule({
+					name: `state-${crypto.randomUUID()}`,
+					payload: {},
+					payloadVersion: 1,
+					maxAttempts: 2,
+					runAt: DateTime.makeUnsafe(0),
+					now: DateTime.makeUnsafe(0),
+				});
+				const id = scheduled.record.id;
+				const invalid = [
+					sql`UPDATE tfx_job_test.case_jobs SET status='running',lease_phase=NULL,lease_expires_at=NULL,outcome_json=NULL WHERE id=${id}::uuid`,
+					sql`UPDATE tfx_job_test.case_jobs SET status='completed',lease_phase='execution',lease_expires_at=now() + interval '1 minute',outcome_json='{"_tag":"Succeeded"}'::jsonb WHERE id=${id}::uuid`,
+					sql`UPDATE tfx_job_test.case_jobs SET status='completed',lease_phase=NULL,lease_expires_at=NULL,outcome_json=NULL WHERE id=${id}::uuid`,
+				];
+				const results = yield* Effect.forEach(invalid, Effect.result);
+				yield* sql`DELETE FROM tfx_job_test.case_jobs WHERE id=${id}::uuid`;
+				return results;
+			});
+			const results = await Effect.runPromise(
+				Effect.provide(program, diagnosticLayer),
+			);
+			expect(results.every((result) => result._tag === 'Failure')).toBe(true);
+		});
 	});
 }

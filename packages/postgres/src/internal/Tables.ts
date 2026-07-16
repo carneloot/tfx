@@ -9,6 +9,7 @@ export interface Tables {
 	readonly deduplication: Identifier;
 	readonly activeConflictIndex: Identifier;
 	readonly dedupOutcomeConstraint: Identifier;
+	readonly jobStateConstraint: Identifier;
 }
 export const make = (options: Options = {}): Tables => {
 	const schema = identifier(options.schema ?? defaults.schema, 'schema');
@@ -25,5 +26,6 @@ export const make = (options: Options = {}): Tables => {
 		deduplication: composed(prefix, 'update_deduplication'),
 		activeConflictIndex: composed(prefix, 'jobs_active_conflict_idx'),
 		dedupOutcomeConstraint: composed(prefix, 'dedup_outcome_chk'),
+		jobStateConstraint: composed(prefix, 'jobs_state_chk'),
 	});
 };

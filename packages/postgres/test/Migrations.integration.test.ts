@@ -65,6 +65,11 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 				name: 'dedup-outcome-invariant',
 				checksum: sourceChecksum('Migration0002.ts'),
 			},
+			{
+				version: 3,
+				name: 'job-state-invariant',
+				checksum: sourceChecksum('Migration0003.ts'),
+			},
 		]);
 		expect(
 			rows.ledger.every((row) => /^[0-9a-f]{64}$/u.test(row.checksum)),
@@ -91,6 +96,34 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 			_tag: 'Failure',
 			failure: { _tag: 'MigrationChecksumMismatchError', version: 1 },
 		});
-		expect(result.count).toBe('2');
+		expect(result.count).toBe('3');
+	});
+
+	it('fails atomically on an unnormalizable legacy job row', async () => {
+		const options = { schema: 'tfx_corrupt_test', tablePrefix: 'case_' };
+		const program = Effect.gen(function* () {
+			yield* migrate(options);
+			const sql = yield* PgClient.PgClient;
+			yield* sql`ALTER TABLE tfx_corrupt_test.case_jobs DROP CONSTRAINT case_jobs_state_chk`;
+			yield* sql`DELETE FROM tfx_corrupt_test.case_migrations WHERE version=3`;
+			const id = crypto.randomUUID();
+			yield* sql`INSERT INTO tfx_corrupt_test.case_jobs (id,declaration,payload_version,payload_json,status,attempts,max_attempts,run_at,lease_generation,cancellation_requested,outcome_json,created_at,updated_at) VALUES (${id}::uuid,'corrupt',1,'{}'::jsonb,'completed',0,1,now(),0,false,NULL,now(),now())`;
+			const result = yield* Effect.result(migrate(options));
+			const failedLedger = yield* sql<{ count: string }>`SELECT count(*)::text AS count FROM tfx_corrupt_test.case_migrations`;
+			yield* sql`DELETE FROM tfx_corrupt_test.case_jobs WHERE id=${id}::uuid`;
+			yield* migrate(options);
+			const repairedLedger = yield* sql<{ count: string }>`SELECT count(*)::text AS count FROM tfx_corrupt_test.case_migrations`;
+			return {
+				result,
+				failedCount: failedLedger[0]?.count,
+				repairedCount: repairedLedger[0]?.count,
+			};
+		});
+		const result = await Effect.runPromise(
+			Effect.provide(program, PostgresTestLayer.layer),
+		);
+		expect(result.result._tag).toBe('Failure');
+		expect(result.failedCount).toBe('2');
+		expect(result.repairedCount).toBe('3');
 	});
 });

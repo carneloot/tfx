@@ -11,6 +11,7 @@ import {
 	type JobStoreService,
 } from 'tfx/JobStore';
 
+import { validJobState } from './internal/JobStateInvariant.js';
 import { migrate } from './internal/Migrator.js';
 import {
 	decode,
@@ -90,9 +91,16 @@ const decodeRow = (raw: unknown): Effect.Effect<JobRecord, JobStoreError> =>
 					);
 		if (row.attempts > row.max_attempts)
 			return yield* Effect.fail(invariant('Invalid job integer fields'));
-		if ((row.lease_phase === null) !== (leaseExpiresAt === undefined))
+		if (
+			!validJobState(
+				row.status,
+				row.lease_phase === null ? undefined : row.lease_phase,
+				leaseExpiresAt !== undefined,
+				outcome?._tag,
+			)
+		)
 			return yield* Effect.fail(
-				invariant('Job lease phase/expiry invariant violated'),
+				invariant('Job status/lease/outcome invariant violated'),
 			);
 		return {
 			id: row.id,
@@ -279,7 +287,7 @@ export const layer = (
 									const next = current.attempts + 1;
 									const rows = yield* sql<
 										Record<string, unknown>
-									>`UPDATE ${schema}.${jobs} SET payload_json=${sql.json(payload)},payload_version=${version},status='running',attempts=${next},lease_phase='execution',lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, duration))},updated_at=${DateTime.toDateUtc(now)} WHERE id=${claim.id}::uuid RETURNING *`;
+									>`UPDATE ${schema}.${jobs} SET payload_json=${sql.json(payload)},payload_version=${version},status='running',attempts=${next},lease_phase='execution',lease_expires_at=${DateTime.toDateUtc(DateTime.addDuration(now, duration))},outcome_json=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE id=${claim.id}::uuid RETURNING *`;
 									yield* sql`INSERT INTO ${schema}.${attempts} (job_id,attempt,lease_generation,started_at) VALUES (${claim.id}::uuid,${next},${claim.generation},${DateTime.toDateUtc(now)})`;
 									return yield* decodeOne(rows);
 								}),
@@ -304,7 +312,7 @@ export const layer = (
 										);
 									const rows = yield* sql<
 										Record<string, unknown>
-									>`UPDATE ${schema}.${jobs} SET status='quarantined',lease_phase=NULL,lease_expires_at=NULL,last_error_json=${sql.json(reason)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${claim.id}::uuid RETURNING *`;
+									>`UPDATE ${schema}.${jobs} SET status='quarantined',lease_phase=NULL,lease_expires_at=NULL,outcome_json=NULL,last_error_json=${sql.json(reason)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${claim.id}::uuid RETURNING *`;
 									return yield* decodeOne(rows);
 								}),
 							),

@@ -176,6 +176,7 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 						attempts: row!.attempts + 1,
 						leasePhase: 'execution',
 						leaseExpiresAt: DateTime.addDuration(now, leaseDuration),
+						outcome: undefined,
 						updatedAt: now,
 					}),
 				);
@@ -193,6 +194,7 @@ const make: Effect.Effect<JobStoreService> = Effect.gen(function* () {
 								status: 'quarantined',
 								leasePhase: undefined,
 								leaseExpiresAt: undefined,
+								outcome: undefined,
 								errorSummary: reason,
 								updatedAt: now,
 							}),

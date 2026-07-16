@@ -5,6 +5,7 @@ import * as Effect from 'effect/Effect';
 import type { Options } from '../Options.js';
 import { up as up0001 } from './Migration0001.js';
 import { up as up0002 } from './Migration0002.js';
+import { up as up0003 } from './Migration0003.js';
 import { migrationChecksums } from './MigrationChecksums.js';
 import { make, type Tables } from './Tables.js';
 
@@ -33,6 +34,12 @@ const migrations: ReadonlyArray<Migration> = Object.freeze([
 		name: 'dedup-outcome-invariant',
 		checksum: migrationChecksums[2],
 		up: up0002,
+	},
+	{
+		version: 3,
+		name: 'job-state-invariant',
+		checksum: migrationChecksums[3],
+		up: up0003,
 	},
 ]);
 
