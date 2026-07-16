@@ -343,6 +343,45 @@ describe('JobRuntime', () => {
 		}
 	});
 
+	it('quarantines thrown and forged invalid custom schedules', async () => {
+		const invalidSchedules: ReadonlyArray<() => Duration.Duration> = [
+			() => {
+				throw new Error('schedule defect');
+			},
+			() => Duration.millis(-1) as Duration.Duration,
+			() => Duration.infinity as Duration.Duration,
+		];
+		for (const [index, schedule] of invalidSchedules.entries()) {
+			const invalid = Job.make(`invalid-schedule-${index}`, {
+				payload: history,
+				error: RetryFailure,
+				maxAttempts: 3,
+				retry: () => Job.retry(),
+				schedule,
+			});
+			const implementation = Job.implement(invalid, () =>
+				Effect.fail(new RetryFailure()),
+			);
+			const program = Effect.gen(function* () {
+				const runtime = yield* JobRuntime;
+				yield* runtime.schedule(invalid, { value: 'bad' });
+				expect(yield* runtime.runOne()).toMatchObject({
+					status: 'quarantined',
+					attempts: 1,
+				});
+			});
+			await Effect.runPromise(
+				Effect.provide(
+					Effect.provide(
+						Effect.provide(program, JobRuntimeLive.layer(implementation)),
+						MemoryJobStore.layer,
+					),
+					TestClock.layer(),
+				),
+			);
+		}
+	});
+
 	it('rejects duplicate declarations before layer acquisition', () => {
 		const implementation = Job.implement(declaration, () => Effect.void);
 		expect(() => JobRuntimeLive.layer(implementation, implementation)).toThrow(
