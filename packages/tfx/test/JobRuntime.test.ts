@@ -1,4 +1,4 @@
-import { Effect, Fiber, Schema } from 'effect';
+import { Effect, Fiber, Layer, Ref, Schema } from 'effect';
 import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as TestClock from 'effect/testing/TestClock';
@@ -36,6 +36,28 @@ const provide = <A, E>(
 		Effect.provide(effect, JobRuntimeLive.layer(implementation)),
 		MemoryJobStore.layer,
 	);
+const withCountingStore = <A, E>(
+	effect: Effect.Effect<A, E, JobRuntime | JobStore>,
+	implementation: Job.Implementation<typeof declaration, never>,
+	onHeartbeat: Effect.Effect<void>,
+): Effect.Effect<A, E, never> =>
+	Effect.gen(function* () {
+		const base = yield* JobStore;
+		const counted = JobStore.of({
+			...base,
+			heartbeat: (token, now, leaseDuration) =>
+				onHeartbeat.pipe(
+					Effect.andThen(base.heartbeat(token, now, leaseDuration)),
+				),
+		});
+		const runtimeLayer = JobRuntimeLive.layer(implementation).pipe(
+			Layer.provide(Layer.succeed(JobStore, counted)),
+		);
+		return yield* effect.pipe(
+			Effect.provide(runtimeLayer),
+			Effect.provideService(JobStore, counted),
+		);
+	}).pipe(Effect.provide(MemoryJobStore.layer));
 describe('JobRuntime', () => {
 	it('migrates before promotion, retries, and succeeds', async () => {
 		let runs = 0;
@@ -103,6 +125,48 @@ describe('JobRuntime', () => {
 		await Effect.runPromise(
 			Effect.provide(provide(program, implementation), TestClock.layer()),
 		);
+	});
+
+	it('heartbeats at the configured interval', async () => {
+		const implementation = Job.implement(declaration, () => Effect.never);
+		const program = Effect.gen(function* () {
+			const heartbeatCount = yield* Ref.make(0);
+			yield* withCountingStore(
+				Effect.gen(function* () {
+					const runtime = yield* JobRuntime;
+					const store = yield* JobStore;
+					const scheduled = yield* runtime.schedule(declaration, {
+						value: 'wait',
+					});
+					const worker = yield* Effect.forkChild(
+						runtime.runOne({
+							leaseDuration: Duration.millis(40),
+							heartbeatInterval: Duration.millis(10),
+						}),
+					);
+					const awaitRunning: Effect.Effect<void, JobStoreError> =
+						Effect.suspend(() =>
+							Effect.flatMap(store.get(scheduled.id), (row) =>
+								row?.status === 'running'
+									? Effect.void
+									: Effect.andThen(Effect.yieldNow, awaitRunning),
+							),
+						);
+					yield* awaitRunning;
+					expect(yield* Ref.get(heartbeatCount)).toBe(0);
+					yield* TestClock.adjust('9 millis');
+					expect(yield* Ref.get(heartbeatCount)).toBe(0);
+					yield* TestClock.adjust('1 millis');
+					expect(yield* Ref.get(heartbeatCount)).toBe(1);
+					yield* TestClock.adjust('10 millis');
+					expect(yield* Ref.get(heartbeatCount)).toBe(2);
+					yield* Fiber.interrupt(worker);
+				}),
+				implementation,
+				Ref.update(heartbeatCount, (count) => count + 1),
+			);
+		});
+		await Effect.runPromise(Effect.provide(program, TestClock.layer()));
 	});
 
 	it('preserves external worker interruption for lease recovery', async () => {

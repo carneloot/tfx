@@ -7,6 +7,7 @@ import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 import * as Layer from 'effect/Layer';
 import * as Option from 'effect/Option';
+import * as Schedule from 'effect/Schedule';
 import * as Schema from 'effect/Schema';
 
 import * as Job from './Job.js';
@@ -191,27 +192,27 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							implementation.handler(migrated.success),
 							infrastructure,
 						) as Effect.Effect<void, any, never>;
+						const heartbeat = Effect.gen(function* () {
+							const current = yield* store.get(running.id);
+							if (current?.cancellationRequested)
+								return yield* Effect.fail(new CancelSignal());
+							const heartbeatNow = yield* DateTime.now;
+							if (
+								!(yield* store.heartbeat(
+									claim.token,
+									heartbeatNow,
+									leaseDuration,
+								))
+							)
+								return yield* Effect.fail(new LeaseSignal());
+						});
 						const monitor: Effect.Effect<
 							never,
 							CancelSignal | LeaseSignal | JobStoreError
-						> = Effect.suspend(() =>
-							Effect.flatMap(Effect.sleep(heartbeatInterval), () =>
-								Effect.gen(function* () {
-									const current = yield* store.get(running.id);
-									if (current?.cancellationRequested)
-										return yield* Effect.fail(new CancelSignal());
-									const heartbeatNow = yield* DateTime.now;
-									if (
-										!(yield* store.heartbeat(
-											claim.token,
-											heartbeatNow,
-											leaseDuration,
-										))
-									)
-										return yield* Effect.fail(new LeaseSignal());
-									return yield* monitor;
-								}),
-							),
+						> = heartbeat.pipe(
+							Effect.repeat(Schedule.spaced(heartbeatInterval)),
+							Effect.delay(heartbeatInterval),
+							Effect.andThen(Effect.never),
 						);
 						const exit = yield* Effect.exit(
 							Effect.raceFirst(execution, monitor),
