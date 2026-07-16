@@ -118,6 +118,7 @@ interface HarnessOptions {
 	readonly initialState?: 'pending' | 'sending' | 'failed' | 'sent' | 'unknown';
 	readonly finalize?: 'success' | 'false' | 'error';
 	readonly mismatchedEvent?: boolean;
+	readonly repositoryFailure?: NotificationRepositoryError['reason'];
 }
 const harness = (
 	send: Effect.Effect<{ readonly message_id: number }, TelegramError>,
@@ -146,24 +147,31 @@ const harness = (
 			}),
 		attachJob: () => Effect.die('unused'),
 		getDispatchContext: () =>
-			Effect.succeed({
-				id: eventId,
-				botId: options.mismatchedEvent
-					? Schema.decodeUnknownSync(BotId)('another-bot')
-					: botId,
-				kind: 'feeding-reminder',
-				ownerUserId: ownerId,
-				petId,
-				foodEntryId,
-				scheduledFor: DateTime.makeUnsafe(0),
-				status: options.eventStatus ?? 'scheduled',
-				dedupeKey: 'key',
-				jobId: null,
-				createdAt: DateTime.makeUnsafe(0),
-				updatedAt: DateTime.makeUnsafe(0),
-				completedAt: null,
-				cancelledAt: null,
-			}),
+			options.repositoryFailure === undefined
+				? Effect.succeed({
+						id: eventId,
+						botId: options.mismatchedEvent
+							? Schema.decodeUnknownSync(BotId)('another-bot')
+							: botId,
+						kind: 'feeding-reminder',
+						ownerUserId: ownerId,
+						petId,
+						foodEntryId,
+						scheduledFor: DateTime.makeUnsafe(0),
+						status: options.eventStatus ?? 'scheduled',
+						dedupeKey: 'key',
+						jobId: null,
+						createdAt: DateTime.makeUnsafe(0),
+						updatedAt: DateTime.makeUnsafe(0),
+						completedAt: null,
+						cancelledAt: null,
+					})
+				: Effect.fail(
+						new NotificationRepositoryError({
+							reason: options.repositoryFailure,
+							message: 'repository test failure',
+						}),
+					),
 		materializeRecipients: (_eventId, recipients) =>
 			Effect.sync(() => {
 				materializations++;
@@ -346,6 +354,40 @@ const harness = (
 };
 
 describe('delivery dispatcher', () => {
+	it('retries repository persistence failures', async () => {
+		const h = harness(Effect.succeed({ message_id: 1 }), {
+			repositoryFailure: 'PersistenceFailure',
+		});
+		const result = await Effect.runPromise(
+			Effect.provide(Effect.result(Dispatch.execute(payload)), h.layer),
+		);
+		expect(result).toMatchObject({
+			_tag: 'Failure',
+			failure: {
+				_tag: 'FeedingReminderRetryError',
+				retryAfter: Duration.seconds(1),
+			},
+		});
+		expect(h.calls()).toBe(0);
+	});
+
+	it.each(['InvariantViolation', 'NotFound', 'Conflict'] as const)(
+		'makes repository %s failures permanent',
+		async (repositoryFailure) => {
+			const h = harness(Effect.succeed({ message_id: 1 }), {
+				repositoryFailure,
+			});
+			const result = await Effect.runPromise(
+				Effect.provide(Effect.result(Dispatch.execute(payload)), h.layer),
+			);
+			expect(result).toMatchObject({
+				_tag: 'Failure',
+				failure: { _tag: 'FeedingReminderPermanentError' },
+			});
+			expect(h.calls()).toBe(0);
+		},
+	);
+
 	it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
 		'rejects invalid lease %s before recipient side effects',
 		async (leaseDuration) => {

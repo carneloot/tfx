@@ -18,7 +18,7 @@ import {
 import { NotificationRecipients } from '../ports/NotificationRecipients.js';
 import {
 	NotificationRepository,
-	type NotificationRepositoryError,
+	NotificationRepositoryError,
 } from '../ports/NotificationRepository.js';
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { PetRepository } from '../ports/PetRepository.js';
@@ -81,6 +81,18 @@ export interface DispatchPayload {
 	readonly petId: PetId;
 	readonly foodEntryId: FoodEntryId;
 }
+const mapRepositoryError = (
+	error: NotificationRepositoryError,
+): FeedingReminderRetryError | FeedingReminderPermanentError =>
+	error.reason === 'PersistenceFailure'
+		? new FeedingReminderRetryError({
+				message: 'Reminder delivery persistence failed',
+				retryAfter: Duration.seconds(1),
+			})
+		: new FeedingReminderPermanentError({
+				message: `Reminder delivery ${error.reason}`,
+			});
+
 export const execute = (
 	payload: DispatchPayload,
 	options: { readonly leaseDuration?: Duration.Input } = {},
@@ -276,9 +288,11 @@ export const execute = (
 			cause instanceof FeedingReminderRetryError ||
 			cause instanceof FeedingReminderPermanentError
 				? cause
-				: new FeedingReminderRetryError({
-						message: 'Reminder delivery infrastructure failed',
-						retryAfter: Duration.seconds(1),
-					}),
+				: cause instanceof NotificationRepositoryError
+					? mapRepositoryError(cause)
+					: new FeedingReminderRetryError({
+							message: 'Reminder delivery infrastructure failed',
+							retryAfter: Duration.seconds(1),
+						}),
 		),
 	);
