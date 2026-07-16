@@ -1,6 +1,7 @@
 import * as Data from 'effect/Data';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
+import * as Schedule from 'effect/Schedule';
 
 import * as DispatchOutcome from '../../DispatchOutcome.js';
 import { Telegram, type TelegramService } from '../../Telegram.js';
@@ -63,26 +64,36 @@ export const make = (
 				});
 			let offset: number | undefined;
 			let first = true;
-			const poll: Effect.Effect<
+			const pollRetrySchedule = Schedule.forever.pipe(
+				Schedule.setInputType<TelegramError>(),
+				Schedule.modifyDelay(({ input }) =>
+					Effect.succeed(
+						retryDelay(input, options.retryDelay) ?? Duration.zero,
+					),
+				),
+			);
+			const pollOnce: Effect.Effect<
 				void,
 				TelegramError | FatalPollingDispatchError
-			> = Effect.suspend(() => {
-				const request = telegram.getUpdates({
-					...(offset === undefined ? {} : { offset }),
-					limit: options.limit ?? 100,
-					timeout: Duration.toSeconds(options.timeout),
-					...(first && options.allowedUpdates !== undefined
-						? { allowed_updates: options.allowedUpdates }
-						: {}),
-				});
-				return Effect.matchEffect(request, {
-					onFailure: (error) => {
-						const delay = retryDelay(error, options.retryDelay);
-						return delay === undefined
-							? Effect.fail(error)
-							: Effect.andThen(Effect.sleep(delay), poll);
-					},
-					onSuccess: (updates: ReadonlyArray<Update>) => {
+			> = Effect.suspend(() =>
+				Effect.flatMap(
+					telegram
+						.getUpdates({
+							...(offset === undefined ? {} : { offset }),
+							limit: options.limit ?? 100,
+							timeout: Duration.toSeconds(options.timeout),
+							...(first && options.allowedUpdates !== undefined
+								? { allowed_updates: options.allowedUpdates }
+								: {}),
+						})
+						.pipe(
+							Effect.retry({
+								while: (error) =>
+									retryDelay(error, options.retryDelay) !== undefined,
+								schedule: pollRetrySchedule,
+							}),
+						),
+					(updates: ReadonlyArray<Update>) => {
 						first = false;
 						return Effect.flatMap(
 							Effect.forEach(
@@ -108,13 +119,16 @@ export const make = (
 									if (!DispatchOutcome.isAcknowledgeable(item.outcome)) break;
 									offset = item.update.update_id + 1;
 								}
-								return poll;
+								return Effect.void;
 							},
 						);
 					},
-				});
-			});
-			return yield* poll;
+				),
+			);
+			return yield* pollOnce.pipe(
+				Effect.repeat(Schedule.forever),
+				Effect.andThen(Effect.never),
+			);
 		}),
 });
 export const fromContext = (

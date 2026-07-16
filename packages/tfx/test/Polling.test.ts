@@ -1,11 +1,20 @@
-import { Duration, Effect } from 'effect';
+import { Deferred, Duration, Effect, Fiber, Ref } from 'effect';
+import * as TestClock from 'effect/testing/TestClock';
 import { describe, expect, it } from 'vitest';
 
 import * as DispatchOutcome from '../src/DispatchOutcome.js';
 import type { Update } from '../src/internal/telegram/generated/TelegramApi.types.js';
 import * as PollingSource from '../src/internal/update-source/PollingSource.js';
 import type { TelegramService } from '../src/Telegram.js';
-import type { TelegramError } from '../src/TelegramError.js';
+import {
+	NetworkError,
+	RateLimitError,
+	TelegramError,
+	type TelegramErrorReason,
+} from '../src/TelegramError.js';
+
+const telegramError = (reason: TelegramErrorReason): TelegramError =>
+	new TelegramError({ module: 'Telegram', method: 'getUpdates', reason });
 describe('Polling', () => {
 	it('publishes startup/menu before polling and advances only contiguous acknowledged offsets', async () => {
 		const calls: Array<{
@@ -80,5 +89,79 @@ describe('Polling', () => {
 		});
 		expect(calls[4]?.payload).toMatchObject({ offset: 2 });
 		expect(calls[4]?.payload).not.toHaveProperty('allowed_updates');
+	});
+
+	it('retries network failures after fallback delay', async () => {
+		const program = Effect.gen(function* () {
+			const attempts = yield* Ref.make(0);
+			const firstAttempt = yield* Deferred.make<void>();
+			const failure = telegramError(new NetworkError({ message: 'offline' }));
+			const telegram = {
+				getMe: () => Effect.succeed({ id: 1 }),
+				deleteWebhook: () => Effect.succeed(true),
+				getUpdates: () =>
+					Ref.updateAndGet(attempts, (count) => count + 1).pipe(
+						Effect.tap((count) =>
+							count === 1 ? Deferred.succeed(firstAttempt, undefined) : Effect.void,
+						),
+						Effect.andThen(Effect.fail(failure)),
+					),
+			} as unknown as TelegramService;
+			const source = PollingSource.make(telegram, {
+				timeout: Duration.seconds(30),
+				retryDelay: Duration.millis(25),
+			});
+			const fiber = yield* Effect.forkChild(
+				source.run(() => Effect.succeed(DispatchOutcome.handled)),
+			);
+			yield* Deferred.await(firstAttempt);
+			expect(yield* Ref.get(attempts)).toBe(1);
+			yield* TestClock.adjust('24 millis');
+			expect(yield* Ref.get(attempts)).toBe(1);
+			yield* TestClock.adjust('1 millis');
+			expect(yield* Ref.get(attempts)).toBe(2);
+			yield* Fiber.interrupt(fiber);
+		});
+		await Effect.runPromise(Effect.provide(program, TestClock.layer()));
+	});
+
+	it('retries rate limits after provider retry delay', async () => {
+		const program = Effect.gen(function* () {
+			const attempts = yield* Ref.make(0);
+			const firstAttempt = yield* Deferred.make<void>();
+			const failure = telegramError(
+				new RateLimitError({
+					errorCode: 429,
+					description: 'Too Many Requests',
+					retryAfterSeconds: 2,
+				}),
+			);
+			const telegram = {
+				getMe: () => Effect.succeed({ id: 1 }),
+				deleteWebhook: () => Effect.succeed(true),
+				getUpdates: () =>
+					Ref.updateAndGet(attempts, (count) => count + 1).pipe(
+						Effect.tap((count) =>
+							count === 1 ? Deferred.succeed(firstAttempt, undefined) : Effect.void,
+						),
+						Effect.andThen(Effect.fail(failure)),
+					),
+			} as unknown as TelegramService;
+			const source = PollingSource.make(telegram, {
+				timeout: Duration.seconds(30),
+				retryDelay: Duration.millis(25),
+			});
+			const fiber = yield* Effect.forkChild(
+				source.run(() => Effect.succeed(DispatchOutcome.handled)),
+			);
+			yield* Deferred.await(firstAttempt);
+			expect(yield* Ref.get(attempts)).toBe(1);
+			yield* TestClock.adjust('1999 millis');
+			expect(yield* Ref.get(attempts)).toBe(1);
+			yield* TestClock.adjust('1 millis');
+			expect(yield* Ref.get(attempts)).toBe(2);
+			yield* Fiber.interrupt(fiber);
+		});
+		await Effect.runPromise(Effect.provide(program, TestClock.layer()));
 	});
 });
