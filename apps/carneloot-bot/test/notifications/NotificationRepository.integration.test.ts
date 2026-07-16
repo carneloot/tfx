@@ -10,15 +10,14 @@ import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import * as RecipientRole from '../../src/domain/notifications/RecipientRole.js';
 import { NotificationRepository } from '../../src/ports/NotificationRepository.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
-import * as NotificationRepositoryLive from '../../src/postgres/NotificationRepositoryLive.js';
-import * as UserRepositoryLive from '../../src/postgres/UserRepositoryLive.js';
+import * as RepositoriesLive from '../../src/postgres/RepositoriesLive.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
 const layer = Layer.provideMerge(
-	Layer.merge(NotificationRepositoryLive.layer, UserRepositoryLive.layer),
+	RepositoriesLive.layer,
 	PostgresTestLayer.layer,
 );
 const eventId = () => Schema.decodeUnknownSync(EventId)(crypto.randomUUID());

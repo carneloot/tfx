@@ -1,5 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import * as PostgresJobStore from '@tfx/postgres/PostgresJobStore';
+import * as TfxPostgres from '@tfx/postgres/TfxPostgres';
 import { Effect, Layer, Schema } from 'effect';
 import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
@@ -26,11 +26,8 @@ import { PetFoodRepository } from '../../src/ports/PetFoodRepository.js';
 import { PetRepository } from '../../src/ports/PetRepository.js';
 import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
-import * as NotificationRepositoryLive from '../../src/postgres/NotificationRepositoryLive.js';
-import * as PetFoodRepositoryLive from '../../src/postgres/PetFoodRepositoryLive.js';
-import * as PetRepositoryLive from '../../src/postgres/PetRepositoryLive.js';
 import * as ReminderSchedulerLive from '../../src/postgres/ReminderSchedulerLive.js';
-import * as UserRepositoryLive from '../../src/postgres/UserRepositoryLive.js';
+import * as RepositoriesLive from '../../src/postgres/RepositoriesLive.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 
 const enabled =
@@ -42,12 +39,9 @@ const implementation = Job.implement(
 );
 const pg = PostgresTestLayer.layer;
 const stores = Layer.provideMerge(
-	Layer.mergeAll(
-		UserRepositoryLive.layer,
-		PetRepositoryLive.layer,
-		PetFoodRepositoryLive.layer,
-		NotificationRepositoryLive.layer,
-		PostgresJobStore.layer({
+	Layer.merge(
+		RepositoriesLive.layer,
+		TfxPostgres.layer({
 			schema: 'tfx_feeding_test',
 			tablePrefix: 'case_',
 		}),
