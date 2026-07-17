@@ -29,7 +29,7 @@
 
 | Order | Plan | Depends on | Verifiable outcome |
 |---:|---|---|---|
-| 1 | [`slice-2-01-caregiver-access-kernel`](./2026-07-16-slice-2-01-caregiver-access-kernel.md) | Slice 1 | Persisted caregiver lifecycle and one authoritative owner/accepted-caregiver access service |
+| 1 | [`slice-2-01-caregiver-access-kernel`](./2026-07-16-slice-2-01-caregiver-access-kernel.md) | Slice 1 | Effect-based migration artifact generator plus persisted caregiver access kernel |
 | 2 | [`slice-2-02-caregiver-command-workflows`](./2026-07-16-slice-2-02-caregiver-command-workflows.md) | 1 | Pet deletion and five caregiver commands with durable conversations |
 | 3 | [`slice-2-03-shared-food-and-todos`](./2026-07-16-slice-2-03-shared-food-and-todos.md) | 1 | Shared pet listing/status/addition plus replay-safe `/colocar_racao_todos` and `/todos` |
 | 4 | [`slice-2-04-food-correction-deletion`](./2026-07-16-slice-2-04-food-correction-deletion.md) | 1, 3 | Correct/delete food workflows with atomic reminder repair |
@@ -57,6 +57,7 @@ Plans 2 and 3 may proceed independently after Plan 1. Plan 5 needs shared actor/
 - Every owner/caregiver mutation rechecks access inside transaction after row lock.
 - Every food source uses actual update/message that caused mutation, not conversation-start update.
 - PostgreSQL stores Telegram numeric IDs as `bigint`, food as integer milligrams, and instants as `timestamptz`.
+- Application `.sql` migrations are canonical; every `MigrationNNNNSql.ts` artifact is generated or checked through `pnpm --filter carneloot-bot migrations:generate|check`, never hand-copied.
 - Tests use `TestClock`; SQL semantics use real PostgreSQL.
 - Each plan receives fresh review before dependent implementation starts.
 - Each commit leaves owned focused tests and `pnpm check` green.

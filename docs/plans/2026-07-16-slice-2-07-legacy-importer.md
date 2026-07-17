@@ -93,20 +93,11 @@ Tables are persistence-only in Slice 2; no command/API reads them.
 
 - [ ] **Step 3: Generate/register artifact**
 
-Generate exact SQL bytes/checksum:
+Run: `pnpm --filter carneloot-bot migrations:generate`
+Expected: Effect generator creates `Migration0009Sql.ts` from canonical migration with exact bytes/checksum.
 
-```bash
-node --input-type=module <<'NODE'
-import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
-const sql = readFileSync('apps/carneloot-bot/migrations/0009_import_targets.sql', 'utf8')
-const checksum = createHash('sha256').update(sql).digest('hex')
-writeFileSync(
-  'apps/carneloot-bot/src/postgres/Migration0009Sql.ts',
-  `// Generated from migrations/0009_import_targets.sql; do not edit.\nexport const migration0009Sql = ${JSON.stringify(sql)};\nexport const migration0009Checksum = ${JSON.stringify(checksum)};\n`
-)
-NODE
-```
+Run: `pnpm --filter carneloot-bot migrations:check`
+Expected: exits 0.
 
 Register version 9 and extend artifact test.
 

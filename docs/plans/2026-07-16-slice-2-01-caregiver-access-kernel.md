@@ -10,6 +10,8 @@
 
 ## File map
 
+- Create: `apps/carneloot-bot/scripts/generate-migration-artifacts.ts`
+- Create: `apps/carneloot-bot/test/MigrationArtifactGenerator.test.ts`
 - Create: `apps/carneloot-bot/migrations/0006_pet_caregivers.sql`
 - Create: `apps/carneloot-bot/src/postgres/Migration0006Sql.ts`
 - Create: `apps/carneloot-bot/src/domain/caregivers/PetCaregiver.ts`
@@ -17,6 +19,7 @@
 - Create: `apps/carneloot-bot/src/postgres/PetCaregiverRepositoryLive.ts`
 - Create: `apps/carneloot-bot/test/caregivers/PetCaregiverDomain.test.ts`
 - Create: `apps/carneloot-bot/test/caregivers/PetCaregiverRepository.integration.test.ts`
+- Modify: `apps/carneloot-bot/package.json`
 - Modify: `apps/carneloot-bot/src/domain/DomainError.ts`
 - Modify: `apps/carneloot-bot/src/domain/ApplicationError.ts`
 - Modify: `apps/carneloot-bot/src/ports/UserRepository.ts`
@@ -39,7 +42,150 @@
 - Modify: `apps/carneloot-bot/test/pet-food/PetFoodCommands.test.ts`
 - Modify: `apps/carneloot-bot/test/pet-food/PetFoodConversations.test.ts`
 
-### Task 1: Model caregiver status and errors
+### Task 1: Add Effect migration-artifact generator
+
+- [ ] **Step 1: Write failing generator tests**
+
+Create `MigrationArtifactGenerator.test.ts`. Test `renderMigrationArtifact` with SQL containing quotes/newlines and assert exact TypeScript source, lowercase SHA-256, stable output, sorted migration processing, and `--check` failure when generated file differs from SQL. Use a temporary directory through Effect `FileSystem` test services; never modify committed migrations from test.
+
+Run: `pnpm --filter carneloot-bot test -- MigrationArtifactGenerator.test.ts`
+Expected: FAIL because generator script does not exist.
+
+- [ ] **Step 2: Create Effect-based generator**
+
+Create `apps/carneloot-bot/scripts/generate-migration-artifacts.ts`:
+
+```ts
+#!/usr/bin/env node
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import * as Crypto from "effect/Crypto"
+import * as Effect from "effect/Effect"
+import * as Encoding from "effect/Encoding"
+import * as FileSystem from "effect/FileSystem"
+import * as Path from "effect/Path"
+
+const migrationPattern = /^(\d{4})_[a-z0-9_]+\.sql$/u
+
+export const renderMigrationArtifact = (
+  fileName: string,
+  sql: string,
+  checksum: string
+): string => {
+  const match = migrationPattern.exec(fileName)
+  if (match === null) throw new Error(`Invalid migration filename: ${fileName}`)
+  const version = match[1]
+  return `// Generated from migrations/${fileName}; do not edit.\nexport const migration${version}Sql = ${JSON.stringify(sql)};\nexport const migration${version}Checksum = ${JSON.stringify(checksum)};\n`
+}
+
+export const generateMigrationArtifacts = (options: {
+  readonly appDirectory: string
+  readonly check: boolean
+}) => Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const crypto = yield* Crypto.Crypto
+  const migrationsDirectory = path.join(options.appDirectory, "migrations")
+  const outputDirectory = path.join(options.appDirectory, "src", "postgres")
+  const files = (yield* fs.readDirectory(migrationsDirectory))
+    .filter((file) => migrationPattern.test(file))
+    .sort()
+
+  if (files.length === 0) {
+    return yield* Effect.fail(new Error("No application migrations found"))
+  }
+
+  yield* Effect.forEach(
+    files,
+    (fileName) => Effect.gen(function* () {
+      const version = migrationPattern.exec(fileName)![1]
+      const sourcePath = path.join(migrationsDirectory, fileName)
+      const outputPath = path.join(outputDirectory, `Migration${version}Sql.ts`)
+      const sql = yield* fs.readFileString(sourcePath)
+      const digest = yield* crypto.digest(
+        "SHA-256",
+        new TextEncoder().encode(sql)
+      )
+      const rendered = renderMigrationArtifact(
+        fileName,
+        sql,
+        Encoding.encodeHex(digest)
+      )
+
+      if (options.check) {
+        const exists = yield* fs.exists(outputPath)
+        const actual = exists ? yield* fs.readFileString(outputPath) : ""
+        if (actual !== rendered) {
+          return yield* Effect.fail(
+            new Error(
+              `${outputPath} differs; run pnpm --filter carneloot-bot migrations:generate`
+            )
+          )
+        }
+        return
+      }
+
+      yield* fs.writeFileString(outputPath, rendered)
+      yield* Effect.logInfo("generated migration artifact").pipe(
+        Effect.annotateLogs({ migration: fileName, outputPath })
+      )
+    }),
+    { concurrency: 'unbounded', discard: true }
+  )
+})
+
+const main = Effect.gen(function* () {
+  const path = yield* Path.Path
+  const appDirectory = path.resolve(import.meta.dirname, "..")
+  yield* generateMigrationArtifacts({
+    appDirectory,
+    check: process.argv.includes("--check")
+  })
+})
+
+if (import.meta.main) {
+  main.pipe(
+    Effect.provide(NodeServices.layer),
+    NodeRuntime.runMain
+  )
+}
+```
+
+Generator treats committed `.sql` files as canonical, processes every matching migration in version order, computes checksums through yieldable `effect/Crypto`, and performs filesystem work through yieldable `effect/FileSystem`/`effect/Path`.
+
+- [ ] **Step 3: Add package commands**
+
+Add to `apps/carneloot-bot/package.json`:
+
+```json
+"migrations:generate": "node scripts/generate-migration-artifacts.ts",
+"migrations:check": "node scripts/generate-migration-artifacts.ts --check"
+```
+
+- [ ] **Step 4: Generate existing artifacts and verify no drift**
+
+Run: `pnpm --filter carneloot-bot migrations:generate`
+Expected: `Migration0001Sql.ts` through `Migration0005Sql.ts` are regenerated byte-for-byte with no Git diff.
+
+Run: `pnpm --filter carneloot-bot migrations:check`
+Expected: exits 0.
+
+- [ ] **Step 5: Run generator tests and type-check**
+
+Run: `pnpm --filter carneloot-bot test -- MigrationArtifactGenerator.test.ts MigrationArtifact.test.ts`
+Expected: PASS for rendering, generation order, drift detection, and committed SQL parity.
+
+Run: `pnpm --filter carneloot-bot check`
+Expected: PASS with script included in TypeScript project.
+
+- [ ] **Step 6: Commit generator**
+
+```bash
+git add apps/carneloot-bot/scripts/generate-migration-artifacts.ts apps/carneloot-bot/test/MigrationArtifactGenerator.test.ts apps/carneloot-bot/package.json
+git commit -m "build(carneloot): generate migration artifacts with Effect"
+```
+
+### Task 2: Model caregiver status and errors
 
 - [ ] **Step 1: Write failing schema tests**
 
@@ -88,7 +234,7 @@ git add apps/carneloot-bot/src/domain apps/carneloot-bot/test/caregivers/PetCare
 git commit -m "feat(carneloot): model caregiver relationships"
 ```
 
-### Task 2: Add caregiver migration and migration artifact
+### Task 3: Add caregiver migration and migration artifact
 
 - [ ] **Step 1: Write failing migration assertions**
 
@@ -124,24 +270,13 @@ Self-invitation is rejected transactionally by application service after locking
 
 - [ ] **Step 3: Generate and register SQL artifact**
 
-Generate the immutable module from committed SQL bytes:
+Run: `pnpm --filter carneloot-bot migrations:generate`
+Expected: generator creates `Migration0006Sql.ts` from canonical `0006_pet_caregivers.sql` with exact SQL bytes and SHA-256 checksum.
 
-```bash
-node --input-type=module <<'NODE'
-import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
-const sql = readFileSync('apps/carneloot-bot/migrations/0006_pet_caregivers.sql', 'utf8')
-const checksum = createHash('sha256').update(sql).digest('hex')
-writeFileSync(
-  'apps/carneloot-bot/src/postgres/Migration0006Sql.ts',
-  `// Generated from migrations/0006_pet_caregivers.sql; do not edit.\nexport const migration0006Sql = ${JSON.stringify(sql)};\nexport const migration0006Checksum = ${JSON.stringify(checksum)};\n`
-)
-NODE
-```
+Run: `pnpm --filter carneloot-bot migrations:check`
+Expected: exits 0 with all migration artifacts current.
 
-Expected: `Migration0006Sql.ts` contains exact SQL bytes and SHA-256 checksum.
-
-Register version `6` in `AppMigrator.ts`. Merge `PetCaregiverRepositoryLive.layer` in `RepositoriesLive.ts` only after Task 4 creates it.
+Register version `6` in `AppMigrator.ts`. Merge `PetCaregiverRepositoryLive.layer` in `RepositoriesLive.ts` only after Task 5 creates it.
 
 - [ ] **Step 4: Run migration tests**
 
@@ -155,7 +290,7 @@ git add apps/carneloot-bot/migrations/0006_pet_caregivers.sql apps/carneloot-bot
 git commit -m "feat(carneloot): add caregiver persistence schema"
 ```
 
-### Task 3: Define repository contracts
+### Task 4: Define repository contracts
 
 - [ ] **Step 1: Write compile-time contract fixture**
 
@@ -225,7 +360,7 @@ All mutation methods participate in ambient `PgClient` transaction and never sen
 Run: `pnpm --filter carneloot-bot check`
 Expected: contract fixture compiles; production adapter remains missing until next task.
 
-### Task 4: Implement PostgreSQL repositories
+### Task 5: Implement PostgreSQL repositories
 
 - [ ] **Step 1: Write failing real-PostgreSQL cases**
 
@@ -258,7 +393,7 @@ git add apps/carneloot-bot/src/ports apps/carneloot-bot/src/postgres apps/carnel
 git commit -m "feat(carneloot): persist caregiver access"
 ```
 
-### Task 5: Generalize transactional food authorization
+### Task 6: Generalize transactional food authorization
 
 - [ ] **Step 1: Write failing authorization tests**
 
@@ -308,7 +443,7 @@ git add apps/carneloot-bot/src/application apps/carneloot-bot/src/bot apps/carne
 git commit -m "feat(carneloot): authorize accepted caregivers for food"
 ```
 
-### Task 6: Validate plan outcome
+### Task 7: Validate plan outcome
 
 - [ ] **Step 1: Run package gate**
 

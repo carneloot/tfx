@@ -62,20 +62,11 @@ ALTER TABLE carneloot.notification_events
 
 - [ ] **Step 3: Generate immutable SQL module**
 
-Generate exact SQL bytes/checksum:
+Run: `pnpm --filter carneloot-bot migrations:generate`
+Expected: Effect generator creates `Migration0007Sql.ts` from canonical migration with exact bytes/checksum.
 
-```bash
-node --input-type=module <<'NODE'
-import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
-const sql = readFileSync('apps/carneloot-bot/migrations/0007_notification_recipient_freeze.sql', 'utf8')
-const checksum = createHash('sha256').update(sql).digest('hex')
-writeFileSync(
-  'apps/carneloot-bot/src/postgres/Migration0007Sql.ts',
-  `// Generated from migrations/0007_notification_recipient_freeze.sql; do not edit.\nexport const migration0007Sql = ${JSON.stringify(sql)};\nexport const migration0007Checksum = ${JSON.stringify(checksum)};\n`
-)
-NODE
-```
+Run: `pnpm --filter carneloot-bot migrations:check`
+Expected: exits 0.
 
 Register version 7 and extend `MigrationArtifact.test.ts`.
 
@@ -86,7 +77,7 @@ Add both fields to `NotificationEvent`. Add `foodTimestampExplicit` to `EventInp
 - [ ] **Step 5: Run migration/domain tests**
 
 Run: `pnpm --filter carneloot-bot test -- MigrationArtifact.test.ts NotificationDomain.test.ts`
-Expected: PASS with exact SQL/checksum and schema defaults.
+Expected: PASS with exact SQL/checksum and explicit new event fields in SQL projections/fixtures.
 
 - [ ] **Step 6: Commit migration**
 

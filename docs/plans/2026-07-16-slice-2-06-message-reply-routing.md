@@ -180,20 +180,13 @@ Require migration version 8 and exact artifact parity. Create same message ID in
 
 - [ ] **Step 2: Add reply-operation migration**
 
-Create `carneloot.food_reply_operations(bot_id text, update_id bigint, kind text, result_json jsonb, created_at timestamptz, PRIMARY KEY(bot_id, update_id))` with nonempty bot/kind and safe update-ID checks. Generate artifact:
+Create `carneloot.food_reply_operations(bot_id text, update_id bigint, kind text, result_json jsonb, created_at timestamptz, PRIMARY KEY(bot_id, update_id))` with nonempty bot/kind and safe update-ID checks.
 
-```bash
-node --input-type=module <<'NODE'
-import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
-const sql = readFileSync('apps/carneloot-bot/migrations/0008_food_reply_operations.sql', 'utf8')
-const checksum = createHash('sha256').update(sql).digest('hex')
-writeFileSync(
-  'apps/carneloot-bot/src/postgres/Migration0008Sql.ts',
-  `// Generated from migrations/0008_food_reply_operations.sql; do not edit.\nexport const migration0008Sql = ${JSON.stringify(sql)};\nexport const migration0008Checksum = ${JSON.stringify(checksum)};\n`
-)
-NODE
-```
+Run: `pnpm --filter carneloot-bot migrations:generate`
+Expected: Effect generator creates `Migration0008Sql.ts` from canonical migration with exact bytes/checksum.
+
+Run: `pnpm --filter carneloot-bot migrations:check`
+Expected: exits 0.
 
 Register version 8 and extend `MigrationArtifact.test.ts`.
 
