@@ -19,6 +19,7 @@ import * as ConfigureReminderDelay from '../../src/application/ConfigureReminder
 import * as GetFoodStatus from '../../src/application/GetFoodStatus.js';
 import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
 import { PetName } from '../../src/domain/Pet.js';
+import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import { PetRepository } from '../../src/ports/PetRepository.js';
 import {
 	ReminderScheduler,
@@ -100,6 +101,43 @@ const setup = Effect.gen(function* () {
 	return { sql, registered, pet, access };
 });
 const source = (botId: string, updateId: number) => ({ botId, updateId });
+const ownerRecordingScheduler: Layer.Layer<
+	ReminderScheduler,
+	never,
+	PgClient.PgClient
+> = Layer.effect(
+	ReminderScheduler,
+	Effect.map(
+		PgClient.PgClient,
+		(sql) =>
+			({
+				replaceForLatest: (schedule) =>
+					sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id,food_entry_id,run_at,owner_user_id) VALUES ('replace',${schedule.petId}::uuid,${schedule.foodEntryId}::uuid,${DateTime.toDateUtc(schedule.runAt)},${schedule.ownerUserId}::uuid)`.pipe(
+						Effect.asVoid,
+						Effect.mapError(
+							(cause) =>
+								new ReminderSchedulerError({
+									reason: 'PersistenceFailure',
+									message: 'Recording scheduler replace failed',
+									cause,
+								}),
+						),
+					),
+				cancelForPet: (petId) =>
+					sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id) VALUES ('cancel',${petId}::uuid)`.pipe(
+						Effect.asVoid,
+						Effect.mapError(
+							(cause) =>
+								new ReminderSchedulerError({
+									reason: 'PersistenceFailure',
+									message: 'Recording scheduler cancel failed',
+									cause,
+								}),
+						),
+					),
+			}) satisfies ReminderSchedulerService,
+	),
+);
 
 if (!enabled)
 	describe.skip('pet food integration', () => {
@@ -200,6 +238,156 @@ else
 			});
 			expect(JSON.stringify(logs)).not.toContain(result.pet.name);
 			expect(JSON.stringify(logs)).not.toContain('Ana');
+		});
+
+		it('authorizes caregiver food writes against current PostgreSQL identity and relationship state', async () => {
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(new Date('2024-01-02T12:00:00Z').getTime());
+				const {
+					sql,
+					registered: owner,
+					pet,
+					access: ownerAccess,
+				} = yield* setup;
+				yield* sql`ALTER TABLE carneloot.test_reminder_actions ADD COLUMN IF NOT EXISTS owner_user_id uuid`;
+				yield* ConfigureDayStart.execute(ownerAccess, '00:00', 'UTC');
+				yield* ConfigureReminderDelay.set(ownerAccess, Duration.millis(60_000));
+				const users = yield* UserRepository;
+				const caregivers = yield* PetCaregiverRepository;
+				const register = (telegramUserId: number, firstName: string) =>
+					users.registerTelegramProfile({
+						botId: owner.profile.botId,
+						telegramUserId:
+							Schema.decodeUnknownSync(TelegramUserId)(telegramUserId),
+						username: null,
+						firstName,
+						lastName: null,
+						privateChatId:
+							Schema.decodeUnknownSync(TelegramChatId)(telegramUserId),
+					});
+				const accepted = yield* register(501, 'Accepted');
+				const pending = yield* register(502, 'Pending');
+				const rejected = yield* register(503, 'Rejected');
+				const now = yield* DateTime.now;
+				for (const caregiver of [accepted, pending, rejected])
+					yield* caregivers.insertPending(pet.id, caregiver.user.id, now);
+				yield* caregivers.setPendingResponse(
+					pet.id,
+					accepted.user.id,
+					'accepted',
+					now,
+				);
+				yield* caregivers.setPendingResponse(
+					pet.id,
+					rejected.user.id,
+					'rejected',
+					now,
+				);
+				const accessFor = (caregiver: typeof accepted) => ({
+					actorId: caregiver.user.id,
+					petId: pet.id,
+					botId: caregiver.profile.botId,
+					telegramUserId: caregiver.profile.telegramUserId,
+				});
+
+				const added = yield* AddFood.execute(
+					accessFor(accepted),
+					'25g',
+					'10:00',
+					source(owner.profile.botId, 401),
+				);
+				const persisted = yield* sql<{
+					recorded_by: string;
+				}>`SELECT recorded_by FROM carneloot.pet_food_entries WHERE id=${added.entry.id}::uuid`;
+				expect(persisted[0]?.recorded_by).toBe(accepted.user.id);
+				const scheduled = yield* sql<{
+					owner_user_id: string;
+				}>`SELECT owner_user_id FROM carneloot.test_reminder_actions WHERE food_entry_id=${added.entry.id}::uuid`;
+				expect(scheduled[0]?.owner_user_id).toBe(owner.user.id);
+
+				for (const [caregiver, updateId] of [
+					[pending, 402],
+					[rejected, 403],
+				] as const) {
+					const denied = yield* Effect.result(
+						AddFood.execute(
+							accessFor(caregiver),
+							'1g',
+							'11:00',
+							source(owner.profile.botId, updateId),
+						),
+					);
+					expect(denied).toMatchObject({
+						_tag: 'Failure',
+						failure: { _tag: 'PetAccessDenied' },
+					});
+				}
+
+				const mismatch = yield* Effect.result(
+					AddFood.execute(
+						{
+							...accessFor(accepted),
+							telegramUserId: pending.profile.telegramUserId,
+						},
+						'1g',
+						'11:00',
+						source(owner.profile.botId, 404),
+					),
+				);
+				expect(mismatch).toMatchObject({
+					_tag: 'Failure',
+					failure: { _tag: 'PetAccessDenied' },
+				});
+
+				const reassignedUserId = crypto.randomUUID();
+				yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${reassignedUserId}::uuid,${new Date()},${new Date()})`;
+				yield* sql`UPDATE carneloot.telegram_identities SET user_id=${reassignedUserId}::uuid WHERE bot_id=${accepted.profile.botId} AND telegram_user_id=${accepted.profile.telegramUserId}`;
+				const reassigned = yield* Effect.result(
+					AddFood.execute(
+						accessFor(accepted),
+						'1g',
+						'11:00',
+						source(owner.profile.botId, 405),
+					),
+				);
+				expect(reassigned).toMatchObject({
+					_tag: 'Failure',
+					failure: { _tag: 'PetAccessDenied' },
+				});
+
+				// Access was selected earlier, but mutation must re-authorize current state.
+				const previouslySelectedAccess = accessFor(accepted);
+				yield* sql`UPDATE carneloot.telegram_identities SET user_id=${accepted.user.id}::uuid WHERE bot_id=${accepted.profile.botId} AND telegram_user_id=${accepted.profile.telegramUserId}`;
+				yield* caregivers.remove(pet.id, accepted.user.id);
+				const before = yield* sql<{
+					count: string;
+				}>`SELECT count(*)::text AS count FROM carneloot.pet_food_entries WHERE pet_id=${pet.id}::uuid`;
+				const revoked = yield* Effect.result(
+					AddFood.execute(
+						previouslySelectedAccess,
+						'1g',
+						'11:00',
+						source(owner.profile.botId, 406),
+					),
+				);
+				expect(revoked).toMatchObject({
+					_tag: 'Failure',
+					failure: { _tag: 'PetAccessDenied' },
+				});
+				const after = yield* sql<{
+					count: string;
+				}>`SELECT count(*)::text AS count FROM carneloot.pet_food_entries WHERE pet_id=${pet.id}::uuid`;
+				expect(after[0]?.count).toBe(before[0]?.count);
+				expect(
+					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
+				).toHaveLength(1);
+			});
+			await Effect.runPromise(
+				Effect.provide(
+					program,
+					Layer.merge(dependencies(ownerRecordingScheduler), TestClock.layer()),
+				),
+			);
 		});
 
 		it('rolls back scheduler actions, food, and settings when scheduler fails', async () => {
