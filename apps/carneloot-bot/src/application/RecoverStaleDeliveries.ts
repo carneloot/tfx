@@ -7,5 +7,6 @@ import { NotificationRepository } from '../ports/NotificationRepository.js';
 export const execute = (eventId: EventId) =>
 	Effect.gen(function* () {
 		const now = yield* DateTime.now;
-		return yield* (yield* NotificationRepository).recoverExpired(eventId, now);
+		const notifications = yield* NotificationRepository;
+		return yield* notifications.recoverExpired(eventId, now);
 	});

@@ -118,7 +118,8 @@ const layer = Layer.mergeAll(
 const scheduleFixture = Effect.gen(function* () {
 	const suffix = crypto.randomUUID();
 	const telegramId = Math.floor(Math.random() * 1_000_000_000) + 1;
-	const user = yield* (yield* UserRepository).registerTelegramProfile({
+	const users = yield* UserRepository;
+	const user = yield* users.registerTelegramProfile({
 		botId,
 		telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(telegramId),
 		username: null,
@@ -126,7 +127,8 @@ const scheduleFixture = Effect.gen(function* () {
 		lastName: null,
 		privateChatId: Schema.decodeUnknownSync(TelegramChatId)(telegramId),
 	});
-	const pet = yield* (yield* PetRepository).addOwned(
+	const pets = yield* PetRepository;
+	const pet = yield* pets.addOwned(
 		user.user.id,
 		Schema.decodeUnknownSync(PetName)(`Reminder ${suffix}`),
 	);
@@ -156,7 +158,8 @@ const scheduleFixture = Effect.gen(function* () {
 		},
 		now: DateTime.makeUnsafe(2_000),
 	});
-	yield* (yield* ReminderScheduler).replaceForLatest({
+	const scheduler = yield* ReminderScheduler;
+	yield* scheduler.replaceForLatest({
 		botId,
 		ownerUserId: user.user.id,
 		petId: pet.id,
@@ -279,7 +282,8 @@ else
 				expect(yield* Fiber.join(send)).toMatchObject({ status: 'completed' });
 				yield* TestClock.setTime(4_000);
 				expect(yield* runFresh).toBeUndefined();
-				const events = yield* (yield* PgClient.PgClient)<{
+				const sql = yield* PgClient.PgClient;
+				const events = yield* sql<{
 					status: string;
 				}>`SELECT status FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${fixture.pet.id}::uuid AND food_entry_id=${fixture.entry.id}::uuid`;
 				expect(events).toEqual([{ status: 'completed' }]);
@@ -389,7 +393,8 @@ else
 				}>`SELECT status FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
 				expect(sending?.status).toBe('sending');
 				yield* TestClock.setTime(33_001);
-				yield* (yield* NotificationRepository).recoverExpired(
+				const notifications = yield* NotificationRepository;
+				yield* notifications.recoverExpired(
 					Schema.decodeUnknownSync(EventId)(fixture.event.id),
 					DateTime.makeUnsafe(33_001),
 				);
@@ -424,7 +429,8 @@ else
 				});
 				yield* TestClock.setTime(3_000);
 				yield* runFresh;
-				const [event] = yield* (yield* PgClient.PgClient)<{
+				const sql = yield* PgClient.PgClient;
+				const [event] = yield* sql<{
 					status: string;
 				}>`SELECT status FROM carneloot.notification_events WHERE id=${fixture.event.id}::uuid`;
 				expect(event?.status).toBe('cancelled');

@@ -78,7 +78,8 @@ const botId = Schema.decodeUnknownSync(BotId)('carneloot');
 const fixture = Effect.gen(function* () {
 	const suffix = crypto.randomUUID();
 	const telegramId = Math.floor(Math.random() * 1_000_000_000) + 1;
-	const user = yield* (yield* UserRepository).registerTelegramProfile({
+	const users = yield* UserRepository;
+	const user = yield* users.registerTelegramProfile({
 		botId,
 		telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(telegramId),
 		username: null,
@@ -86,7 +87,8 @@ const fixture = Effect.gen(function* () {
 		lastName: null,
 		privateChatId: Schema.decodeUnknownSync(TelegramChatId)(telegramId),
 	});
-	const pet = yield* (yield* PetRepository).addOwned(
+	const pets = yield* PetRepository;
+	const pet = yield* pets.addOwned(
 		user.user.id,
 		Schema.decodeUnknownSync(PetName)(`Pet ${suffix}`),
 	);
@@ -211,7 +213,8 @@ else
 					foodEntryId: entry.id,
 					runAt: DateTime.makeUnsafe(3_000),
 				});
-				yield* (yield* PetFoodRepository).setReminderDelay(
+				const food = yield* PetFoodRepository;
+				yield* food.setReminderDelay(
 					pet.id,
 					Duration.seconds(2),
 					DateTime.makeUnsafe(2_000),
@@ -249,7 +252,8 @@ else
 				yield* TestClock.setTime(2_000);
 				const { user, pet, entry } = yield* fixture;
 				const dedupeKey = `feeding-reminder:${botId}:${pet.id}:${entry.id}:3000`;
-				const existing = yield* (yield* NotificationRepository).createEvent({
+				const notifications = yield* NotificationRepository;
+				const existing = yield* notifications.createEvent({
 					id: Schema.decodeUnknownSync(EventId)(crypto.randomUUID()),
 					botId,
 					kind: 'unrelated-kind',
@@ -273,9 +277,7 @@ else
 				);
 				expect(result._tag).toBe('Failure');
 				expect(
-					yield* (yield* NotificationRepository).getDispatchContext(
-						existing.id,
-					),
+					yield* notifications.getDispatchContext(existing.id),
 				).toMatchObject({ status: 'scheduled' });
 				const sql = yield* PgClient.PgClient;
 				expect(

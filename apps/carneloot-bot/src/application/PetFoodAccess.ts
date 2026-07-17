@@ -34,7 +34,8 @@ export const authorize = (access: PetFoodAccess) =>
 				denied('Telegram identity no longer matches actor'),
 			);
 
-		const pet = yield* (yield* PetRepository).lockById(access.petId);
+		const pets = yield* PetRepository;
+		const pet = yield* pets.lockById(access.petId);
 		if (pet === undefined)
 			return yield* Effect.fail(denied('Pet is not accessible'));
 		if (pet.ownerId === access.actorId)
@@ -45,10 +46,8 @@ export const authorize = (access: PetFoodAccess) =>
 				role: 'owner',
 			};
 
-		const relationship = yield* (yield* PetCaregiverRepository).lock(
-			access.petId,
-			access.actorId,
-		);
+		const caregivers = yield* PetCaregiverRepository;
+		const relationship = yield* caregivers.lock(access.petId, access.actorId);
 		if (relationship?.status !== 'accepted')
 			return yield* Effect.fail(denied('Pet is not accessible'));
 		return {

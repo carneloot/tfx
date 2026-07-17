@@ -138,9 +138,8 @@ export const built = ConversationBuilder.done(
 								telegramUserId: state.telegramUserId,
 								petId: pet.id,
 							});
-							const settings = yield* (yield* PetFoodRepository).getSettings(
-								pet.id,
-							);
+							const food = yield* PetFoodRepository;
+							const settings = yield* food.getSettings(pet.id);
 							if (
 								settings?.dayStart === null ||
 								settings?.timeZone === null ||

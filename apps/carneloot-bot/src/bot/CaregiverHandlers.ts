@@ -68,10 +68,12 @@ const owned = <B extends Conversations.BuiltConversation<any, any>>(
 ) =>
 	Effect.gen(function* () {
 		const current = yield* CurrentUser;
-		const pets = yield* (yield* PetRepository).listOwned(current.user.id);
+		const repository = yield* PetRepository;
+		const pets = yield* repository.listOwned(current.user.id);
 		const first = pets[0];
 		if (first === undefined) {
-			yield* (yield* MessageContext.MessageContext).reply('Você não tem pets');
+			const context = yield* MessageContext.MessageContext;
+			yield* context.reply('Você não tem pets');
 			return;
 		}
 		const options: [
@@ -107,9 +109,8 @@ export const startPetInvitations = Effect.gen(function* () {
 	const invitations = yield* ListPetInvitations.execute(actor(current));
 	const first = invitations[0];
 	if (first === undefined) {
-		yield* (yield* MessageContext.MessageContext).reply(
-			'Você não tem convites pendentes.',
-		);
+		const context = yield* MessageContext.MessageContext;
+		yield* context.reply('Você não tem convites pendentes.');
 		return;
 	}
 	yield* start(PetInvitationsConversation.built, {
@@ -139,9 +140,8 @@ export const startStopCaring = Effect.gen(function* () {
 	)).filter((pet) => pet !== undefined);
 	const first = caredPets[0];
 	if (first === undefined) {
-		yield* (yield* MessageContext.MessageContext).reply(
-			'Você não está cuidando de nenhum pet.',
-		);
+		const context = yield* MessageContext.MessageContext;
+		yield* context.reply('Você não está cuidando de nenhum pet.');
 		return;
 	}
 	yield* start(StopCaringConversation.built, {

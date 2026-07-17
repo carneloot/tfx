@@ -295,7 +295,8 @@ describe('public BotRouter', () => {
 			value.handle('start', () =>
 				Effect.gen(function* () {
 					const update = yield* UpdateContext.UpdateContext;
-					yield* (yield* Conversations.Conversations)
+					const conversations = yield* Conversations.Conversations;
+					yield* conversations
 						.start(builtConversation, 0, {
 							scope: {
 								botId: 'declared',
@@ -313,7 +314,8 @@ describe('public BotRouter', () => {
 				cancel: () =>
 					Effect.gen(function* () {
 						const update = yield* UpdateContext.UpdateContext;
-						yield* (yield* Conversations.Conversations).cancelCurrent({
+						const conversations = yield* Conversations.Conversations;
+						yield* conversations.cancelCurrent({
 							botId: 'declared',
 							chatId: update.chatId!,
 							userId: update.userId!,

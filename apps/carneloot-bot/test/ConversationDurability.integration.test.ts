@@ -58,10 +58,10 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 	it('rebuilds runtime layers and resumes a persisted add-pet conversation', async () => {
 		const scope = { botId: 'carneloot', chatId: 9020, userId: 9020 };
 		const start = Effect.gen(function* () {
-			const owner = yield* (yield* UserRepository).registerTelegramProfile(
-				profile,
-			);
-			yield* (yield* Conversations).start(
+			const users = yield* UserRepository;
+			const owner = yield* users.registerTelegramProfile(profile);
+			const conversations = yield* Conversations;
+			yield* conversations.start(
 				AddPetConversation.built,
 				{
 					ownerId: owner.user.id,
@@ -86,14 +86,14 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 						firstRuntime,
 					);
 					const resume = Effect.gen(function* () {
-						const result = yield* (yield* Conversations).resume(
+						const conversations = yield* Conversations;
+						const result = yield* conversations.resume(
 							AddPetConversation.built,
 							'Rex',
 							{ scope, updateId: 700 },
 						);
-						const pets = yield* (yield* PetRepository).listOwned(
-							ownerId as never,
-						);
+						const repository = yield* PetRepository;
+						const pets = yield* repository.listOwned(ownerId as never);
 						return { result, pets };
 					});
 					const secondRuntime = Layer.merge(
@@ -143,19 +143,21 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 					yield* Effect.provide(
 						Effect.provide(
 							Effect.gen(function* () {
-								const owner =
-									yield* (yield* UserRepository).registerTelegramProfile({
-										...profile,
-										telegramUserId:
-											Schema.decodeUnknownSync(TelegramUserId)(telegramId),
-										privateChatId:
-											Schema.decodeUnknownSync(TelegramChatId)(telegramId),
-									});
-								const pet = yield* (yield* PetRepository).addOwned(
+								const users = yield* UserRepository;
+								const owner = yield* users.registerTelegramProfile({
+									...profile,
+									telegramUserId:
+										Schema.decodeUnknownSync(TelegramUserId)(telegramId),
+									privateChatId:
+										Schema.decodeUnknownSync(TelegramChatId)(telegramId),
+								});
+								const pets = yield* PetRepository;
+								const pet = yield* pets.addOwned(
 									owner.user.id,
 									Schema.decodeUnknownSync(PetName)('Barto'),
 								);
-								yield* (yield* PetFoodRepository).setReminderDelay(
+								const food = yield* PetFoodRepository;
+								yield* food.setReminderDelay(
 									pet.id,
 									Duration.hours(2),
 									yield* DateTime.now,
@@ -184,12 +186,14 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 					return yield* Effect.provide(
 						Effect.provide(
 							Effect.gen(function* () {
-								const resumed = yield* (yield* Conversations).resume(
+								const conversations = yield* Conversations;
+								const resumed = yield* conversations.resume(
 									ConfigureReminderDelayConversation.built,
 									'Alterar',
 									{ scope, updateId: telegramId + 1 },
 								);
-								const row = yield* (yield* ConversationStorage).load(scope);
+								const storage = yield* ConversationStorage;
+								const row = yield* storage.load(scope);
 								return { resumed, row };
 							}),
 							ConversationsLive.layer,
@@ -214,7 +218,8 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 		const scope = { botId: 'carneloot', chatId: 9030, userId: 9030 };
 		const updateId = 7030;
 		const program = Effect.gen(function* () {
-			const owner = yield* (yield* UserRepository).registerTelegramProfile({
+			const users = yield* UserRepository;
+			const owner = yield* users.registerTelegramProfile({
 				...profile,
 				telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(9030),
 				privateChatId: Schema.decodeUnknownSync(TelegramChatId)(9030),

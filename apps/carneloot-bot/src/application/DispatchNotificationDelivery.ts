@@ -176,7 +176,8 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 			);
 			return;
 		}
-		const recipient = yield* (yield* NotificationRecipients).resolveOwner(
+		const recipients = yield* NotificationRecipients;
+		const recipient = yield* recipients.resolveOwner(
 			event.botId,
 			event.ownerUserId,
 		);

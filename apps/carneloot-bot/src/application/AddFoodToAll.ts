@@ -28,7 +28,8 @@ export const execute = (
 	source: SourceInput,
 ) =>
 	Effect.gen(function* () {
-		const pets = yield* (yield* PetRepository).listAccessible(access.actorId);
+		const repository = yield* PetRepository;
+		const pets = yield* repository.listAccessible(access.actorId);
 		const items = yield* Effect.forEach(
 			pets,
 			(pet) =>

@@ -107,9 +107,8 @@ export const built = ConversationBuilder.done(
 								telegramUserId: state.telegramUserId,
 								petId: pet.id,
 							});
-							const settings = yield* (yield* PetFoodRepository).getSettings(
-								pet.id,
-							);
+							const food = yield* PetFoodRepository;
+							const settings = yield* food.getSettings(pet.id);
 							return ConversationBuilder.to('confirm', {
 								...state,
 								petId: pet.id,

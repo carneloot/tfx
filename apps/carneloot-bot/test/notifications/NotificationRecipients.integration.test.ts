@@ -30,16 +30,15 @@ else
 		it('resolves owner private chat or an audited unreachable result', async () => {
 			const program = Effect.gen(function* () {
 				const telegramId = Math.floor(Math.random() * 1_000_000_000) + 1;
-				const registered =
-					yield* (yield* UserRepository).registerTelegramProfile({
-						botId,
-						telegramUserId:
-							Schema.decodeUnknownSync(TelegramUserId)(telegramId),
-						username: null,
-						firstName: 'Reachable',
-						lastName: null,
-						privateChatId: Schema.decodeUnknownSync(TelegramChatId)(telegramId),
-					});
+				const users = yield* UserRepository;
+				const registered = yield* users.registerTelegramProfile({
+					botId,
+					telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(telegramId),
+					username: null,
+					firstName: 'Reachable',
+					lastName: null,
+					privateChatId: Schema.decodeUnknownSync(TelegramChatId)(telegramId),
+				});
 				const missingId = Schema.decodeUnknownSync(UserId)(crypto.randomUUID());
 				const sql = yield* PgClient.PgClient;
 				yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${missingId}::uuid,now(),now())`;

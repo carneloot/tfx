@@ -18,6 +18,12 @@
 - Prefer independently installed worktrees, or run final checks from the main worktree.
 - For long-running or intercom-coordinated subagents, prefer manually managed Git worktrees over temporary automatic worktrees, which may be cleaned up after detachment.
 
+## Effect Service Access
+
+- Always yield Effect services into a named variable before calling their methods.
+- Prefer `const repository = yield* Repository; const value = yield* repository.get(...)` over `yield* (yield* Repository).get(...)`.
+- `HttpClient` is the only exception where inline service yielding is allowed.
+
 ## Pet Food Invariants
 
 - Accessible-pet discovery is only a snapshot. Reauthorize owner or caregiver access inside each mutation transaction.

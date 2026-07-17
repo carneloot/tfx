@@ -30,7 +30,8 @@ const start = (
 ) =>
 	Effect.gen(function* () {
 		const current = yield* CurrentUser;
-		const pets = yield* (yield* PetRepository).listOwned(current.user.id);
+		const repository = yield* PetRepository;
+		const pets = yield* repository.listOwned(current.user.id);
 		const context = yield* MessageContext.MessageContext;
 		if (pets.length === 0) {
 			yield* context.reply('Você não tem pets');
