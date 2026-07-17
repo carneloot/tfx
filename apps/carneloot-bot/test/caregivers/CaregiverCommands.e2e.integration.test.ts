@@ -217,6 +217,13 @@ else
 							expect(
 								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_jobs WHERE status='scheduled'`,
 							).toHaveLength(1);
+							yield* sql`INSERT INTO carneloot.notification_deliveries
+							(id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,created_at,updated_at)
+							SELECT ${crypto.randomUUID()}::uuid,e.id,e.owner_user_id,${owner.id},'owner','telegram','pending',now(),now()
+							FROM carneloot.notification_events e`;
+							expect(
+								yield* sql`SELECT id FROM carneloot.notification_deliveries`,
+							).toHaveLength(1);
 							// Non-owner cannot enter deletion flow; reminder transaction remains untouched.
 							yield* send('/deletar_pet', caregiver);
 							expect(sent.at(-1)).toEqual({
