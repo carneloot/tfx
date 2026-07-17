@@ -7,9 +7,9 @@ import { testConfig } from './internal/TestConfig.js';
 describe('portable Node composition', () => {
 	it('exports complete router metadata and production polling options', () => {
 		expect(Router.accountHandlers.entries).toHaveLength(1);
-		expect(Router.petHandlers.entries).toHaveLength(2);
+		expect(Router.petHandlers.entries).toHaveLength(8);
 		expect(Router.petFoodHandlers.entries).toHaveLength(4);
-		expect(Router.conversations).toHaveLength(4);
+		expect(Router.conversations).toHaveLength(10);
 		const polling = Production.pollingOptions(testConfig);
 		expect(polling.commands).toEqual([
 			{
@@ -18,6 +18,12 @@ describe('portable Node composition', () => {
 			},
 			{ command: 'adicionar_pet', description: 'Adicionar um pet' },
 			{ command: 'listar_pets', description: 'Listar seus pets' },
+			{ command: 'deletar_pet', description: 'Deletar um pet' },
+			{ command: 'adicionar_cuidador', description: 'Convidar cuidador' },
+			{ command: 'remover_cuidador', description: 'Remover cuidador' },
+			{ command: 'listar_cuidadores', description: 'Listar cuidadores' },
+			{ command: 'convites_pet', description: 'Responder convites de pets' },
+			{ command: 'parar_de_cuidar_pet', description: 'Parar de cuidar de um pet' },
 			{
 				command: 'configurar_inicio_dia',
 				description: 'Configurar início do dia do pet',

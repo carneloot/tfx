@@ -6,6 +6,15 @@ import { describe, expect, it } from 'vitest';
 
 import { ConversationOperationError } from '../src/domain/ApplicationError.js';
 import {
+	CaregiverAccessLost,
+	CaregiverInvitationNotFound,
+	CaregiverInvitationNotPending,
+	CaregiverRelationshipExists,
+	CaregiverSelfInvitation,
+	CaregiverUsernameAmbiguous,
+	CaregiverUsernameNotFound,
+} from '../src/domain/caregivers/CaregiverError.js';
+import {
 	DomainPersistenceError,
 	UserNotRegistered,
 } from '../src/domain/DomainError.js';
@@ -73,6 +82,9 @@ describe('Carneloot router error classification', () => {
 			_tag: 'PermanentInvalid',
 			reason: 'invalid-application-update',
 		});
+		const caregiverErrors = [CaregiverAccessLost, CaregiverInvitationNotFound, CaregiverInvitationNotPending, CaregiverRelationshipExists, CaregiverSelfInvitation, CaregiverUsernameAmbiguous, CaregiverUsernameNotFound];
+		for (const ErrorType of caregiverErrors)
+			expect(classifyError(new ErrorType({ message: 'invalid' }))).toEqual({ _tag: 'PermanentInvalid', reason: 'invalid-application-update' });
 		expect(
 			classifyError(
 				new TelegramError({

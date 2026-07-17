@@ -3,6 +3,7 @@ import { BotBuilder, Middleware } from 'tfx';
 import { describe, expect, it } from 'vitest';
 
 import * as AccountHandlers from '../src/bot/AccountHandlers.js';
+import * as CaregiverHandlers from '../src/bot/CaregiverHandlers.js';
 import { built } from '../src/bot/AddPetConversation.js';
 import { Carneloot } from '../src/bot/Declaration.js';
 import * as PetFoodHandlers from '../src/bot/PetFoodHandlers.js';
@@ -17,7 +18,13 @@ describe('public bot Layer construction', () => {
 		const pets = BotBuilder.group(Carneloot, 'pets', (handlers) =>
 			handlers
 				.handle('addPet', () => PetHandlers.startAddPet)
-				.handle('listPets', () => PetHandlers.listPets),
+				.handle('listPets', () => PetHandlers.listPets)
+				.handle('deletePet', () => CaregiverHandlers.startDeletePet)
+				.handle('inviteCaregiver', () => CaregiverHandlers.startInviteCaregiver)
+				.handle('removeCaregiver', () => CaregiverHandlers.startRemoveCaregiver)
+				.handle('listCaregivers', () => CaregiverHandlers.startListCaregivers)
+				.handle('petInvitations', () => CaregiverHandlers.startPetInvitations)
+				.handle('stopCaring', () => CaregiverHandlers.startStopCaring),
 		);
 		const petFood = BotBuilder.group(Carneloot, 'petFood', (handlers) =>
 			handlers

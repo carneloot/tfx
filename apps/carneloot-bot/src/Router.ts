@@ -4,9 +4,16 @@ import { isRetryableError, type TaggedError } from 'tfx/TaggedError';
 import * as AccountHandlers from './bot/AccountHandlers.js';
 import * as AddPetConversation from './bot/AddPetConversation.js';
 import * as CancelConversation from './bot/CancelConversation.js';
+import * as CaregiverHandlers from './bot/CaregiverHandlers.js';
 import * as AddFoodConversation from './bot/conversations/AddFoodConversation.js';
 import * as ConfigureDayStartConversation from './bot/conversations/ConfigureDayStartConversation.js';
 import * as ConfigureReminderDelayConversation from './bot/conversations/ConfigureReminderDelayConversation.js';
+import * as DeletePetConversation from './bot/conversations/DeletePetConversation.js';
+import * as InviteCaregiverConversation from './bot/conversations/InviteCaregiverConversation.js';
+import * as ListCaregiversConversation from './bot/conversations/ListCaregiversConversation.js';
+import * as PetInvitationsConversation from './bot/conversations/PetInvitationsConversation.js';
+import * as RemoveCaregiverConversation from './bot/conversations/RemoveCaregiverConversation.js';
+import * as StopCaringConversation from './bot/conversations/StopCaringConversation.js';
 import { Carneloot } from './bot/Declaration.js';
 import * as PetFoodHandlers from './bot/PetFoodHandlers.js';
 import * as PetHandlers from './bot/PetHandlers.js';
@@ -23,7 +30,13 @@ export const petHandlers = BotBuilder.buildGroup(
 	(handlers) =>
 		handlers
 			.handle('addPet', () => PetHandlers.startAddPet)
-			.handle('listPets', () => PetHandlers.listPets),
+			.handle('listPets', () => PetHandlers.listPets)
+			.handle('deletePet', () => CaregiverHandlers.startDeletePet)
+			.handle('inviteCaregiver', () => CaregiverHandlers.startInviteCaregiver)
+			.handle('removeCaregiver', () => CaregiverHandlers.startRemoveCaregiver)
+			.handle('listCaregivers', () => CaregiverHandlers.startListCaregivers)
+			.handle('petInvitations', () => CaregiverHandlers.startPetInvitations)
+			.handle('stopCaring', () => CaregiverHandlers.startStopCaring),
 );
 export const petFoodHandlers = BotBuilder.buildGroup(
 	Carneloot,
@@ -43,6 +56,12 @@ export const conversations = Object.freeze([
 	ConfigureDayStartConversation.built,
 	ConfigureReminderDelayConversation.built,
 	AddFoodConversation.built,
+	DeletePetConversation.built,
+	InviteCaregiverConversation.built,
+	RemoveCaregiverConversation.built,
+	ListCaregiversConversation.built,
+	PetInvitationsConversation.built,
+	StopCaringConversation.built,
 ]);
 const isTaggedError = (value: unknown): value is TaggedError =>
 	typeof value === 'object' &&
@@ -71,6 +90,13 @@ export const classifyError = (
 		case 'DuplicateFoodEntry':
 		case 'PetFoodError':
 		case 'MissingConversationScope':
+		case 'CaregiverUsernameAmbiguous':
+		case 'CaregiverUsernameNotFound':
+		case 'CaregiverSelfInvitation':
+		case 'CaregiverRelationshipExists':
+		case 'CaregiverInvitationNotFound':
+		case 'CaregiverInvitationNotPending':
+		case 'CaregiverAccessLost':
 			return DispatchOutcome.permanentInvalid('invalid-application-update');
 		case 'DomainPersistenceError':
 			return isRetryableError(error)

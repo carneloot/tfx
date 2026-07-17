@@ -16,7 +16,13 @@ BotBuilder.group(
 BotBuilder.group(Carneloot, 'pets', (handlers) =>
 	handlers
 		.handle('addPet', () => Effect.map(CurrentUser, () => undefined))
-		.handle('listPets', () => Effect.map(CurrentUser, () => undefined)),
+		.handle('listPets', () => Effect.map(CurrentUser, () => undefined))
+		.handle('deletePet', () => Effect.map(CurrentUser, () => undefined))
+		.handle('inviteCaregiver', () => Effect.map(CurrentUser, () => undefined))
+		.handle('removeCaregiver', () => Effect.map(CurrentUser, () => undefined))
+		.handle('listCaregivers', () => Effect.map(CurrentUser, () => undefined))
+		.handle('petInvitations', () => Effect.map(CurrentUser, () => undefined))
+		.handle('stopCaring', () => Effect.map(CurrentUser, () => undefined)),
 );
 BotBuilder.group(Carneloot, 'petFood', (handlers) =>
 	handlers
