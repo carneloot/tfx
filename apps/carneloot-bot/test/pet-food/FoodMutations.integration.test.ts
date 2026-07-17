@@ -80,6 +80,11 @@ else
 						},
 						now: utc('2024-01-02T09:00:00Z'),
 					});
+				const atStart = yield* makeEntry(
+					crypto.randomUUID(),
+					'2024-01-02T00:00:00Z',
+					4,
+				);
 				const first = yield* makeEntry(
 					crypto.randomUUID(),
 					'2024-01-02T10:00:00Z',
@@ -97,9 +102,10 @@ else
 					utc('2024-01-02T00:00:00Z'),
 					utc('2024-01-03T00:00:00Z'),
 				);
-				expect(listed.map((entry) => entry.id)).toEqual(
-					[first.id, second.id].sort().reverse(),
-				);
+				expect(listed.map((entry) => entry.id)).toEqual([
+					...[first.id, second.id].sort().reverse(),
+					atStart.id,
+				]);
 				expect(
 					yield* repository.lockEntry(
 						Schema.decodeUnknownSync(PetId)(crypto.randomUUID()),
