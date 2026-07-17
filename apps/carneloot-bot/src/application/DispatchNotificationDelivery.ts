@@ -134,6 +134,12 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 			);
 			return;
 		}
+		if (event.kind !== 'feeding-reminder')
+			return yield* Effect.fail(
+				new FeedingReminderPermanentError({
+					message: 'Unsupported notification event kind',
+				}),
+			);
 		if (
 			event.botId !== payload.botId ||
 			event.petId !== payload.petId ||

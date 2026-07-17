@@ -39,7 +39,13 @@ import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
-type Mode = 'success' | 'network' | 'rate' | 'block' | 'controlled';
+type Mode =
+	| 'success'
+	| 'network'
+	| 'rate'
+	| 'partial-rate'
+	| 'block'
+	| 'controlled';
 const control: {
 	mode: Mode;
 	calls: number;
@@ -81,7 +87,10 @@ const telegram = Layer.succeed(Telegram, {
 						reason: new NetworkError({ message: 'network' }),
 					}),
 				);
-			if (control.mode === 'rate')
+			if (
+				control.mode === 'rate' ||
+				(control.mode === 'partial-rate' && control.calls === 2)
+			)
 				return Effect.fail(
 					new TelegramError({
 						module: 'Telegram',
@@ -269,6 +278,45 @@ else
 					{ recipient_role: 'owner', status: 'sent' },
 					{ recipient_role: 'caregiver', status: 'sent' },
 					{ recipient_role: 'caregiver', status: 'sent' },
+				]);
+			});
+			await Effect.runPromise(Effect.provide(program, layer));
+			expect(control.calls).toBe(3);
+		});
+
+		it('retries only the failed caregiver after an owner send succeeds', async () => {
+			control.mode = 'partial-rate';
+			control.calls = 0;
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(2_000);
+				const fixture = yield* scheduleFixture;
+				yield* addCaregiver(fixture.pet.id);
+				yield* TestClock.setTime(3_000);
+				expect(yield* runFresh).toMatchObject({
+					status: 'scheduled',
+					runAt: DateTime.makeUnsafe(5_000),
+				});
+				const sql = yield* PgClient.PgClient;
+				const first = yield* sql<{
+					recipient_role: string;
+					status: string;
+					attempt_count: number;
+				}>`SELECT recipient_role,status,attempt_count FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC`;
+				expect(first).toEqual([
+					{ recipient_role: 'owner', status: 'sent', attempt_count: 1 },
+					{ recipient_role: 'caregiver', status: 'failed', attempt_count: 1 },
+				]);
+				control.mode = 'success';
+				yield* TestClock.setTime(5_000);
+				expect(yield* runFresh).toMatchObject({ status: 'completed' });
+				const final = yield* sql<{
+					recipient_role: string;
+					status: string;
+					attempt_count: number;
+				}>`SELECT recipient_role,status,attempt_count FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC`;
+				expect(final).toEqual([
+					{ recipient_role: 'owner', status: 'sent', attempt_count: 1 },
+					{ recipient_role: 'caregiver', status: 'sent', attempt_count: 2 },
 				]);
 			});
 			await Effect.runPromise(Effect.provide(program, layer));

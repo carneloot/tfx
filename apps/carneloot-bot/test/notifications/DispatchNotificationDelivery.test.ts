@@ -151,6 +151,7 @@ interface HarnessOptions {
 	readonly initialState?: 'pending' | 'sending' | 'failed' | 'sent' | 'unknown';
 	readonly finalize?: 'success' | 'false' | 'error';
 	readonly mismatchedEvent?: boolean;
+	readonly eventKind?: string;
 	readonly repositoryFailure?: NotificationRepositoryError['reason'];
 }
 const unused = () => Effect.die('unused');
@@ -176,7 +177,7 @@ const harness = (
 		botId: options.mismatchedEvent
 			? Schema.decodeUnknownSync(BotId)('another-bot')
 			: botId,
-		kind: 'feeding-reminder',
+		kind: options.eventKind ?? 'feeding-reminder',
 		ownerUserId: ownerId,
 		petId,
 		foodEntryId,
@@ -511,6 +512,22 @@ describe('delivery dispatcher', () => {
 			expect(h.calls()).toBe(0);
 		},
 	);
+
+	it('rejects unsupported event kinds before mutation or send', async () => {
+		const h = harness(Effect.succeed({ message_id: 7 }), {
+			eventKind: 'food-added',
+		});
+		const result = await Effect.runPromise(
+			Effect.provide(Effect.result(Dispatch.execute(payload)), h.layer),
+		);
+		expect(result).toMatchObject({
+			_tag: 'Failure',
+			failure: { _tag: 'FeedingReminderPermanentError' },
+		});
+		expect(h.cancelled()).toBe(false);
+		expect(h.materializations()).toBe(0);
+		expect(h.calls()).toBe(0);
+	});
 
 	it('cancels a mismatched persisted event before permanent failure', async () => {
 		const h = harness(Effect.succeed({ message_id: 7 }), {
