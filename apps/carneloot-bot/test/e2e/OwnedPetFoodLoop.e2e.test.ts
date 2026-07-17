@@ -143,7 +143,7 @@ if (!enabled)
 		it('requires TEST_DATABASE_URL or RUN_TESTCONTAINERS=true', () => {});
 	});
 else
-	describe.sequential('owned pet food loop E2E', () => {
+	describe('owned pet food loop E2E', () => {
 		it('drives exact public owned-pet transcript and durable state', async () => {
 			await Effect.runPromise(
 				Effect.provide(

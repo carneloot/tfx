@@ -126,7 +126,7 @@ if (!enabled)
 		it('requires PostgreSQL', () => {});
 	});
 else
-	describe.sequential('concurrency E2E', () => {
+	describe('concurrency E2E', () => {
 		it('deduplicates one update across independently scoped replica runtimes', async () => {
 			const count = Ref.makeUnsafe(0);
 			const entered = Deferred.makeUnsafe<void>();

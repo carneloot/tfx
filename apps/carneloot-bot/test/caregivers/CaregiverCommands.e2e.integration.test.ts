@@ -109,7 +109,7 @@ if (!enabled)
 		it('requires PostgreSQL', () => {});
 	});
 else
-	describe.sequential('caregiver command PostgreSQL E2E', () => {
+	describe('caregiver command PostgreSQL E2E', () => {
 		it('drives complete caregiver lifecycle and deletes reminder-backed pet', async () => {
 			await Effect.runPromise(
 				Effect.provide(

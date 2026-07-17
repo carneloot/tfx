@@ -113,7 +113,7 @@ if (!enabled)
 		it('requires PostgreSQL', () => {});
 	});
 else
-	describe.sequential('restart recovery E2E', () => {
+	describe('restart recovery E2E', () => {
 		it('resumes across real scopes, delivers once after restart, and recovers ambiguous fences', async () => {
 			await Effect.runPromise(
 				Effect.provide(
