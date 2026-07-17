@@ -29,7 +29,7 @@ const start = (
 ) =>
 	Effect.gen(function* () {
 		const current = yield* CurrentUser;
-		const pets = yield* ListPets.execute(current.user.id);
+		const pets = yield* (yield* PetRepository).listOwned(current.user.id);
 		const context = yield* MessageContext.MessageContext;
 		if (pets.length === 0) {
 			yield* context.reply('Você não tem pets');
@@ -109,7 +109,7 @@ export const foodStatus = Effect.gen(function* () {
 
 export const startAddFood = Effect.gen(function* () {
 	const current = yield* CurrentUser;
-	const pets = yield* (yield* PetRepository).listAccessible(current.user.id);
+	const pets = (yield* ListPets.execute(current.user.id)).map(({ pet }) => pet);
 	const context = yield* MessageContext.MessageContext;
 	if (pets.length === 0) {
 		yield* context.reply('Você não tem pets');

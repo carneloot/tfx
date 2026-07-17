@@ -33,14 +33,19 @@ const current = {
 	},
 	profile,
 };
-const run = async (names: ReadonlyArray<string>) => {
+const run = async (
+	items: ReadonlyArray<{ readonly name: string; readonly caregiver?: boolean }>,
+) => {
 	const replies: Array<string> = [];
-	const pets = names.map((name, index) => ({
+	const pets = items.map(({ name, caregiver }, index) => ({
 		id: Schema.decodeUnknownSync(PetId)(
 			`00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
 		),
-		ownerId,
+		ownerId: caregiver
+			? Schema.decodeUnknownSync(UserId)('00000000-0000-4000-8000-000000000099')
+			: ownerId,
 		name: Schema.decodeUnknownSync(PetName)(name),
+		nameKey: name.toLocaleLowerCase('pt-BR'),
 		createdAt: DateTime.makeUnsafe(0),
 		updatedAt: DateTime.makeUnsafe(0),
 	}));
@@ -72,7 +77,9 @@ describe('pet list handler', () => {
 	it('uses exact empty text', async () => {
 		expect(await run([])).toEqual(['Você não tem pets']);
 	});
-	it('renders deterministic numbered output', async () => {
-		expect(await run(['Bidu', 'Rex'])).toEqual(['1. Bidu\n2. Rex']);
+	it('sorts accessible pets and marks only caregiver projections', async () => {
+		expect(
+			await run([{ name: 'Rex', caregiver: true }, { name: 'Bidu' }]),
+		).toEqual(['1. Bidu\n2. Rex (cuidando)']);
 	});
 });

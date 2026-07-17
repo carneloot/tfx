@@ -7,7 +7,7 @@ import type { BotId, TelegramUserId, UserId } from '../domain/Ids.js';
 import * as DayBoundary from '../domain/pet-food/DayBoundary.js';
 import type { Pet } from '../domain/Pet.js';
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
-import { PetRepository } from '../ports/PetRepository.js';
+import * as ListPets from './ListPets.js';
 import { authorize } from './PetFoodAccess.js';
 
 export interface Identity {
@@ -28,13 +28,12 @@ const PetFoodStatus = Data.taggedEnum<PetFoodStatus>();
 export const execute = (identity: Identity) =>
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
-		const pets = yield* PetRepository;
 		const food = yield* PetFoodRepository;
 		return yield* sql.withTransaction(
 			Effect.gen(function* () {
-				const owned = yield* pets.listAccessible(identity.actorId);
+				const accessible = yield* ListPets.execute(identity.actorId);
 				const now = yield* DateTime.now;
-				return yield* Effect.forEach(owned, (pet) =>
+				return yield* Effect.forEach(accessible, ({ pet }) =>
 					Effect.gen(function* () {
 						yield* authorize({ ...identity, petId: pet.id });
 						const settings = yield* food.getSettings(pet.id);

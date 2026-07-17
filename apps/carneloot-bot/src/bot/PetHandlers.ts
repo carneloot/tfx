@@ -47,6 +47,11 @@ export const listPets = Effect.gen(function* () {
 	yield* context.reply(
 		pets.length === 0
 			? 'Você não tem pets'
-			: pets.map((pet, index) => `${index + 1}. ${pet.name}`).join('\n'),
+			: pets
+					.map(
+						({ pet, role }, index) =>
+							`${index + 1}. ${pet.name}${role === 'caregiver' ? ' (cuidando)' : ''}`,
+					)
+					.join('\n'),
 	);
 });

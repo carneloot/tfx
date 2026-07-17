@@ -7,7 +7,6 @@ import {
 } from 'tfx';
 
 import * as ListPetInvitations from '../application/ListPetInvitations.js';
-import * as ListPets from '../application/ListPets.js';
 import { ConversationOperationError } from '../domain/ApplicationError.js';
 import type { PetId } from '../domain/Ids.js';
 import { PetCaregiverRepository } from '../ports/PetCaregiverRepository.js';
@@ -69,7 +68,7 @@ const owned = <B extends Conversations.BuiltConversation<any, any>>(
 ) =>
 	Effect.gen(function* () {
 		const current = yield* CurrentUser;
-		const pets = yield* ListPets.execute(current.user.id);
+		const pets = yield* (yield* PetRepository).listOwned(current.user.id);
 		const first = pets[0];
 		if (first === undefined) {
 			yield* (yield* MessageContext.MessageContext).reply('Você não tem pets');
