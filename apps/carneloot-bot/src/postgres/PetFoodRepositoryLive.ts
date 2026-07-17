@@ -249,6 +249,17 @@ export const layer = Layer.effect(
 					),
 					(rows) => rows[0],
 				),
+			listEntries: (petId, start, end) =>
+				entries(
+					sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND fed_at>=${DateTime.toDateUtc(start)} AND fed_at<${DateTime.toDateUtc(end)} ORDER BY fed_at DESC,id DESC`,
+				),
+			lockEntry: (petId, entryId) =>
+				Effect.map(
+					entries(
+						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND id=${entryId}::uuid FOR UPDATE`,
+					),
+					(rows) => rows[0],
+				),
 			findBySource: (petId, botId, updateId) =>
 				Effect.map(
 					entries(
@@ -260,6 +271,13 @@ export const layer = Layer.effect(
 				Effect.map(
 					entries(
 						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND abs(extract(epoch FROM (fed_at-${DateTime.toDateUtc(fedAt)}::timestamptz))*1000) < 60000 ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
+					),
+					(rows) => rows[0],
+				),
+			findBusinessDuplicateExcluding: (petId, fedAt, excludedEntryId) =>
+				Effect.map(
+					entries(
+						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND id<>${excludedEntryId}::uuid AND abs(extract(epoch FROM (fed_at-${DateTime.toDateUtc(fedAt)}::timestamptz))*1000) < 60000 ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
 					),
 					(rows) => rows[0],
 				),
@@ -277,6 +295,20 @@ export const layer = Layer.effect(
 							}),
 					),
 					'Food insert failed',
+				),
+			updateEntry: (entryId, amountMg, fedAt, now) =>
+				Effect.map(
+					entries(
+						sql`UPDATE carneloot.pet_food_entries SET amount_mg=${amountMg},fed_at=${DateTime.toDateUtc(fedAt)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${entryId}::uuid RETURNING *`,
+					),
+					(rows) => rows[0],
+				),
+			deleteEntry: (entryId) =>
+				Effect.map(
+					entries(
+						sql`DELETE FROM carneloot.pet_food_entries WHERE id=${entryId}::uuid RETURNING *`,
+					),
+					(rows) => rows[0],
 				),
 			status: (petId, start, end) =>
 				protect(

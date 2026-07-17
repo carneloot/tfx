@@ -64,6 +64,15 @@ export interface PetFoodRepositoryService {
 	readonly latestEntry: (
 		petId: PetId,
 	) => Effect.Effect<PetFoodEntry | undefined, PetFoodRepositoryError>;
+	readonly listEntries: (
+		petId: PetId,
+		start: DateTime.Utc,
+		end: DateTime.Utc,
+	) => Effect.Effect<ReadonlyArray<PetFoodEntry>, PetFoodRepositoryError>;
+	readonly lockEntry: (
+		petId: PetId,
+		entryId: FoodEntryId,
+	) => Effect.Effect<PetFoodEntry | undefined, PetFoodRepositoryError>;
 	readonly findBySource: (
 		petId: PetId,
 		botId: BotId,
@@ -73,9 +82,23 @@ export interface PetFoodRepositoryService {
 		petId: PetId,
 		fedAt: DateTime.Utc,
 	) => Effect.Effect<PetFoodEntry | undefined, PetFoodRepositoryError>;
+	readonly findBusinessDuplicateExcluding: (
+		petId: PetId,
+		fedAt: DateTime.Utc,
+		excludedEntryId: FoodEntryId,
+	) => Effect.Effect<PetFoodEntry | undefined, PetFoodRepositoryError>;
 	readonly insert: (
 		entry: NewFoodEntry,
 	) => Effect.Effect<PetFoodEntry, PetFoodRepositoryError>;
+	readonly updateEntry: (
+		entryId: FoodEntryId,
+		amountMg: FoodAmount,
+		fedAt: DateTime.Utc,
+		now: DateTime.Utc,
+	) => Effect.Effect<PetFoodEntry | undefined, PetFoodRepositoryError>;
+	readonly deleteEntry: (
+		entryId: FoodEntryId,
+	) => Effect.Effect<PetFoodEntry | undefined, PetFoodRepositoryError>;
 	readonly status: (
 		petId: PetId,
 		start: DateTime.Utc,
