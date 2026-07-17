@@ -83,7 +83,7 @@ Drive updates through runtime:
 8. caregiver stops caring;
 9. owner deletes pet.
 
-Assert PostgreSQL state, Portuguese messages, menu declarations, and one transition per update.
+Assert PostgreSQL state, Portuguese messages, menu declarations, one transition per update, and exact reply-keyboard lifecycle from Plan 7.5: finite choices render expected rows, `Cancelar` is visible on selection/action keyboards, and free-text/terminal replies remove stale keyboards.
 
 - [ ] **Step 2: Add notification/reply path**
 
@@ -109,7 +109,7 @@ git commit -m "test(carneloot): prove shared pet food system"
 
 - [ ] **Step 1: Add restart scenarios**
 
-Stop/rebuild Layers during caregiver invitation, food correction, and deletion conversations; resume from PostgreSQL state. Restart while reminder/food-added job scheduled and while delivery is `sending`; assert scheduled work recovers and expired sending becomes unknown.
+Stop/rebuild Layers during caregiver invitation, food correction, and deletion conversations; resume from PostgreSQL state and accept a valid button label for the persisted current step. Restart while reminder/food-added job scheduled and while delivery is `sending`; assert scheduled work recovers and expired sending becomes unknown.
 
 - [ ] **Step 2: Add duplicate-update scenarios**
 
@@ -273,7 +273,7 @@ Expected: tfx packed command declarations support aliases, exports include Messa
 
 - [ ] **Step 3: Run fresh code review**
 
-Review against Slice 2 checklist: six pet/caregiver commands, two all-pet aliases, correction/deletion, reminder replies, safe source replies, caregiver reminders, silent notifications, corrected rescheduling, importer. Final Slice 2 Telegram menu contains 17 command names; `/cancelar` remains lifecycle-only until Slice 3 declaration. Check SQL parameterization, access rechecks, exact message identity, recipient fencing, report sanitization, and Slice 3 exclusions.
+Review against Slice 2 checklist: six pet/caregiver commands, two all-pet aliases, correction/deletion, reminder replies, safe source replies, caregiver reminders, silent notifications, corrected rescheduling, importer, and Plan 7.5 conversation keyboards. Final Slice 2 Telegram menu contains 17 command names; `/cancelar` remains lifecycle-only until Slice 3 declaration. Check SQL parameterization, access rechecks, exact message identity, recipient fencing, report sanitization, finite-choice keyboard coverage, visible cancellation, stale-keyboard removal, and Slice 3 exclusions.
 
 - [ ] **Step 4: Fix findings with follow-up commits**
 
@@ -289,6 +289,7 @@ git commit -m "chore: prepare slice two release proof"
 ## Acceptance criteria
 
 - All Slice 2 commands and aliases are declared, handled, and demonstrated.
+- Every finite conversation choice renders a typed reply keyboard; cancellation and free-text/terminal keyboard removal are proven through recorded Telegram requests.
 - Complete caregiver→shared food→notification→reply→revocation path passes with real PostgreSQL.
 - Restart, duplicate updates, same-chat ordering, cross-chat concurrency, correction/deletion, backdated food, Telegram failures, and malformed results are covered.
 - Import dry-run/cutover/rerun is proven end to end.

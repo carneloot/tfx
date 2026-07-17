@@ -1,6 +1,6 @@
 # Slice 2 Complete Shared Pet-Food System Implementation Plan Roadmap
 
-**Goal:** Deliver complete caregiver lifecycle, shared pet-food mutations, safe reply workflows, caregiver notifications, and validated legacy import through eight dependency-ordered plans.
+**Goal:** Deliver complete caregiver lifecycle, shared pet-food mutations, safe reply workflows, caregiver notifications, validated legacy import, and consistent conversation keyboards through nine dependency-ordered plans.
 
 **Architecture:** Slice 2 extends completed Slice 1 without duplicating tfx, PostgreSQL, or test infrastructure. Portable message-handler declarations belong in `tfx`; all caregiver, food, notification, and import behavior remains owned by `apps/carneloot-bot`, with domain writes sharing one `PgClient` transaction and Telegram output occurring after commit.
 
@@ -23,7 +23,8 @@
 11. **Importer validates before promotion.** Standalone CLI opens legacy libSQL read-only, schema-decodes every source row, builds deterministic records, and writes nothing during validation. Unsafe records are reported with table/key/reason; required-parent or invalid-config failures block promotion. Optional history rows lacking safe chat identity are skipped and counted.
 12. **Importer promotion is repeatable.** One PostgreSQL serializable transaction, guarded by an advisory lock, upserts deterministic UUIDv5-mapped rows and a ledger keyed by `(source_fingerprint, source_table, source_key)`. Exact rerun is a no-op; incompatible existing target data aborts promotion. Dry-run performs source read, mapping, verification, and report only. Post-commit reminder rebuild is separately idempotent through stable per-pet conflict keys.
 13. **Importer prepares Slice 3 data, not behavior.** Slice 2 creates and imports `api_keys`, `notification_templates`, and `notification_subscriptions` because hashes/templates/subscriptions must survive cutover. It adds no API-key command, external notification endpoint, template-management API, or subscriber reply forwarding.
-14. **No parallel test framework.** All plans extend Slice 1 helpers under `apps/carneloot-bot/test` and `packages/tfx/test/internal`. Public `@tfx/testing*` extraction remains Slice 4.
+14. **Finite choices use keyboards.** Every conversation step whose valid responses form a finite rendered set uses one typed reply keyboard. Open-ended names, usernames, amounts/timestamps, durations, and timezones remain text input. Selection/action keyboards expose `Cancelar`; free-text and terminal boundaries remove stale keyboards. Button selection never replaces current access rechecks.
+15. **No parallel test framework.** All plans extend Slice 1 helpers under `apps/carneloot-bot/test` and `packages/tfx/test/internal`. Public `@tfx/testing*` extraction remains Slice 4.
 
 ## Plans and dependency order
 
@@ -36,17 +37,19 @@
 | 5 | [`slice-2-05-caregiver-notifications`](./2026-07-16-slice-2-05-caregiver-notifications.md) | 1, 3 | Frozen owner/caregiver reminder recipients and silent food-added deliveries |
 | 6 | [`slice-2-06-message-reply-routing`](./2026-07-16-slice-2-06-message-reply-routing.md) | 3–5 | Typed tfx message handlers plus durable, safe reminder/source reply mutations |
 | 7 | [`slice-2-07-legacy-importer`](./2026-07-16-slice-2-07-legacy-importer.md) | 1, 4, 5 | Dry-run-capable, deterministic, verified SQLite/libSQL-to-PostgreSQL importer |
-| 8 | [`slice-2-08-integration-release`](./2026-07-16-slice-2-08-integration-release.md) | 1–7 | Real-PostgreSQL end-to-end milestone proof under Node and Bun |
+| 7.5 | [`slice-2-07-5-conversation-keyboards`](./2026-07-16-slice-2-07-5-conversation-keyboards.md) | 2–4 | Every finite conversation choice rendered through a typed reply keyboard with complete removal/cancellation proof |
+| 8 | [`slice-2-08-integration-release`](./2026-07-16-slice-2-08-integration-release.md) | 1–7.5 | Real-PostgreSQL end-to-end milestone proof under Node and Bun |
 
 ```text
 01 ─┬→ 02
     └→ 03 ─┬→ 04 ─┬→ 06
             └→ 05 ─┘
 01, 04, 05 ───────→ 07
-02, 03, 04, 05, 06, 07 → 08
+02, 03, 04 ───────→ 07.5
+02, 03, 04, 05, 06, 07, 07.5 → 08
 ```
 
-Plans 2 and 3 may proceed independently after Plan 1. Plan 5 needs shared actor/owner semantics from Plan 3. Plan 7 targets final Slice 2 schema and therefore follows Plans 1, 4, and 5.
+Plans 2 and 3 may proceed independently after Plan 1. Plan 5 needs shared actor/owner semantics from Plan 3. Plan 7 targets final Slice 2 schema and therefore follows Plans 1, 4, and 5. Plan 7.5 normalizes conversation UX after the relevant workflows exist and must finish before Plan 8 release proof.
 
 ## Cross-plan invariants
 
