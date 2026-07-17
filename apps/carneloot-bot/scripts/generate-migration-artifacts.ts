@@ -10,7 +10,9 @@ import * as Path from 'effect/Path';
 
 const migrationPattern = /^(\d{4})_[a-z0-9_]+\.sql$/u;
 
-class MigrationArtifactError extends Data.TaggedError('MigrationArtifactError')<{
+class MigrationArtifactError extends Data.TaggedError(
+	'MigrationArtifactError',
+)<{
 	readonly message: string;
 }> {}
 
@@ -20,7 +22,8 @@ export const renderMigrationArtifact = (
 	checksum: string,
 ): string => {
 	const match = migrationPattern.exec(fileName);
-	if (match === null) throw new Error(`Invalid migration filename: ${fileName}`);
+	if (match === null)
+		throw new Error(`Invalid migration filename: ${fileName}`);
 	const version = match[1];
 	const quoteSingle = (value: string) =>
 		`'${value
@@ -42,11 +45,7 @@ export const generateMigrationArtifacts = (options: {
 		const path = yield* Path.Path;
 		const crypto = yield* Crypto.Crypto;
 		const migrationsDirectory = path.join(options.appDirectory, 'migrations');
-		const outputDirectory = path.join(
-			options.appDirectory,
-			'src',
-			'postgres',
-		);
+		const outputDirectory = path.join(options.appDirectory, 'src', 'postgres');
 		const files = (yield* fs.readDirectory(migrationsDirectory))
 			.filter((file) => migrationPattern.test(file))
 			.sort();
@@ -82,9 +81,7 @@ export const generateMigrationArtifacts = (options: {
 
 					if (options.check) {
 						const exists = yield* fs.exists(outputPath);
-						const actual = exists
-							? yield* fs.readFileString(outputPath)
-							: '';
+						const actual = exists ? yield* fs.readFileString(outputPath) : '';
 						if (actual !== rendered) {
 							return yield* Effect.fail(
 								new MigrationArtifactError({
@@ -100,7 +97,7 @@ export const generateMigrationArtifacts = (options: {
 						Effect.annotateLogs({ migration: fileName, outputPath }),
 					);
 				}),
-			{ concurrency: 'unbounded', discard: true },
+			{ concurrency: 1, discard: true },
 		);
 	});
 
