@@ -11,6 +11,7 @@ import { JobStoreError } from 'tfx/JobStore';
 import { describe, expect, it } from 'vitest';
 
 import * as AddFood from '../../src/application/AddFood.js';
+import * as ReconcileFoodReminder from '../../src/application/ReconcileFoodReminder.js';
 import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import { FoodAmountMg } from '../../src/domain/pet-food/FoodAmount.js';
@@ -127,6 +128,27 @@ if (!enabled)
 	});
 else
 	describe('feeding reminder scheduling PostgreSQL', () => {
+		it('persists reminder selected by reconciliation', async () => {
+			const program = Effect.gen(function* () {
+				const { user, pet, entry } = yield* fixture;
+				yield* ReconcileFoodReminder.reconcile({
+					botId,
+					ownerUserId: user.user.id,
+					petId: pet.id,
+					before: undefined,
+				});
+				const sql = yield* PgClient.PgClient;
+				const active = yield* sql<{
+					food_entry_id: string;
+					scheduled_for: Date;
+				}>`SELECT food_entry_id,scheduled_for FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${pet.id}::uuid AND status='scheduled'`;
+				expect(active).toHaveLength(1);
+				expect(active[0]?.food_entry_id).toBe(entry.id);
+				expect(active[0]?.scheduled_for.getTime()).toBe(3_000);
+			});
+			await Effect.runPromise(Effect.provide(program, layer));
+		});
+
 		it('atomically schedules, idempotently replaces, cancels, and survives runtime rebuild', async () => {
 			const program = Effect.gen(function* () {
 				yield* TestClock.setTime(2_000);
