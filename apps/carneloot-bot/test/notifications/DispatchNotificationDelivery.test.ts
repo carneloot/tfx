@@ -370,6 +370,7 @@ const harness = (
 					createdAt: DateTime.makeUnsafe(0),
 					updatedAt: DateTime.makeUnsafe(0),
 				}),
+			deleteOwned: () => Effect.die('unused'),
 			addOwned: () => Effect.die('unused'),
 			listOwned: () => Effect.die('unused'),
 			listAccessible: () => Effect.die('unused'),

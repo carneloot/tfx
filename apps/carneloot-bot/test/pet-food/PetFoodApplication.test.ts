@@ -73,6 +73,7 @@ const authorizationLayers = (
 			findById: unused,
 			lockById: () =>
 				Effect.succeed(options.petExists === false ? undefined : pet),
+			deleteOwned: unused,
 			addOwned: unused,
 			listOwned: unused,
 			listAccessible: unused,

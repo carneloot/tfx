@@ -240,6 +240,7 @@ const harness = (): Harness => {
 			authorizationFails.value
 				? Effect.succeed(undefined)
 				: Effect.succeed(pet),
+		deleteOwned: () => Effect.die('unused'),
 		addOwned: () => Effect.die('unused'),
 		listOwned: () => Effect.succeed([pet]),
 		listAccessible: () => Effect.succeed([pet]),
@@ -590,6 +591,7 @@ describe('pet food conversation transcripts', () => {
 		const emptyPets: PetRepositoryService = {
 			findById: () => Effect.die('unused'),
 			lockById: () => Effect.die('unused'),
+			deleteOwned: () => Effect.die('unused'),
 			addOwned: () => Effect.die('unused'),
 			listOwned: () => Effect.succeed([]),
 			listAccessible: () => Effect.succeed([]),

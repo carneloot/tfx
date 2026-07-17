@@ -58,6 +58,7 @@ const run = async (names: ReadonlyArray<string>) => {
 			Layer.succeed(PetRepository, {
 				findById: () => Effect.die('unused'),
 				lockById: () => Effect.die('unused'),
+				deleteOwned: () => Effect.die('unused'),
 				addOwned: () => Effect.die('unused'),
 				listOwned: () => Effect.succeed(pets),
 				listAccessible: () => Effect.succeed(pets),

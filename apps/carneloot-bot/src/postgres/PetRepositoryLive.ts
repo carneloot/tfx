@@ -110,6 +110,11 @@ export const layer = Layer.effect(
 		const service = {
 			findById: (petId) => lookup(petId, false),
 			lockById: (petId) => lookup(petId, true),
+			deleteOwned: (ownerId, petId) =>
+				sql`DELETE FROM carneloot.pets WHERE id=${petId}::uuid AND owner_id=${ownerId}::uuid RETURNING id`.pipe(
+					Effect.map((rows) => rows.length === 1),
+					Effect.mapError(persistence),
+				),
 			addOwned: (ownerId, name) =>
 				sql
 					.withTransaction(

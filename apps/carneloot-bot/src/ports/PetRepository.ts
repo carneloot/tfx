@@ -16,6 +16,10 @@ export interface PetRepositoryService {
 	readonly lockById: (
 		petId: PetId,
 	) => Effect.Effect<Pet | undefined, DomainPersistenceError>;
+	readonly deleteOwned: (
+		ownerId: UserId,
+		petId: PetId,
+	) => Effect.Effect<boolean, DomainPersistenceError>;
 	readonly addOwned: (
 		ownerId: UserId,
 		name: PetName,

@@ -67,6 +67,7 @@ describe('AddPetConversation', () => {
 		const petLayer = Layer.succeed(PetRepository, {
 			findById: () => Effect.die('unused'),
 			lockById: () => Effect.die('unused'),
+			deleteOwned: () => Effect.die('unused'),
 			addOwned: (_owner, name) =>
 				Effect.sync(() => ({
 					id: '00000000-0000-4000-8000-000000000002' as never,
@@ -134,6 +135,7 @@ describe('AddPetConversation', () => {
 		const petLayer = Layer.succeed(PetRepository, {
 			findById: () => Effect.die('unused'),
 			lockById: () => Effect.die('unused'),
+			deleteOwned: () => Effect.die('unused'),
 			addOwned: () => {
 				inserts++;
 				return Effect.fail(new PetNameAlreadyExists({ message: 'duplicate' }));
@@ -179,6 +181,7 @@ describe('AddPetConversation', () => {
 		const petLayer = Layer.succeed(PetRepository, {
 			findById: () => Effect.die('unused'),
 			lockById: () => Effect.die('unused'),
+			deleteOwned: () => Effect.die('unused'),
 			addOwned: () => {
 				inserts++;
 				return Effect.die('must not run');

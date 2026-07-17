@@ -142,6 +142,7 @@ const provide = <A, E, R>(
 			Layer.succeed(Telegram, {} as never),
 			Layer.succeed(PetRepository, {
 				lockById: () => Effect.succeed(pet),
+				deleteOwned: () => Effect.die('unused'),
 				listAccessible: () => Effect.succeed(pets),
 				findById: () => Effect.die('unused'),
 				addOwned: () => Effect.die('unused'),
