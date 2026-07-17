@@ -31,6 +31,7 @@ import {
 } from '../../src/domain/pet-food/PetFood.js';
 import { PetAccessDenied } from '../../src/domain/pet-food/PetFoodError.js';
 import { PetName } from '../../src/domain/Pet.js';
+import { FoodNotificationScheduler } from '../../src/ports/FoodNotificationScheduler.js';
 import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import {
 	PetFoodRepository,
@@ -115,6 +116,7 @@ interface Harness {
 		| UserRepository
 		| PetRepository
 		| ReminderScheduler
+		| FoodNotificationScheduler
 		| PgClient.PgClient
 		| MessageContext
 		| Telegram
@@ -280,6 +282,9 @@ const harness = (): Harness => {
 			listAcceptedForUser: () => Effect.die('unused'),
 		}),
 		Layer.succeed(ReminderScheduler, reminders),
+		Layer.succeed(FoodNotificationScheduler, {
+			scheduleAdded: () => Effect.void,
+		}),
 		Layer.succeed(PgClient.PgClient, client as unknown as PgClient.PgClient),
 		Layer.succeed(MessageContext, context),
 		Layer.succeed(Telegram, {} as never),

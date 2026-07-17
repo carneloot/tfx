@@ -30,6 +30,7 @@ import {
 	PetFoodSettings,
 } from '../../src/domain/pet-food/PetFood.js';
 import { PetName } from '../../src/domain/Pet.js';
+import { FoodNotificationScheduler } from '../../src/ports/FoodNotificationScheduler.js';
 import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import {
 	PetFoodRepository,
@@ -124,6 +125,9 @@ const scheduler = Layer.succeed(ReminderScheduler, {
 	replaceForLatest: () => Effect.void,
 	cancelForPet: () => Effect.void,
 });
+const foodNotifications = Layer.succeed(FoodNotificationScheduler, {
+	scheduleAdded: () => Effect.void,
+});
 const provide = <A, E, R>(
 	effect: Effect.Effect<A, E, R>,
 	food: PetFoodRepositoryService,
@@ -133,6 +137,7 @@ const provide = <A, E, R>(
 		effect,
 		Layer.mergeAll(
 			Layer.succeed(CurrentUser, current),
+			foodNotifications,
 			Layer.succeed(MessageContext, messageContext),
 			Layer.succeed(UpdateContext, {
 				update: { update_id: 10 } as never,

@@ -41,6 +41,7 @@ export * as FoodNotificationSchedulerLive from './postgres/FoodNotificationSched
 export * as FeedingReminderJob from './jobs/FeedingReminderJob.js';
 export * as FoodAddedNotificationJob from './jobs/FoodAddedNotificationJob.js';
 export * as FeedingReminderJobLive from './jobs/FeedingReminderJobLive.js';
+export * as FoodAddedNotificationJobLive from './jobs/FoodAddedNotificationJobLive.js';
 export * as DispatchNotificationDelivery from './application/DispatchNotificationDelivery.js';
 export * as RecoverStaleDeliveries from './application/RecoverStaleDeliveries.js';
 export * as AppMigrator from './postgres/AppMigrator.js';

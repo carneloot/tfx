@@ -13,6 +13,8 @@ import { JobRuntime, type JobRuntimeService } from 'tfx/JobRuntime';
 import { JobStoreError } from 'tfx/JobStore';
 import { describe, expect, it } from 'vitest';
 
+import * as FeedingReminderJob from '../src/jobs/FeedingReminderJob.js';
+import * as FoodAddedNotificationJob from '../src/jobs/FoodAddedNotificationJob.js';
 import { JobWorker } from '../src/JobWorker.js';
 import * as JobWorkerLive from '../src/JobWorker.js';
 import { NotificationRepository } from '../src/ports/NotificationRepository.js';
@@ -66,6 +68,13 @@ const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
 };
 
 describe('JobWorker', () => {
+	it('registers distinct reminder and food-added declarations', () => {
+		expect([
+			FeedingReminderJob.declaration.name,
+			FoodAddedNotificationJob.declaration.name,
+		]).toEqual(['feeding-reminder', 'food-added-notification']);
+	});
+
 	it('recovers first, reports problems, drains immediately, then idles', async () => {
 		let calls = 0;
 		const idle = Deferred.makeUnsafe<void>();

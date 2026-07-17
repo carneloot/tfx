@@ -2,6 +2,7 @@ import { Duration, Effect, Layer, Schema } from 'effect';
 import { JobRuntime, type JobRuntimeService } from 'tfx/JobRuntime';
 import { describe, expect, it } from 'vitest';
 
+import * as DispatchNotificationDelivery from '../../src/application/DispatchNotificationDelivery.js';
 import { BotId, PetId, TelegramChatId, UserId } from '../../src/domain/Ids.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import * as RecipientRole from '../../src/domain/notifications/RecipientRole.js';
@@ -16,6 +17,18 @@ import {
 import * as FoodNotificationSchedulerLive from '../../src/postgres/FoodNotificationSchedulerLive.js';
 
 describe('FoodAddedNotificationJob declaration', () => {
+	it('renders actor, pet, amount, and optional localized timestamp', () => {
+		expect(
+			DispatchNotificationDelivery.foodAddedText('Ana Silva', 'Rex', 50_000),
+		).toBe('Ana Silva colocou 50 g de ração para Rex.');
+		expect(
+			DispatchNotificationDelivery.foodAddedText('Ana Silva', 'Rex', 50_000, {
+				date: new Date('2026-07-16T11:30:00Z'),
+				timeZone: 'America/Sao_Paulo',
+			}),
+		).toBe('Ana Silva colocou 50 g de ração para Rex em 16/07/2026 08:30.');
+	});
+
 	it('owns versioned payload and bounded retry policy', () => {
 		const payload = {
 			eventId: Schema.decodeUnknownSync(EventId)(

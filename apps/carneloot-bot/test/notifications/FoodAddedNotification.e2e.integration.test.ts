@@ -1,14 +1,15 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import * as TfxPostgres from '@tfx/postgres/TfxPostgres';
 import { DateTime, Effect, Layer, Schema } from 'effect';
-import * as Job from 'tfx/Job';
+import { JobRuntime } from 'tfx/JobRuntime';
 import * as JobRuntimeLive from 'tfx/JobRuntime';
+import { Telegram } from 'tfx/Telegram';
 import { describe, expect, it } from 'vitest';
 
 import * as AddFood from '../../src/application/AddFood.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../src/domain/Ids.js';
 import { FoodAmount } from '../../src/domain/pet-food/FoodAmount.js';
-import * as FoodAddedNotificationJob from '../../src/jobs/FoodAddedNotificationJob.js';
+import * as FoodAddedNotificationJobLive from '../../src/jobs/FoodAddedNotificationJobLive.js';
 import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
 import * as FoodNotificationSchedulerLive from '../../src/postgres/FoodNotificationSchedulerLive.js';
 import * as RepositoriesLive from '../../src/postgres/RepositoriesLive.js';
@@ -17,10 +18,14 @@ import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
-const implementation = Job.implement(
-	FoodAddedNotificationJob.declaration,
-	() => Effect.void,
-);
+const sent: Array<Record<string, unknown>> = [];
+const telegram = Layer.succeed(Telegram, {
+	sendMessage: (request: Record<string, unknown>) =>
+		Effect.sync(() => {
+			sent.push(request);
+			return { message_id: sent.length };
+		}),
+} as never);
 const pg = PostgresTestLayer.layer;
 const stores = Layer.provideMerge(
 	Layer.merge(
@@ -30,8 +35,8 @@ const stores = Layer.provideMerge(
 	pg,
 );
 const runtime = Layer.provideMerge(
-	JobRuntimeLive.layer(implementation),
-	stores,
+	JobRuntimeLive.layer(FoodAddedNotificationJobLive.implementation),
+	Layer.merge(stores, telegram),
 );
 const foodScheduler = Layer.provideMerge(
 	FoodNotificationSchedulerLive.layer,
@@ -41,7 +46,13 @@ const reminder = Layer.succeed(ReminderScheduler, {
 	replaceForLatest: () => Effect.void,
 	cancelForPet: () => Effect.void,
 });
-const liveLayer = Layer.mergeAll(stores, runtime, foodScheduler, reminder);
+const liveLayer = Layer.mergeAll(
+	stores,
+	runtime,
+	foodScheduler,
+	reminder,
+	telegram,
+);
 
 const setup = (options: { readonly ownerIdentity?: boolean } = {}) =>
 	Effect.gen(function* () {
@@ -169,6 +180,77 @@ else
 				{ status: 'failed', recipient_chat_id: null },
 			]);
 			expect(result.ownerEvents).toHaveLength(0);
+		});
+
+		it('delivers silent localized message and persists exact Telegram identity', async () => {
+			const program = Effect.gen(function* () {
+				sent.length = 0;
+				const fixture = yield* setup();
+				const result = yield* add(fixture.caregiverAccess, 75, '08:30');
+				const jobs = yield* JobRuntime;
+				const records = [
+					yield* jobs.runOne(),
+					yield* jobs.runOne(),
+					yield* jobs.runOne(),
+				];
+				const deliveries = yield* fixture.sql<{
+					status: string;
+					telegram_bot_id: string | null;
+					telegram_message_id: string | null;
+				}>`SELECT d.status,d.telegram_bot_id,d.telegram_message_id FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.food_entry_id=${result.entry.id}::uuid`;
+				return { fixture, records, deliveries };
+			});
+			const result = await Effect.runPromise(
+				Effect.provide(program, liveLayer),
+			);
+			expect(
+				result.records.some((record) => record?.status === 'completed'),
+			).toBe(true);
+			const ownMessageIndex = sent.findIndex(
+				(request) =>
+					request.text ===
+					'Caregiver colocou 50 g de ração para Rex em 16/07/2026 08:30.',
+			);
+			expect(ownMessageIndex).toBeGreaterThanOrEqual(0);
+			expect(sent[ownMessageIndex]).toEqual({
+				chat_id: 101,
+				text: 'Caregiver colocou 50 g de ração para Rex em 16/07/2026 08:30.',
+				disable_notification: true,
+			});
+			expect(result.deliveries).toEqual([
+				{
+					status: 'sent',
+					telegram_bot_id: result.fixture.botId,
+					telegram_message_id: String(ownMessageIndex + 1),
+				},
+			]);
+		});
+
+		it('permanently fails frozen delivery when actor context disappears', async () => {
+			const program = Effect.gen(function* () {
+				sent.length = 0;
+				const fixture = yield* setup();
+				const result = yield* add(fixture.caregiverAccess, 76);
+				yield* fixture.sql`DELETE FROM carneloot.telegram_identities WHERE bot_id=${fixture.botId} AND user_id=${fixture.caregiverId}::uuid`;
+				const jobs = yield* JobRuntime;
+				yield* jobs.runOne();
+				return yield* fixture.sql<{
+					status: string;
+					retryable: boolean;
+					error_code: string | null;
+				}>`SELECT d.status,d.retryable,d.safe_error_json->>'code' AS error_code FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.food_entry_id=${result.entry.id}::uuid`;
+			});
+			const deliveries = await Effect.runPromise(
+				Effect.provide(program, liveLayer),
+			);
+			expect(sent).toEqual([]);
+			expect(deliveries).toEqual([
+				{
+					status: 'failed',
+					retryable: false,
+					error_code: 'food-context-missing',
+				},
+			]);
 		});
 
 		it('rolls back food, event, deliveries, and durable job when attach fails', async () => {
