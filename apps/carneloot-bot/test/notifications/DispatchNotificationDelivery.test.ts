@@ -1,3 +1,4 @@
+import * as PgClient from '@effect/sql-pg/PgClient';
 import {
 	Deferred,
 	Effect,
@@ -39,6 +40,7 @@ import {
 	NotificationRepositoryError,
 	type NotificationRepositoryService,
 } from '../../src/ports/NotificationRepository.js';
+import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import {
 	PetFoodRepository,
 	type PetFoodRepositoryService,
@@ -168,6 +170,27 @@ const harness = (
 	let lastRetryAt: DateTime.Utc | null = null;
 	let cancelled = false;
 	let materializations = 0;
+	let recipientsMaterialized = false;
+	const persistedEvent = {
+		id: eventId,
+		botId: options.mismatchedEvent
+			? Schema.decodeUnknownSync(BotId)('another-bot')
+			: botId,
+		kind: 'feeding-reminder',
+		ownerUserId: ownerId,
+		petId,
+		foodEntryId,
+		scheduledFor: DateTime.makeUnsafe(0),
+		status: options.eventStatus ?? 'scheduled',
+		dedupeKey: 'key',
+		jobId: null,
+		recipientsMaterializedAt: null,
+		foodTimestampExplicit: false,
+		createdAt: DateTime.makeUnsafe(0),
+		updatedAt: DateTime.makeUnsafe(0),
+		completedAt: null,
+		cancelledAt: null,
+	} as const;
 	const repository: NotificationRepositoryService = {
 		createEvent: () => Effect.die('unused'),
 		cancelActiveForPet: () => Effect.die('unused'),
@@ -180,34 +203,25 @@ const harness = (
 		attachJob: () => Effect.die('unused'),
 		getDispatchContext: () =>
 			options.repositoryFailure === undefined
-				? Effect.succeed({
-						id: eventId,
-						botId: options.mismatchedEvent
-							? Schema.decodeUnknownSync(BotId)('another-bot')
-							: botId,
-						kind: 'feeding-reminder',
-						ownerUserId: ownerId,
-						petId,
-						foodEntryId,
-						scheduledFor: DateTime.makeUnsafe(0),
-						status: options.eventStatus ?? 'scheduled',
-						dedupeKey: 'key',
-						jobId: null,
-						recipientsMaterializedAt: null,
-						foodTimestampExplicit: false,
-						createdAt: DateTime.makeUnsafe(0),
-						updatedAt: DateTime.makeUnsafe(0),
-						completedAt: null,
-						cancelledAt: null,
-					})
+				? Effect.succeed(persistedEvent)
 				: Effect.fail(
 						new NotificationRepositoryError({
 							reason: options.repositoryFailure,
 							message: 'repository test failure',
 						}),
 					),
-		lockForMaterialization: () => unused(),
-		markRecipientsMaterialized: () => unused(),
+		lockForMaterialization: () =>
+			Effect.succeed({
+				...persistedEvent,
+				recipientsMaterializedAt: recipientsMaterialized
+					? DateTime.makeUnsafe(0)
+					: null,
+			}),
+		markRecipientsMaterialized: () =>
+			Effect.sync(() => {
+				recipientsMaterialized = true;
+				return true;
+			}),
 		materializeRecipients: (_eventId, recipients) =>
 			Effect.sync(() => {
 				materializations++;
@@ -341,7 +355,32 @@ const harness = (
 	const layer = Layer.mergeAll(
 		Layer.succeed(NotificationRepository, repository),
 		Layer.succeed(NotificationRecipients, {
-			resolvePetRecipients: () => Effect.die('unused'),
+			resolvePetRecipients: () =>
+				Effect.succeed([
+					{
+						userId: ownerId,
+						role: 'owner' as const,
+						resolution:
+							options.reachable === false
+								? {
+										_tag: 'Unreachable' as const,
+										recipientUserId: ownerId,
+										recipientRole: owner,
+										channel: 'telegram' as const,
+										error: {
+											code: 'MissingTelegramIdentity',
+											message: 'No identity',
+										},
+									}
+								: {
+										_tag: 'Reachable' as const,
+										recipientUserId: ownerId,
+										recipientChatId: chatId,
+										recipientRole: owner,
+										channel: 'telegram' as const,
+									},
+					},
+				]),
 			resolveOwner: () =>
 				Effect.succeed(
 					options.reachable === false
@@ -365,6 +404,19 @@ const harness = (
 				),
 		}),
 		Layer.succeed(PetFoodRepository, food),
+		Layer.succeed(PetCaregiverRepository, {
+			find: () => Effect.succeed(undefined),
+			lock: unused,
+			insertPending: unused,
+			setPendingResponse: unused,
+			remove: unused,
+			listForPet: unused,
+			listPendingForUser: unused,
+			listAcceptedForUser: unused,
+		}),
+		Layer.succeed(PgClient.PgClient, {
+			withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
+		} as never),
 		Layer.succeed(PetRepository, {
 			findById: () =>
 				Effect.succeed({

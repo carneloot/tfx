@@ -11,7 +11,12 @@ import { NetworkError, RateLimitError, TelegramError } from 'tfx/TelegramError';
 import { describe, expect, it } from 'vitest';
 
 import * as ConfigureReminderDelay from '../../src/application/ConfigureReminderDelay.js';
-import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
+import {
+	BotId,
+	PetId,
+	TelegramChatId,
+	TelegramUserId,
+} from '../../src/domain/Ids.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import { FoodAmountMg } from '../../src/domain/pet-food/FoodAmount.js';
 import {
@@ -173,6 +178,23 @@ const scheduleFixture = Effect.gen(function* () {
 	}>`SELECT id,job_id FROM carneloot.notification_events WHERE pet_id=${pet.id}::uuid AND status='scheduled'`;
 	return { user, pet, entry, event: event! };
 });
+const addCaregiver = (petId: PetId) =>
+	Effect.gen(function* () {
+		const telegramId = Math.floor(Math.random() * 1_000_000_000) + 1;
+		const users = yield* UserRepository;
+		const caregiver = yield* users.registerTelegramProfile({
+			botId,
+			telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(telegramId),
+			username: null,
+			firstName: 'Caregiver',
+			lastName: null,
+			privateChatId: Schema.decodeUnknownSync(TelegramChatId)(telegramId),
+		});
+		const sql = yield* PgClient.PgClient;
+		yield* sql`INSERT INTO carneloot.pet_caregivers (pet_id,caregiver_user_id,status,created_at,updated_at) VALUES (${petId}::uuid,${caregiver.user.id}::uuid,'accepted',now(),now())`;
+		return caregiver;
+	});
+
 const runOne = Effect.flatMap(JobRuntime, (jobs) =>
 	jobs.runOne({ leaseDuration: Duration.millis(100) }),
 );
@@ -223,6 +245,84 @@ else
 					telegram_message_id: '77',
 				});
 				expect(event?.status).toBe('completed');
+			});
+			await Effect.runPromise(Effect.provide(program, layer));
+			expect(control.calls).toBe(1);
+		});
+
+		it('freezes and sends owner plus accepted caregivers independently', async () => {
+			control.mode = 'success';
+			control.calls = 0;
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(2_000);
+				const fixture = yield* scheduleFixture;
+				yield* addCaregiver(fixture.pet.id);
+				yield* addCaregiver(fixture.pet.id);
+				yield* TestClock.setTime(3_000);
+				expect(yield* runFresh).toMatchObject({ status: 'completed' });
+				const sql = yield* PgClient.PgClient;
+				const deliveries = yield* sql<{
+					recipient_role: string;
+					status: string;
+				}>`SELECT recipient_role,status FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC,recipient_user_id`;
+				expect(deliveries).toEqual([
+					{ recipient_role: 'owner', status: 'sent' },
+					{ recipient_role: 'caregiver', status: 'sent' },
+					{ recipient_role: 'caregiver', status: 'sent' },
+				]);
+			});
+			await Effect.runPromise(Effect.provide(program, layer));
+			expect(control.calls).toBe(3);
+		});
+
+		it('does not add a caregiver accepted after recipient freeze', async () => {
+			control.mode = 'controlled';
+			control.calls = 0;
+			control.started = Deferred.makeUnsafe<void>();
+			control.release = Deferred.makeUnsafe<void>();
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(2_000);
+				const fixture = yield* scheduleFixture;
+				yield* TestClock.setTime(3_000);
+				const send = yield* Effect.forkChild(runFresh);
+				yield* Deferred.await(control.started!);
+				yield* addCaregiver(fixture.pet.id);
+				yield* Deferred.succeed(control.release!, undefined);
+				expect(yield* Fiber.join(send)).toMatchObject({ status: 'completed' });
+				const sql = yield* PgClient.PgClient;
+				const [counts] = yield* sql<{
+					deliveries: number;
+				}>`SELECT count(*)::int deliveries FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
+				expect(counts?.deliveries).toBe(1);
+			});
+			await Effect.runPromise(Effect.provide(program, layer));
+			expect(control.calls).toBe(1);
+		});
+
+		it('permanently fails a caregiver revoked after recipient freeze', async () => {
+			control.mode = 'controlled';
+			control.calls = 0;
+			control.started = Deferred.makeUnsafe<void>();
+			control.release = Deferred.makeUnsafe<void>();
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(2_000);
+				const fixture = yield* scheduleFixture;
+				const caregiver = yield* addCaregiver(fixture.pet.id);
+				yield* TestClock.setTime(3_000);
+				const send = yield* Effect.forkChild(runFresh);
+				yield* Deferred.await(control.started!);
+				const sql = yield* PgClient.PgClient;
+				yield* sql`UPDATE carneloot.pet_caregivers SET status='rejected',updated_at=now() WHERE pet_id=${fixture.pet.id}::uuid AND caregiver_user_id=${caregiver.user.id}::uuid`;
+				yield* Deferred.succeed(control.release!, undefined);
+				expect(yield* Fiber.join(send)).toMatchObject({ status: 'completed' });
+				const [delivery] = yield* sql<{
+					status: string;
+					safe_error_json: { readonly code: string };
+				}>`SELECT status,safe_error_json FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid AND recipient_role='caregiver'`;
+				expect(delivery).toMatchObject({
+					status: 'failed',
+					safe_error_json: { code: 'caregiver-access-revoked' },
+				});
 			});
 			await Effect.runPromise(Effect.provide(program, layer));
 			expect(control.calls).toBe(1);
@@ -287,6 +387,39 @@ else
 					status: string;
 				}>`SELECT status FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${fixture.pet.id}::uuid AND food_entry_id=${fixture.entry.id}::uuid`;
 				expect(events).toEqual([{ status: 'completed' }]);
+			});
+			await Effect.runPromise(Effect.provide(program, layer));
+			expect(control.calls).toBe(1);
+		});
+
+		it('audits an unreachable caregiver while still sending the owner', async () => {
+			control.mode = 'success';
+			control.calls = 0;
+			const program = Effect.gen(function* () {
+				yield* TestClock.setTime(2_000);
+				const fixture = yield* scheduleFixture;
+				const caregiver = yield* addCaregiver(fixture.pet.id);
+				const sql = yield* PgClient.PgClient;
+				yield* sql`DELETE FROM carneloot.telegram_identities WHERE user_id=${caregiver.user.id}::uuid`;
+				yield* TestClock.setTime(3_000);
+				yield* runFresh;
+				const deliveries = yield* sql<{
+					recipient_role: string;
+					status: string;
+					recipient_chat_id: string | null;
+				}>`SELECT recipient_role,status,recipient_chat_id FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC`;
+				expect(deliveries).toEqual([
+					{
+						recipient_role: 'owner',
+						status: 'sent',
+						recipient_chat_id: String(fixture.user.profile.privateChatId),
+					},
+					{
+						recipient_role: 'caregiver',
+						status: 'failed',
+						recipient_chat_id: null,
+					},
+				]);
 			});
 			await Effect.runPromise(Effect.provide(program, layer));
 			expect(control.calls).toBe(1);

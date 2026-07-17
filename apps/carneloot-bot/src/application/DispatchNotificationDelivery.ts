@@ -1,3 +1,4 @@
+import * as PgClient from '@effect/sql-pg/PgClient';
 import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
@@ -5,6 +6,7 @@ import * as Schema from 'effect/Schema';
 import { Telegram } from 'tfx/Telegram';
 import type { TelegramError } from 'tfx/TelegramError';
 
+import type { DomainPersistenceError } from '../domain/DomainError.js';
 import type { BotId, PetId } from '../domain/Ids.js';
 import type { SafeError } from '../domain/notifications/DeliveryOutcome.js';
 import { DeliveryId } from '../domain/notifications/NotificationDelivery.js';
@@ -20,6 +22,7 @@ import {
 	NotificationRepository,
 	NotificationRepositoryError,
 } from '../ports/NotificationRepository.js';
+import { PetCaregiverRepository } from '../ports/PetCaregiverRepository.js';
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { PetRepository } from '../ports/PetRepository.js';
 
@@ -177,25 +180,33 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 			return;
 		}
 		const recipients = yield* NotificationRecipients;
-		const recipient = yield* recipients.resolveOwner(
-			event.botId,
-			event.ownerUserId,
+		const sql = yield* PgClient.PgClient;
+		const materialized = yield* sql.withTransaction(
+			Effect.gen(function* () {
+				const locked = yield* notifications.lockForMaterialization(event.id);
+				if (locked === undefined) return false;
+				if (locked.recipientsMaterializedAt !== null) return true;
+				const resolved = yield* recipients.resolvePetRecipients(
+					locked.botId,
+					payload.petId,
+				);
+				yield* notifications.materializeRecipients(
+					locked.id,
+					resolved.map(({ resolution }) => ({
+						...resolution,
+						id: Schema.decodeUnknownSync(DeliveryId)(crypto.randomUUID()),
+					})),
+					now,
+				);
+				return yield* notifications.markRecipientsMaterialized(locked.id, now);
+			}),
 		);
-		yield* notifications.materializeRecipients(
-			event.id,
-			[
-				{
-					...recipient,
-					id: Schema.decodeUnknownSync(DeliveryId)(crypto.randomUUID()),
-				},
-			],
-			now,
-		);
+		if (!materialized) return;
 		const recovered = yield* notifications.recoverExpired(event.id, now);
 		yield* Effect.logInfo('carneloot.delivery.prepared').pipe(
 			Effect.annotateLogs({
 				...logContext,
-				recipientReachable: recipient._tag === 'Reachable',
+				recipientsMaterialized: true,
 				recoveredLeases: recovered,
 			}),
 		);
@@ -206,9 +217,11 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 		const status = yield* food.status(payload.petId, window.start, window.end);
 		const text = reminderText(pet.name, status.totalMg);
 		const telegram = yield* Telegram;
+		const caregivers = yield* PetCaregiverRepository;
 		const loop: Effect.Effect<
 			void,
 			| NotificationRepositoryError
+			| DomainPersistenceError
 			| FeedingReminderRetryError
 			| FeedingReminderPermanentError
 		> = Effect.suspend(() =>
@@ -225,6 +238,42 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 					deliveryId: claim.delivery.id,
 					attempt: claim.delivery.attemptCount,
 				};
+				if (claim.delivery.recipientRole === 'caregiver') {
+					const relation = yield* caregivers.find(
+						payload.petId,
+						claim.delivery.recipientUserId,
+					);
+					if (relation?.status !== 'accepted') {
+						const finalizedAt = yield* DateTime.now;
+						yield* notifications.finalizeFailed(
+							claim.token,
+							{
+								code: 'caregiver-access-revoked',
+								message: 'Caregiver access was revoked before delivery',
+							},
+							false,
+							null,
+							finalizedAt,
+						);
+						return yield* loop;
+					}
+				} else {
+					const currentPet = yield* pets.findById(payload.petId);
+					if (currentPet?.ownerId !== claim.delivery.recipientUserId) {
+						const finalizedAt = yield* DateTime.now;
+						yield* notifications.finalizeFailed(
+							claim.token,
+							{
+								code: 'pet-owner-changed',
+								message: 'Pet owner changed before delivery',
+							},
+							false,
+							null,
+							finalizedAt,
+						);
+						return yield* loop;
+					}
+				}
 				if (claim.delivery.recipientChatId === null) {
 					yield* Effect.logError('carneloot.delivery.unreachable_claimed').pipe(
 						Effect.annotateLogs(attemptContext),

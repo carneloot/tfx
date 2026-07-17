@@ -233,9 +233,9 @@ export const layer = Layer.effect(
 							const rows = yield* sql<{
 								id: string;
 								job_id: string | null;
-							}>`SELECT id,job_id FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${petId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`;
+							}>`SELECT id,job_id FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${petId}::uuid AND kind='feeding-reminder' AND status IN ('scheduled','dispatching') FOR UPDATE`;
 							if (rows.length > 0)
-								yield* sql`UPDATE carneloot.notification_events SET status='cancelled',cancelled_at=${DateTime.toDateUtc(now)},completed_at=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND pet_id=${petId}::uuid AND status IN ('scheduled','dispatching')`;
+								yield* sql`UPDATE carneloot.notification_events SET status='cancelled',cancelled_at=${DateTime.toDateUtc(now)},completed_at=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND pet_id=${petId}::uuid AND kind='feeding-reminder' AND status IN ('scheduled','dispatching')`;
 							return rows.map((row) => ({
 								eventId: Schema.decodeUnknownSync(EventId)(row.id),
 								jobId: row.job_id,
@@ -342,7 +342,7 @@ export const layer = Layer.effect(
 							const leaseExpiresAt = DateTime.addDuration(now, leaseDuration);
 							const rows = yield* sql<
 								Record<string, unknown>
-							>`WITH candidate AS (SELECT d.id FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE d.event_id=${eventId}::uuid AND e.status IN ('scheduled','dispatching') AND (d.status='pending' OR (d.status='failed' AND d.retryable=true AND d.retry_at<=${DateTime.toDateUtc(now)})) ORDER BY d.retry_at NULLS FIRST,d.created_at,d.id FOR UPDATE OF d SKIP LOCKED LIMIT 1) UPDATE carneloot.notification_deliveries d SET status='sending',attempt_generation=d.attempt_generation+1,attempt_count=d.attempt_count+1,sending_started_at=${DateTime.toDateUtc(now)},sending_lease_expires_at=${DateTime.toDateUtc(leaseExpiresAt)},retry_at=NULL,retryable=false,safe_error_json=NULL,failed_at=NULL,updated_at=${DateTime.toDateUtc(now)} FROM candidate WHERE d.id=candidate.id RETURNING d.*`;
+							>`WITH candidate AS (SELECT d.id FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE d.event_id=${eventId}::uuid AND e.status IN ('scheduled','dispatching') AND (d.status='pending' OR (d.status='failed' AND d.retryable=true AND d.retry_at<=${DateTime.toDateUtc(now)})) ORDER BY CASE d.recipient_role WHEN 'owner' THEN 0 ELSE 1 END,d.retry_at NULLS FIRST,d.created_at,d.id FOR UPDATE OF d SKIP LOCKED LIMIT 1) UPDATE carneloot.notification_deliveries d SET status='sending',attempt_generation=d.attempt_generation+1,attempt_count=d.attempt_count+1,sending_started_at=${DateTime.toDateUtc(now)},sending_lease_expires_at=${DateTime.toDateUtc(leaseExpiresAt)},retry_at=NULL,retryable=false,safe_error_json=NULL,failed_at=NULL,updated_at=${DateTime.toDateUtc(now)} FROM candidate WHERE d.id=candidate.id RETURNING d.*`;
 							if (rows[0] === undefined) return undefined;
 							yield* sql`UPDATE carneloot.notification_events SET status='dispatching',updated_at=${DateTime.toDateUtc(now)} WHERE id=${eventId}::uuid AND status='scheduled'`;
 							const delivery = yield* decodeDelivery(rows[0]);
