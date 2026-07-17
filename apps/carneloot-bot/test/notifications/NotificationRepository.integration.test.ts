@@ -49,6 +49,7 @@ const create = (
 		petId: null,
 		foodEntryId: null,
 		scheduledFor: now,
+		foodTimestampExplicit: false,
 		dedupeKey: `notification-${suffix}-${crypto.randomUUID()}`,
 		now,
 	});
@@ -75,6 +76,7 @@ else
 					petId: null,
 					foodEntryId: null,
 					scheduledFor: DateTime.makeUnsafe(1_000),
+					foodTimestampExplicit: false,
 					dedupeKey: `dedupe-${crypto.randomUUID()}`,
 					now: DateTime.makeUnsafe(1_000),
 				} as const;
@@ -174,6 +176,10 @@ else
 			});
 			const result = await Effect.runPromise(Effect.provide(program, layer));
 			expect(result.repeated.id).toBe(result.first.id);
+			expect(result.first).toMatchObject({
+				recipientsMaterializedAt: null,
+				foodTimestampExplicit: false,
+			});
 			expect(result.a[0]?.id).toBe(result.b[0]?.id);
 			expect(result.unreachable[0]).toMatchObject({
 				status: 'failed',

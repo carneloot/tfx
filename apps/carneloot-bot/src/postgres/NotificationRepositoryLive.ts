@@ -51,6 +51,8 @@ const EventRow = Schema.Struct({
 	status: EventStatus,
 	dedupe_key: Schema.String,
 	job_id: Schema.NullOr(Schema.String),
+	recipients_materialized_at: NullableTimestamp,
+	food_timestamp_explicit: Schema.Boolean,
 	created_at: Timestamp,
 	updated_at: Timestamp,
 	completed_at: NullableTimestamp,
@@ -101,6 +103,8 @@ const decodeEventSync = (raw: unknown): NotificationEvent => {
 		status: row.status,
 		dedupeKey: row.dedupe_key,
 		jobId: row.job_id,
+		recipientsMaterializedAt: row.recipients_materialized_at,
+		foodTimestampExplicit: row.food_timestamp_explicit,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 		completedAt: row.completed_at,
@@ -193,7 +197,7 @@ export const layer = Layer.effect(
 						Effect.gen(function* () {
 							const inserted = yield* sql<
 								Record<string, unknown>
-							>`INSERT INTO carneloot.notification_events (id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,created_at,updated_at,completed_at,cancelled_at) VALUES (${input.id}::uuid,${input.botId},${input.kind},${input.ownerUserId}::uuid,${input.petId}::uuid,${input.foodEntryId}::uuid,${input.scheduledFor === null ? null : DateTime.toDateUtc(input.scheduledFor)},'scheduled',${input.dedupeKey},NULL,${DateTime.toDateUtc(input.now)},${DateTime.toDateUtc(input.now)},NULL,NULL) ON CONFLICT (dedupe_key) DO NOTHING RETURNING *`;
+							>`INSERT INTO carneloot.notification_events (id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,recipients_materialized_at,food_timestamp_explicit,created_at,updated_at,completed_at,cancelled_at) VALUES (${input.id}::uuid,${input.botId},${input.kind},${input.ownerUserId}::uuid,${input.petId}::uuid,${input.foodEntryId}::uuid,${input.scheduledFor === null ? null : DateTime.toDateUtc(input.scheduledFor)},'scheduled',${input.dedupeKey},NULL,NULL,${input.foodTimestampExplicit},${DateTime.toDateUtc(input.now)},${DateTime.toDateUtc(input.now)},NULL,NULL) ON CONFLICT (dedupe_key) DO NOTHING RETURNING *`;
 							if (inserted[0] !== undefined) return yield* oneEvent(inserted);
 							const existingRows = yield* sql<
 								Record<string, unknown>

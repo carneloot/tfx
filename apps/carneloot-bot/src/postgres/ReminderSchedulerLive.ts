@@ -138,6 +138,7 @@ export const layer = Layer.effect(
 								petId: request.petId,
 								foodEntryId: request.foodEntryId,
 								scheduledFor: request.runAt,
+								foodTimestampExplicit: false,
 								dedupeKey: baseDedupe,
 								now,
 							});
@@ -171,6 +172,7 @@ export const layer = Layer.effect(
 										petId: request.petId,
 										foodEntryId: request.foodEntryId,
 										scheduledFor: request.runAt,
+										foodTimestampExplicit: false,
 										dedupeKey: `${baseDedupe}:${generationId}`,
 										now,
 									});
@@ -187,6 +189,7 @@ export const layer = Layer.effect(
 									petId: request.petId,
 									foodEntryId: request.foodEntryId,
 									scheduledFor: request.runAt,
+									foodTimestampExplicit: false,
 									dedupeKey: `${baseDedupe}:${generationId}`,
 									now,
 								});

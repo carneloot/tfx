@@ -26,6 +26,10 @@ import {
 	migration0006Checksum,
 	migration0006Sql,
 } from '../src/postgres/Migration0006Sql.js';
+import {
+	migration0007Checksum,
+	migration0007Sql,
+} from '../src/postgres/Migration0007Sql.js';
 
 describe('application migration artifacts', () => {
 	it.each([
@@ -43,6 +47,11 @@ describe('application migration artifacts', () => {
 			migration0005Checksum,
 		],
 		['0006_pet_caregivers.sql', migration0006Sql, migration0006Checksum],
+		[
+			'0007_notification_recipient_freeze.sql',
+			migration0007Sql,
+			migration0007Checksum,
+		],
 	] as const)(
 		'matches committed %s bytes and SHA-256',
 		(file, sql, checksum) => {
@@ -54,6 +63,18 @@ describe('application migration artifacts', () => {
 			expect(createHash('sha256').update(source).digest('hex')).toBe(checksum);
 		},
 	);
+
+	it('defines frozen-recipient and food timestamp metadata', () => {
+		expect(migration0007Sql).toContain(
+			'ADD COLUMN recipients_materialized_at timestamptz',
+		);
+		expect(migration0007Sql).toContain(
+			'ADD COLUMN food_timestamp_explicit boolean NOT NULL DEFAULT false',
+		);
+		expect(migration0007Sql).toContain(
+			"food_timestamp_explicit = false OR kind = 'food-added'",
+		);
+	});
 
 	it('defines caregiver relationship integrity and lookup index', () => {
 		expect(migration0006Sql).toContain(

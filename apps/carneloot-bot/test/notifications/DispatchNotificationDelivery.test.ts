@@ -193,6 +193,8 @@ const harness = (
 						status: options.eventStatus ?? 'scheduled',
 						dedupeKey: 'key',
 						jobId: null,
+						recipientsMaterializedAt: null,
+						foodTimestampExplicit: false,
 						createdAt: DateTime.makeUnsafe(0),
 						updatedAt: DateTime.makeUnsafe(0),
 						completedAt: null,

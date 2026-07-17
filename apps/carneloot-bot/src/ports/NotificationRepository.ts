@@ -37,6 +37,7 @@ export interface EventInput {
 	readonly petId: PetId | null;
 	readonly foodEntryId: FoodEntryId | null;
 	readonly scheduledFor: DateTime.Utc | null;
+	readonly foodTimestampExplicit: boolean;
 	readonly dedupeKey: string;
 	readonly now: DateTime.Utc;
 }

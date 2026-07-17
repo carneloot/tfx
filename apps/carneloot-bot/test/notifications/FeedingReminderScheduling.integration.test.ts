@@ -283,6 +283,7 @@ else
 					petId: pet.id,
 					foodEntryId: entry.id,
 					scheduledFor: DateTime.makeUnsafe(3_000),
+					foodTimestampExplicit: false,
 					dedupeKey,
 					now: DateTime.makeUnsafe(2_000),
 				});

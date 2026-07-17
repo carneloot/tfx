@@ -24,6 +24,8 @@ export const NotificationEvent = Schema.Struct({
 	status: EventStatus,
 	dedupeKey: Schema.NonEmptyString,
 	jobId: Schema.NullOr(Uuid),
+	recipientsMaterializedAt: Schema.NullOr(Schema.DateTimeUtc),
+	foodTimestampExplicit: Schema.Boolean,
 	createdAt: Schema.DateTimeUtc,
 	updatedAt: Schema.DateTimeUtc,
 	completedAt: Schema.NullOr(Schema.DateTimeUtc),

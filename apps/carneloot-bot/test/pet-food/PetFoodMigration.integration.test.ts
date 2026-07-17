@@ -9,6 +9,7 @@ import { migration0003Checksum } from '../../src/postgres/Migration0003Sql.js';
 import { migration0004Checksum } from '../../src/postgres/Migration0004Sql.js';
 import { migration0005Checksum } from '../../src/postgres/Migration0005Sql.js';
 import { migration0006Checksum } from '../../src/postgres/Migration0006Sql.js';
+import { migration0007Checksum } from '../../src/postgres/Migration0007Sql.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -74,6 +75,11 @@ describe.skipIf(!enabled)('pet food migration', () => {
 				version: 6,
 				name: 'pet-caregivers',
 				checksum: migration0006Checksum,
+			},
+			{
+				version: 7,
+				name: 'notification-recipient-freeze',
+				checksum: migration0007Checksum,
 			},
 		]);
 		expect(result.constraints.map((row) => row.constraint_name)).toEqual(
