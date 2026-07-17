@@ -5,6 +5,7 @@ import {
 	BotGroup,
 	BotRouter,
 	Command,
+	CommandInput,
 	Conversation,
 	ConversationBuilder,
 	ConversationInput,
@@ -46,7 +47,12 @@ const account = BotGroup.make('account').add(
 	}),
 );
 const pets = BotGroup.make('pets').add(
-	Command.make('list', { name: 'pets', error: Schema.Void }),
+	Command.make('list', {
+		name: 'pets',
+		aliases: ['animals'],
+		input: CommandInput.argument('kind', Schema.String),
+		error: Schema.Void,
+	}),
 );
 const bot = Bot.make('declared').add(account).add(pets);
 const conversationDeclaration = Conversation.make('counter', {
@@ -152,7 +158,9 @@ describe('public BotRouter', () => {
 			),
 		);
 		const petHandlers = BotBuilder.buildGroup(bot, 'pets', (handlers) =>
-			handlers.handle('list', () => Effect.sync(() => invoked.push('pets'))),
+			handlers.handle('list', (input) =>
+				Effect.sync(() => invoked.push(`pets:${input.kind}`)),
+			),
 		);
 		const router = await Effect.runPromise(
 			build([accountHandlers, petHandlers]),
@@ -164,10 +172,15 @@ describe('public BotRouter', () => {
 		).toEqual({ _tag: 'Handled' });
 		expect(
 			await Effect.runPromise(
-				router.route(commandUpdate(2, '/pets@mybot') as never),
+				router.route(commandUpdate(2, '/pets dogs') as never),
 			),
 		).toEqual({ _tag: 'Handled' });
-		expect(invoked).toEqual(['account:10:20', 'pets']);
+		expect(
+			await Effect.runPromise(
+				router.route(commandUpdate(3, '/animals@mybot cats') as never),
+			),
+		).toEqual({ _tag: 'Handled' });
+		expect(invoked).toEqual(['account:10:20', 'pets:dogs', 'pets:cats']);
 	});
 
 	it('falls through wrong mentions and rejects registered commands lacking handlers', async () => {

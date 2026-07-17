@@ -24,6 +24,19 @@ describe('Bot declarations', () => {
 		expect('updateKinds' in pets.commands.add!).toBe(false);
 	});
 
+	it('copies and freezes command aliases', () => {
+		const aliases = ['add'];
+		const command = Command.make('create', {
+			name: 'create',
+			aliases,
+			error: Schema.Void,
+		});
+		aliases.push('later');
+		expect(command.aliases).toEqual(['add']);
+		expect(Object.isFrozen(command.aliases)).toBe(true);
+		expect(Command.make('list', { name: 'list', error: Schema.Void }).aliases).toEqual([]);
+	});
+
 	it('rejects invalid Telegram command names with fragment context', () => {
 		const fragment = BotGroup.make('pets').add(
 			Command.make('add', { name: 'Add-Pet', error: Schema.Void }),
@@ -31,12 +44,34 @@ describe('Bot declarations', () => {
 		expect(() => Bot.make('App').add(fragment)).toThrow("fragment 'pets'");
 	});
 
+	it('rejects invalid aliases and collisions within one command', () => {
+		expect(() =>
+			Bot.make('App').add(
+				BotGroup.make('pets').add(
+					Command.make('add', {
+						name: 'add',
+						aliases: ['Add-Pet'],
+						error: Schema.Void,
+					}),
+				),
+			),
+		).toThrow("Invalid Telegram command name 'Add-Pet'");
+		for (const aliases of [['add'], ['create', 'create']])
+			expect(() =>
+				Bot.make('App').add(
+					BotGroup.make('pets').add(
+						Command.make('add', { name: 'add', aliases, error: Schema.Void }),
+					),
+				),
+			).toThrow('Duplicate Telegram command name');
+	});
+
 	it('rejects command-name collisions across fragments', () => {
 		const pets = BotGroup.make('pets').add(
 			Command.make('add', { name: 'shared', error: Schema.Void }),
 		);
 		const food = BotGroup.make('food').add(
-			Command.make('add', { name: 'shared', error: Schema.Void }),
+			Command.make('add', { name: 'food', aliases: ['shared'], error: Schema.Void }),
 		);
 		expect(() => Bot.make('App').add(pets).add(food)).toThrow(
 			"fragments 'pets' and 'food'",
@@ -49,6 +84,7 @@ describe('Bot declarations', () => {
 				.add(
 					Command.make('add', {
 						name: 'add_pet',
+						aliases: ['new_pet'],
 						description: 'Add a pet',
 						error: Schema.Void,
 					}),
@@ -63,6 +99,7 @@ describe('Bot declarations', () => {
 		);
 		expect(Bot.commandMenu(bot)).toEqual([
 			{ command: 'add_pet', description: 'Add a pet' },
+			{ command: 'new_pet', description: 'Add a pet' },
 			{ command: 'list_pets', description: 'List pets' },
 		]);
 	});

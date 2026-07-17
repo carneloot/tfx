@@ -37,18 +37,20 @@ const build = <
 				for (const command of Object.values(current.commands) as ReadonlyArray<
 					import('./Command.js').Command<string, any, any>
 				>) {
-					if (!commandNamePattern.test(command.name)) {
-						throw new Error(
-							`Invalid Telegram command name '${command.name}' in fragment '${current.id}' (command '${command.id}')`,
-						);
+					for (const name of [command.name, ...command.aliases]) {
+						if (!commandNamePattern.test(name)) {
+							throw new Error(
+								`Invalid Telegram command name '${name}' in fragment '${current.id}' (command '${command.id}')`,
+							);
+						}
+						const previous = names.get(name);
+						if (previous !== undefined) {
+							throw new Error(
+								`Duplicate Telegram command name '${name}' in fragments '${previous}' and '${current.id}'`,
+							);
+						}
+						names.set(name, current.id);
 					}
-					const previous = names.get(command.name);
-					if (previous !== undefined) {
-						throw new Error(
-							`Duplicate Telegram command name '${command.name}' in fragments '${previous}' and '${current.id}'`,
-						);
-					}
-					names.set(command.name, current.id);
 				}
 			}
 			return build(name, { ...groups, [group.id]: group } as Groups & {
@@ -80,12 +82,13 @@ export const commandMenu = (bot: Bot<any, any>): ReadonlyArray<MenuCommand> => {
 				throw new Error(
 					`Command '${command.name}' in fragment '${group.id}' must have a description between 1 and 256 characters`,
 				);
-			entries.push(
-				Object.freeze({
-					command: command.name,
-					description: command.description,
-				}),
-			);
+			for (const name of [command.name, ...command.aliases])
+				entries.push(
+					Object.freeze({
+						command: name,
+						description: command.description,
+					}),
+				);
 		}
 	}
 	return Object.freeze(entries);

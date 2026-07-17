@@ -157,7 +157,8 @@ export const make = <
 		>();
 		for (const group of Object.values(options.bot.groups) as ReadonlyArray<any>)
 			for (const command of Object.values(group.commands) as ReadonlyArray<any>)
-				declarations.set(command.name, { groupId: group.id, command });
+				for (const name of [command.name, ...command.aliases])
+					declarations.set(name, { groupId: group.id, command });
 		const mapError = (error: TaggedError) =>
 			outputFailure(error) ??
 			classifyFrameworkError(error) ??
@@ -247,10 +248,10 @@ export const make = <
 			command: (update) => {
 				const message = messageOf(update);
 				if (message === undefined) return Effect.succeed(undefined);
-				for (const declaration of declarations.values()) {
+				for (const [name, declaration] of declarations) {
 					const source = CommandParser.matchCommand(
 						message,
-						declaration.command.name,
+						name,
 						options.botUsername,
 					);
 					if (source === undefined) continue;

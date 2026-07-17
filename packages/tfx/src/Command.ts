@@ -16,6 +16,7 @@ export interface Command<
 	readonly _tag: 'Command';
 	readonly id: Id;
 	readonly name: string;
+	readonly aliases: ReadonlyArray<string>;
 	readonly input: Input;
 	readonly error: ES;
 	readonly description: string | undefined;
@@ -30,6 +31,7 @@ export interface Options<
 	Middlewares extends ReadonlyArray<Middleware.AnyMiddleware>,
 > {
 	readonly name: string;
+	readonly aliases?: ReadonlyArray<string>;
 	readonly input?: Input;
 	readonly error: ES;
 	readonly description?: string;
@@ -59,6 +61,7 @@ export const make = <
 			: { readonly middleware: never }),
 ): Command<Id, Input, ES, Middlewares> => {
 	const middleware = [...(options.middleware ?? [])] as Middlewares[number][];
+	const aliases = Object.freeze([...(options.aliases ?? [])]);
 	const available = new Set<unknown>([UpdateContext, MessageContext]);
 	let rank = -1;
 	for (const item of middleware) {
@@ -76,6 +79,7 @@ export const make = <
 		_tag: 'Command' as const,
 		id,
 		name: options.name,
+		aliases,
 		input: options.input ?? (none as unknown as Input),
 		error: options.error,
 		description: options.description,
