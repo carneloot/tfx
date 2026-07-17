@@ -314,6 +314,57 @@ else
 			);
 		});
 
+		it('rolls back deliveries and materialization marker on transaction failure', async () => {
+			const program = Effect.gen(function* () {
+				const owner = yield* register(
+					`rollback-${crypto.randomUUID()}`,
+					Math.floor(Math.random() * 1_000_000) + 8_000_001,
+				);
+				const repository = yield* NotificationRepository;
+				const sql = yield* PgClient.PgClient;
+				const event = yield* create(repository, owner.user.id, 'rollback');
+				const now = DateTime.makeUnsafe(2_000);
+				const attempted = yield* Effect.result(
+					sql.withTransaction(
+						Effect.gen(function* () {
+							const locked = yield* repository.lockForMaterialization(event.id);
+							expect(locked?.recipientsMaterializedAt).toBeNull();
+							yield* repository.materializeRecipients(
+								event.id,
+								[
+									{
+										_tag: 'Reachable',
+										id: deliveryId(),
+										recipientUserId: owner.user.id,
+										recipientChatId: owner.profile.privateChatId,
+										recipientRole: RecipientRole.owner,
+										channel: 'telegram',
+									},
+								],
+								now,
+							);
+							expect(
+								yield* repository.markRecipientsMaterialized(event.id, now),
+							).toBe(true);
+							yield* sql`SELECT 1 / 0`;
+						}),
+					),
+				);
+				const counts = yield* sql<{
+					count: number;
+				}>`SELECT count(*)::int count FROM carneloot.notification_deliveries WHERE event_id=${event.id}::uuid`;
+				return {
+					attempted,
+					count: counts[0]?.count,
+					context: yield* repository.getDispatchContext(event.id),
+				};
+			});
+			const result = await Effect.runPromise(Effect.provide(program, layer));
+			expect(result.attempted._tag).toBe('Failure');
+			expect(result.count).toBe(0);
+			expect(result.context?.recipientsMaterializedAt).toBeNull();
+		});
+
 		it('fences claims, due retries, stale finalizers, unknown reconciliation, and recovery', async () => {
 			const program = Effect.gen(function* () {
 				const owner = yield* register(
@@ -336,6 +387,13 @@ else
 					],
 					DateTime.makeUnsafe(1_000),
 				);
+				expect(
+					yield* repository.findSentByTelegramMessage(
+						botId,
+						owner.profile.privateChatId,
+						10,
+					),
+				).toBeUndefined();
 				const claims = yield* Effect.all(
 					[
 						repository.claimNext(
@@ -376,6 +434,13 @@ else
 					),
 				).toBe(true);
 				expect(
+					yield* repository.findSentByTelegramMessage(
+						botId,
+						owner.profile.privateChatId,
+						10,
+					),
+				).toBeUndefined();
+				expect(
 					yield* repository.claimNext(
 						event.id,
 						DateTime.makeUnsafe(2_999),
@@ -399,6 +464,13 @@ else
 						DateTime.makeUnsafe(3_010),
 					),
 				).toBe(true);
+				expect(
+					yield* repository.findSentByTelegramMessage(
+						botId,
+						owner.profile.privateChatId,
+						10,
+					),
+				).toBeUndefined();
 				expect(
 					yield* repository.reconcileUnknownAsSent(
 						first.token,
