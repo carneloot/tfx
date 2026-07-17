@@ -1,5 +1,6 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
@@ -25,7 +26,7 @@ export const set = (access: PetFoodAccess, delayInput: unknown) =>
 		const sql = yield* PgClient.PgClient;
 		const repository = yield* PetFoodRepository;
 		const scheduler = yield* ReminderScheduler;
-		return yield* sql.withTransaction(
+		const result = yield* sql.withTransaction(
 			Effect.gen(function* () {
 				yield* authorize(access);
 				const now = yield* DateTime.now;
@@ -43,9 +44,18 @@ export const set = (access: PetFoodAccess, delayInput: unknown) =>
 						foodEntryId: latest.id,
 						runAt: DateTime.addDuration(latest.fedAt, delay),
 					});
-				return settings;
+				return { settings, reminderScheduled: latest !== undefined };
 			}),
 		);
+		yield* Effect.logInfo('carneloot.pet.reminder_delay_configured').pipe(
+			Effect.annotateLogs({
+				ownerId: access.ownerId,
+				petId: access.petId,
+				delayMs: Duration.toMillis(delay),
+				reminderScheduled: result.reminderScheduled,
+			}),
+		);
+		return result.settings;
 	});
 
 export const remove = (access: PetFoodAccess) =>
@@ -53,7 +63,7 @@ export const remove = (access: PetFoodAccess) =>
 		const sql = yield* PgClient.PgClient;
 		const repository = yield* PetFoodRepository;
 		const scheduler = yield* ReminderScheduler;
-		return yield* sql.withTransaction(
+		const settings = yield* sql.withTransaction(
 			Effect.gen(function* () {
 				yield* authorize(access);
 				const now = yield* DateTime.now;
@@ -68,4 +78,11 @@ export const remove = (access: PetFoodAccess) =>
 				return settings;
 			}),
 		);
+		yield* Effect.logInfo('carneloot.pet.reminder_delay_removed').pipe(
+			Effect.annotateLogs({
+				ownerId: access.ownerId,
+				petId: access.petId,
+			}),
+		);
+		return settings;
 	});

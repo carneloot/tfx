@@ -119,6 +119,19 @@ export const layer = (options: Options) =>
 			const persistenceRetry = Schedule.exponential(idleDelay).pipe(
 				Schedule.jittered,
 				Schedule.upTo({ times: 5 }),
+				Schedule.tap((metadata) =>
+					metadata.input instanceof JobStoreError &&
+					metadata.input.reason === 'PersistenceFailure'
+						? Effect.logWarning(
+								'carneloot.worker.persistence_retry_scheduled',
+							).pipe(
+								Effect.annotateLogs({
+									retryAttempt: metadata.attempt,
+									delayMs: Math.round(Duration.toMillis(metadata.duration)),
+								}),
+							)
+						: Effect.void,
+				),
 			);
 			const runOnePass = Effect.suspend(() =>
 				jobs.runOne({ leaseDuration, heartbeatInterval }),

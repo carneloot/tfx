@@ -1,4 +1,13 @@
-import { Deferred, Duration, Effect, Layer, Random, Ref } from 'effect';
+import {
+	Deferred,
+	Duration,
+	Effect,
+	Layer,
+	Logger,
+	Random,
+	Ref,
+	References,
+} from 'effect';
 import * as TestClock from 'effect/testing/TestClock';
 import { JobRuntime, type JobRuntimeService } from 'tfx/JobRuntime';
 import { JobStoreError } from 'tfx/JobStore';
@@ -36,6 +45,25 @@ const worker = (
 		}),
 		Layer.merge(jobs, notifications(recovered)),
 	);
+const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+	const logs: Array<{
+		readonly message: unknown;
+		readonly annotations: Readonly<Record<string, unknown>>;
+	}> = [];
+	const logger = Logger.make((options) => {
+		logs.push({
+			message:
+				Array.isArray(options.message) && options.message.length === 1
+					? options.message[0]
+					: options.message,
+			annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+		});
+	});
+	return Effect.map(
+		Effect.provideService(effect, Logger.CurrentLoggers, new Set([logger])),
+		(result) => ({ result, logs }),
+	);
+};
 
 describe('JobWorker', () => {
 	it('recovers first, reports problems, drains immediately, then idles', async () => {
@@ -109,47 +137,59 @@ describe('JobWorker', () => {
 		const started = Deferred.makeUnsafe<void>();
 		const recovered = Deferred.makeUnsafe<void>();
 		const clock = TestClock.layer();
-		await Effect.runPromise(
-			Effect.scoped(
-				Effect.gen(function* () {
-					const context = yield* Layer.build(
-						Layer.merge(
-							Layer.provide(
-								worker(
-									runtime(() => {
-										calls++;
-										const result =
-											calls <= 6
-												? Effect.fail(
-														new JobStoreError(
-															'PersistenceFailure',
-															'store failed',
-														),
-													)
-												: Effect.andThen(
-														Deferred.succeed(recovered, undefined),
-														Effect.never,
-													);
-										return Effect.andThen(
-											Deferred.succeed(started, undefined),
-											result,
-										);
-									}),
-									0,
-									'1 milli',
+		const { logs } = await Effect.runPromise(
+			captureLogs(
+				Effect.scoped(
+					Effect.gen(function* () {
+						const context = yield* Layer.build(
+							Layer.merge(
+								Layer.provide(
+									worker(
+										runtime(() => {
+											calls++;
+											const result =
+												calls <= 6
+													? Effect.fail(
+															new JobStoreError(
+																'PersistenceFailure',
+																'store failed',
+															),
+														)
+													: Effect.andThen(
+															Deferred.succeed(recovered, undefined),
+															Effect.never,
+														);
+											return Effect.andThen(
+												Deferred.succeed(started, undefined),
+												result,
+											);
+										}),
+										0,
+										'1 milli',
+									),
+									clock,
 								),
 								clock,
 							),
-							clock,
-						),
-					);
-					yield* Deferred.await(started);
-					yield* Effect.provide(TestClock.adjust('10 seconds'), context);
-					yield* Deferred.await(recovered);
-					expect(calls).toBe(7);
-				}),
-			).pipe(Random.withSeed('job-worker-recovery')),
+						);
+						yield* Deferred.await(started);
+						yield* Effect.provide(TestClock.adjust('10 seconds'), context);
+						yield* Deferred.await(recovered);
+						expect(calls).toBe(7);
+					}),
+				).pipe(Random.withSeed('job-worker-recovery')),
+			),
 		);
+		const retries = logs.filter(
+			(log) => log.message === 'carneloot.worker.persistence_retry_scheduled',
+		);
+		expect(retries.map((log) => log.annotations.retryAttempt)).toEqual([
+			1, 2, 3, 4, 5,
+		]);
+		expect(logs).toContainEqual({
+			message: 'carneloot.worker.persistence_retry_exhausted',
+			annotations: { attempts: 6 },
+		});
 	});
 
 	it('surfaces invariant violations through await', async () => {
@@ -170,10 +210,18 @@ describe('JobWorker', () => {
 				);
 			}),
 		);
-		expect(await Effect.runPromise(contextProgram)).toMatchObject({
+		const { result, logs } = await Effect.runPromise(
+			captureLogs(contextProgram),
+		);
+		expect(result).toMatchObject({
 			_tag: 'Failure',
 			failure: { _tag: 'JobStoreError', reason: 'InvariantViolation' },
 		});
+		expect(logs).not.toContainEqual(
+			expect.objectContaining({
+				message: 'carneloot.worker.persistence_retry_scheduled',
+			}),
+		);
 	});
 
 	it('accepts normalized Effect durations', async () => {

@@ -35,7 +35,7 @@ export const execute = (
 		);
 		const sql = yield* PgClient.PgClient;
 		const repository = yield* PetFoodRepository;
-		return yield* sql.withTransaction(
+		const settings = yield* sql.withTransaction(
 			Effect.gen(function* () {
 				yield* authorize(access);
 				const now = yield* DateTime.now;
@@ -47,4 +47,13 @@ export const execute = (
 				);
 			}),
 		);
+		yield* Effect.logInfo('carneloot.pet.day_start_configured').pipe(
+			Effect.annotateLogs({
+				ownerId: access.ownerId,
+				petId: access.petId,
+				dayStart,
+				timeZone,
+			}),
+		);
+		return settings;
 	});

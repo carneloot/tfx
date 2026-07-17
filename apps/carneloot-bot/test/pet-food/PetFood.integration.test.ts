@@ -1,5 +1,13 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import { Deferred, Effect, Fiber, Layer, Schema } from 'effect';
+import {
+	Deferred,
+	Effect,
+	Fiber,
+	Layer,
+	Logger,
+	References,
+	Schema,
+} from 'effect';
 import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as TestClock from 'effect/testing/TestClock';
@@ -28,6 +36,25 @@ import * as RecordingScheduler from './internal/RecordingReminderScheduler.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
+const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+	const logs: Array<{
+		readonly message: unknown;
+		readonly annotations: Readonly<Record<string, unknown>>;
+	}> = [];
+	const logger = Logger.make((options) => {
+		logs.push({
+			message:
+				Array.isArray(options.message) && options.message.length === 1
+					? options.message[0]
+					: options.message,
+			annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+		});
+	});
+	return Effect.map(
+		Effect.provideService(effect, Logger.CurrentLoggers, new Set([logger])),
+		(result) => ({ result, logs }),
+	);
+};
 const dependencies = (
 	scheduler: Layer.Layer<ReminderScheduler, any, PgClient.PgClient>,
 ) =>
@@ -132,16 +159,45 @@ else
 					_tag: 'Configured',
 					totalMg: 65_000,
 				});
+				return { access, pet };
 			});
-			await Effect.runPromise(
-				Effect.provide(
-					program,
-					Layer.merge(
-						dependencies(RecordingScheduler.layer),
-						TestClock.layer(),
+			const { result, logs } = await Effect.runPromise(
+				captureLogs(
+					Effect.provide(
+						program,
+						Layer.merge(
+							dependencies(RecordingScheduler.layer),
+							TestClock.layer(),
+						),
 					),
 				),
 			);
+			const count = (message: string) =>
+				logs.filter((log) => log.message === message).length;
+			expect(count('carneloot.pet.day_start_configured')).toBe(1);
+			expect(count('carneloot.pet.reminder_delay_configured')).toBe(1);
+			expect(count('carneloot.food.recorded')).toBe(3);
+			expect(count('carneloot.food.replayed')).toBe(1);
+			expect(logs).toContainEqual({
+				message: 'carneloot.pet.day_start_configured',
+				annotations: {
+					ownerId: result.access.ownerId,
+					petId: result.pet.id,
+					dayStart: '00:00',
+					timeZone: 'UTC',
+				},
+			});
+			expect(logs).toContainEqual({
+				message: 'carneloot.pet.reminder_delay_configured',
+				annotations: {
+					ownerId: result.access.ownerId,
+					petId: result.pet.id,
+					delayMs: 60_000,
+					reminderScheduled: false,
+				},
+			});
+			expect(JSON.stringify(logs)).not.toContain(result.pet.name);
+			expect(JSON.stringify(logs)).not.toContain('Ana');
 		});
 
 		it('rolls back scheduler actions, food, and settings when scheduler fails', async () => {
@@ -221,12 +277,19 @@ else
 					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
 				).toHaveLength(0);
 			});
-			await Effect.runPromise(
-				Effect.provide(
-					program,
-					Layer.merge(dependencies(failing), TestClock.layer()),
+			const { logs } = await Effect.runPromise(
+				captureLogs(
+					Effect.provide(
+						program,
+						Layer.merge(dependencies(failing), TestClock.layer()),
+					),
 				),
 			);
+			const count = (message: string) =>
+				logs.filter((log) => log.message === message).length;
+			expect(count('carneloot.pet.reminder_delay_configured')).toBe(1);
+			expect(count('carneloot.food.recorded')).toBe(0);
+			expect(count('carneloot.pet.reminder_delay_removed')).toBe(0);
 		});
 
 		it('rejects cross-owner settings and returns configured/missing status projections', async () => {

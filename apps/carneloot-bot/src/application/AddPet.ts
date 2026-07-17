@@ -36,5 +36,9 @@ export const execute = (request: Request) =>
 				}),
 			);
 		const pets = yield* PetRepository;
-		return yield* pets.addOwned(request.ownerId, name);
+		const pet = yield* pets.addOwned(request.ownerId, name);
+		yield* Effect.logInfo('carneloot.pet.added').pipe(
+			Effect.annotateLogs({ ownerId: pet.ownerId, petId: pet.id }),
+		);
+		return pet;
 	});

@@ -73,7 +73,7 @@ export const execute = (
 		const sql = yield* PgClient.PgClient;
 		const repository = yield* PetFoodRepository;
 		const scheduler = yield* ReminderScheduler;
-		return yield* sql.withTransaction(
+		const result = yield* sql.withTransaction(
 			Effect.gen(function* () {
 				yield* authorize(access);
 				const replay = yield* repository.findBySource(
@@ -150,4 +150,15 @@ export const execute = (
 				};
 			}),
 		);
+		yield* Effect.logInfo(
+			result.replayed ? 'carneloot.food.replayed' : 'carneloot.food.recorded',
+		).pipe(
+			Effect.annotateLogs({
+				ownerId: access.ownerId,
+				petId: access.petId,
+				foodEntryId: result.entry.id,
+				latest: result.latest,
+			}),
+		);
+		return result;
 	});

@@ -1,9 +1,10 @@
-import { Effect, Layer, Schema } from 'effect';
+import { Effect, Layer, Logger, References, Schema } from 'effect';
 import * as DateTime from 'effect/DateTime';
 import { describe, expect, it } from 'vitest';
 
 import * as AddPet from '../src/application/AddPet.js';
 import * as ListPets from '../src/application/ListPets.js';
+import * as RegisterUser from '../src/application/RegisterUser.js';
 import {
 	PetNameAlreadyExists,
 	UserNotRegistered,
@@ -63,12 +64,77 @@ const users = (id = ownerId) =>
 			}),
 	});
 const request = { ownerId, botId, telegramUserId, name: ' Rex ' };
+const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+	const logs: Array<{
+		readonly message: unknown;
+		readonly annotations: Readonly<Record<string, unknown>>;
+	}> = [];
+	const logger = Logger.make((options) => {
+		logs.push({
+			message:
+				Array.isArray(options.message) && options.message.length === 1
+					? options.message[0]
+					: options.message,
+			annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+		});
+	});
+	return Effect.map(
+		Effect.provideService(effect, Logger.CurrentLoggers, new Set([logger])),
+		(result) => ({ result, logs }),
+	);
+};
 describe('pet application services', () => {
-	it('revalidates identity and normalizes before insertion', async () => {
-		const pet = await Effect.runPromise(
-			Effect.provide(AddPet.execute(request), Layer.merge(pets, users())),
+	it('revalidates identity, normalizes, and logs the created pet', async () => {
+		const { result: pet, logs } = await Effect.runPromise(
+			captureLogs(
+				Effect.provide(AddPet.execute(request), Layer.merge(pets, users())),
+			),
 		);
 		expect(pet.name).toBe('Rex');
+		expect(logs).toContainEqual({
+			message: 'carneloot.pet.added',
+			annotations: { ownerId, petId: pet.id },
+		});
+		expect(JSON.stringify(logs)).not.toContain(pet.name);
+	});
+	it('logs successful Telegram registration without profile PII', async () => {
+		const sensitiveProfile = {
+			...profile,
+			telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(424_242),
+			username: 'private-username',
+			firstName: 'private-first-name',
+			lastName: 'private-last-name',
+			privateChatId: Schema.decodeUnknownSync(TelegramChatId)(-424_242),
+		};
+		const registered = {
+			user: {
+				id: ownerId,
+				createdAt: DateTime.makeUnsafe(0),
+				updatedAt: DateTime.makeUnsafe(0),
+			},
+			profile: sensitiveProfile,
+		};
+		const registration = Layer.succeed(UserRepository, {
+			registerTelegramProfile: () => Effect.succeed(registered),
+			findByTelegram: () => Effect.die('unused'),
+		});
+		const { logs } = await Effect.runPromise(
+			captureLogs(
+				Effect.provide(RegisterUser.execute(sensitiveProfile), registration),
+			),
+		);
+		expect(logs).toContainEqual({
+			message: 'carneloot.user.profile_saved',
+			annotations: { botId, userId: ownerId },
+		});
+		for (const pii of [
+			sensitiveProfile.username,
+			sensitiveProfile.firstName,
+			sensitiveProfile.lastName,
+			sensitiveProfile.telegramUserId,
+			sensitiveProfile.privateChatId,
+		])
+			expect(JSON.stringify(logs)).not.toContain(String(pii));
 	});
 	it('rejects removed or remapped identities without insertion', async () => {
 		insertions = 0;
