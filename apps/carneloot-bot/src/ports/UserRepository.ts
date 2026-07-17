@@ -12,6 +12,10 @@ export interface UserRepositoryService {
 	readonly registerTelegramProfile: (
 		profile: TelegramProfile,
 	) => Effect.Effect<RegisteredUser, DomainPersistenceError>;
+	readonly findByUsername: (
+		botId: BotId,
+		username: string,
+	) => Effect.Effect<ReadonlyArray<RegisteredUser>, DomainPersistenceError>;
 	readonly findByTelegram: (
 		botId: BotId,
 		telegramUserId: TelegramUserId,

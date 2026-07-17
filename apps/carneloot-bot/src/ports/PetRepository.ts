@@ -13,6 +13,9 @@ export interface PetRepositoryService {
 	readonly findById: (
 		petId: PetId,
 	) => Effect.Effect<Pet | undefined, DomainPersistenceError>;
+	readonly lockById: (
+		petId: PetId,
+	) => Effect.Effect<Pet | undefined, DomainPersistenceError>;
 	readonly addOwned: (
 		ownerId: UserId,
 		name: PetName,
@@ -22,6 +25,12 @@ export interface PetRepositoryService {
 	>;
 	readonly listOwned: (
 		ownerId: UserId,
+	) => Effect.Effect<
+		ReadonlyArray<Pet>,
+		DomainPersistenceError | UserNotRegistered
+	>;
+	readonly listAccessible: (
+		userId: UserId,
 	) => Effect.Effect<
 		ReadonlyArray<Pet>,
 		DomainPersistenceError | UserNotRegistered

@@ -141,6 +141,20 @@ export const layer = Layer.effect(
 						)
 						.pipe(Effect.mapError(persistence)),
 				),
+			findByUsername: (botId, username) =>
+				Effect.gen(function* () {
+					yield* Schema.decodeUnknownEffect(BotId)(botId).pipe(
+						Effect.mapError(persistence),
+					);
+					const normalized = username.trim().replace(/^@/u, '').toLowerCase();
+					const rows = yield* sql<
+						Record<string, unknown>
+					>`SELECT u.id,i.bot_id,i.telegram_user_id,i.username,i.first_name,i.last_name,i.private_chat_id,u.created_at,u.updated_at
+					FROM carneloot.telegram_identities i JOIN carneloot.users u ON u.id=i.user_id
+					WHERE i.bot_id=${botId} AND lower(i.username)=${normalized}
+					ORDER BY u.id`.pipe(Effect.mapError(persistence));
+					return yield* Effect.forEach(rows, decode);
+				}),
 			findByTelegram: (botId, telegramUserId) =>
 				Effect.gen(function* () {
 					yield* Effect.all([

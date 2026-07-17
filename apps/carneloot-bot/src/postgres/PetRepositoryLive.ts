@@ -87,11 +87,13 @@ export const layer = Layer.effect(
 							: Effect.void,
 				),
 			);
-		const service = {
-			findById: (petId) =>
-				sql<
-					Record<string, unknown>
-				>`SELECT * FROM carneloot.pets WHERE id=${petId}::uuid`.pipe(
+		const lookup = (petId: PetId, lock: boolean) =>
+			sql
+				.unsafe<ReadonlyArray<Record<string, unknown>>>(
+					`SELECT * FROM carneloot.pets WHERE id=$1::uuid${lock ? ' FOR UPDATE' : ''}`,
+					[petId],
+				)
+				.pipe(
 					Effect.flatMap((rows) =>
 						rows[0] === undefined ? Effect.succeed(undefined) : decode(rows[0]),
 					),
@@ -104,7 +106,10 @@ export const layer = Layer.effect(
 									cause,
 								}),
 					),
-				),
+				);
+		const service = {
+			findById: (petId) => lookup(petId, false),
+			lockById: (petId) => lookup(petId, true),
 			addOwned: (ownerId, name) =>
 				sql
 					.withTransaction(
@@ -135,6 +140,21 @@ export const layer = Layer.effect(
 							const rows = yield* sql<
 								Record<string, unknown>
 							>`SELECT * FROM carneloot.pets WHERE owner_id=${ownerId}::uuid ORDER BY name_key,id`;
+							return yield* Effect.forEach(rows, decode);
+						}),
+					)
+					.pipe(Effect.mapError(persistence)),
+			listAccessible: (userId) =>
+				sql
+					.withTransaction(
+						Effect.gen(function* () {
+							yield* assertOwner(userId);
+							const rows = yield* sql<
+								Record<string, unknown>
+							>`SELECT DISTINCT p.* FROM carneloot.pets p
+							LEFT JOIN carneloot.pet_caregivers pc ON pc.pet_id=p.id AND pc.caregiver_user_id=${userId}::uuid AND pc.status='accepted'
+							WHERE p.owner_id=${userId}::uuid OR pc.pet_id IS NOT NULL
+							ORDER BY p.name_key,p.id`;
 							return yield* Effect.forEach(rows, decode);
 						}),
 					)
