@@ -206,6 +206,8 @@ const harness = (
 							message: 'repository test failure',
 						}),
 					),
+		lockForMaterialization: () => unused(),
+		markRecipientsMaterialized: () => unused(),
 		materializeRecipients: (_eventId, recipients) =>
 			Effect.sync(() => {
 				materializations++;
@@ -272,6 +274,7 @@ const harness = (
 				return true;
 			}),
 		reconcileUnknownAsSent: () => Effect.die('unused'),
+		findSentByTelegramMessage: () => unused(),
 		summarizeAndComplete: () =>
 			Effect.succeed({
 				pending: state === 'pending' ? 1 : 0,

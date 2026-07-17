@@ -68,6 +68,10 @@ export interface CancelledActiveEvent {
 	readonly eventId: EventId;
 	readonly jobId: string | null;
 }
+export interface NotificationReplyContext {
+	readonly delivery: NotificationDelivery;
+	readonly event: NotificationEvent;
+}
 export interface EventSummary {
 	readonly pending: number;
 	readonly sending: number;
@@ -108,6 +112,16 @@ export interface NotificationRepositoryService {
 		NotificationEvent | undefined,
 		NotificationRepositoryError
 	>;
+	readonly lockForMaterialization: (
+		eventId: EventId,
+	) => Effect.Effect<
+		NotificationEvent | undefined,
+		NotificationRepositoryError
+	>;
+	readonly markRecipientsMaterialized: (
+		eventId: EventId,
+		now: DateTime.Utc,
+	) => Effect.Effect<boolean, NotificationRepositoryError>;
 	readonly materializeRecipients: (
 		eventId: EventId,
 		recipients: ReadonlyArray<RecipientInput>,
@@ -152,6 +166,14 @@ export interface NotificationRepositoryService {
 		messageId: number,
 		now: DateTime.Utc,
 	) => Effect.Effect<boolean, NotificationRepositoryError>;
+	readonly findSentByTelegramMessage: (
+		botId: BotId,
+		chatId: TelegramChatId,
+		messageId: number,
+	) => Effect.Effect<
+		NotificationReplyContext | undefined,
+		NotificationRepositoryError
+	>;
 	readonly summarizeAndComplete: (
 		eventId: EventId,
 		now: DateTime.Utc,

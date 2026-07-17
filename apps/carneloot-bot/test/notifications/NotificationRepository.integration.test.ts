@@ -217,6 +217,103 @@ else
 			});
 		});
 
+		it('freezes one complete recipient set across concurrent materializers', async () => {
+			const program = Effect.gen(function* () {
+				const owner = yield* register(
+					`freeze-owner-${crypto.randomUUID()}`,
+					Math.floor(Math.random() * 1_000_000) + 5_000_001,
+				);
+				const caregiverA = yield* register(
+					`freeze-a-${crypto.randomUUID()}`,
+					Math.floor(Math.random() * 1_000_000) + 6_000_001,
+				);
+				const caregiverB = yield* register(
+					`freeze-b-${crypto.randomUUID()}`,
+					Math.floor(Math.random() * 1_000_000) + 7_000_001,
+				);
+				const repository = yield* NotificationRepository;
+				const sql = yield* PgClient.PgClient;
+				const event = yield* create(repository, owner.user.id, 'freeze');
+				const now = DateTime.makeUnsafe(2_000);
+				const sets = [
+					[
+						{
+							_tag: 'Reachable' as const,
+							id: deliveryId(),
+							recipientUserId: owner.user.id,
+							recipientChatId: owner.profile.privateChatId,
+							recipientRole: RecipientRole.owner,
+							channel: 'telegram',
+						},
+						{
+							_tag: 'Reachable' as const,
+							id: deliveryId(),
+							recipientUserId: caregiverA.user.id,
+							recipientChatId: caregiverA.profile.privateChatId,
+							recipientRole: RecipientRole.caregiver,
+							channel: 'telegram',
+						},
+					],
+					[
+						{
+							_tag: 'Reachable' as const,
+							id: deliveryId(),
+							recipientUserId: caregiverB.user.id,
+							recipientChatId: caregiverB.profile.privateChatId,
+							recipientRole: RecipientRole.caregiver,
+							channel: 'telegram',
+						},
+					],
+				] as const;
+				const materializeOnce = (recipients: (typeof sets)[number]) =>
+					sql.withTransaction(
+						Effect.gen(function* () {
+							const locked = yield* repository.lockForMaterialization(event.id);
+							if (
+								locked === undefined ||
+								locked.recipientsMaterializedAt !== null
+							)
+								return [];
+							const deliveries = yield* repository.materializeRecipients(
+								event.id,
+								recipients,
+								now,
+							);
+							expect(
+								yield* repository.markRecipientsMaterialized(event.id, now),
+							).toBe(true);
+							return deliveries;
+						}),
+					);
+				const results = yield* Effect.all(sets.map(materializeOnce), {
+					concurrency: 'unbounded',
+				});
+				const retry = yield* materializeOnce([
+					{ ...sets[1][0], id: deliveryId() },
+				]);
+				const rows = yield* sql<{
+					recipient_user_id: string;
+				}>`SELECT recipient_user_id FROM carneloot.notification_deliveries WHERE event_id=${event.id}::uuid ORDER BY recipient_user_id`;
+				return {
+					results,
+					retry,
+					recipients: rows.map((row) => row.recipient_user_id),
+					context: yield* repository.getDispatchContext(event.id),
+					setA: sets[0].map((recipient) => recipient.recipientUserId).sort(),
+					setB: sets[1].map((recipient) => recipient.recipientUserId).sort(),
+				};
+			});
+			const result = await Effect.runPromise(Effect.provide(program, layer));
+			expect(
+				result.results.filter((deliveries) => deliveries.length > 0),
+			).toHaveLength(1);
+			expect(result.retry).toEqual([]);
+			expect([result.setA, result.setB]).toContainEqual(result.recipients);
+			expect(result.context?.recipientsMaterializedAt).toEqual(
+				DateTime.makeUnsafe(2_000),
+			);
+		});
+
 		it('fences claims, due retries, stale finalizers, unknown reconciliation, and recovery', async () => {
 			const program = Effect.gen(function* () {
 				const owner = yield* register(
@@ -318,6 +415,49 @@ else
 						DateTime.makeUnsafe(3_020),
 					),
 				).toBe(true);
+				const reply = yield* repository.findSentByTelegramMessage(
+					botId,
+					owner.profile.privateChatId,
+					10,
+				);
+				expect(reply).toMatchObject({
+					delivery: { id: second.delivery.id, status: 'sent' },
+					event: { id: event.id },
+				});
+				expect(
+					yield* repository.findSentByTelegramMessage(
+						Schema.decodeUnknownSync(BotId)('different-bot'),
+						owner.profile.privateChatId,
+						10,
+					),
+				).toBeUndefined();
+				expect(
+					yield* repository.findSentByTelegramMessage(
+						botId,
+						Schema.decodeUnknownSync(TelegramChatId)(
+							owner.profile.privateChatId + 1,
+						),
+						10,
+					),
+				).toBeUndefined();
+				expect(
+					yield* repository.findSentByTelegramMessage(
+						botId,
+						owner.profile.privateChatId,
+						11,
+					),
+				).toBeUndefined();
+				expect(
+					yield* repository.findSentByTelegramMessage(
+						botId,
+						owner.profile.privateChatId,
+						Number.MAX_SAFE_INTEGER + 1,
+					),
+				).toBeUndefined();
+				const findSent = repository.findSentByTelegramMessage;
+				// @ts-expect-error Exercise runtime validation at typed boundary.
+				const malformedChat = findSent(botId, 0, 10);
+				expect(yield* malformedChat).toBeUndefined();
 
 				const recoveryEvent = yield* create(
 					repository,

@@ -276,30 +276,47 @@ export const layer = Layer.effect(
 								: decodeEvent(rows[0]),
 					),
 				),
+			lockForMaterialization: (eventId) =>
+				protect(
+					Effect.flatMap(
+						sql<
+							Record<string, unknown>
+						>`SELECT * FROM carneloot.notification_events WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`,
+						(rows) =>
+							rows[0] === undefined
+								? Effect.succeed(undefined)
+								: decodeEvent(rows[0]),
+					),
+				),
+			markRecipientsMaterialized: (eventId, now) =>
+				protect(
+					Effect.map(
+						sql`UPDATE carneloot.notification_events SET recipients_materialized_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching') AND recipients_materialized_at IS NULL RETURNING id`,
+						(rows) => rows.length > 0,
+					),
+				),
 			materializeRecipients: (eventId, recipients, now) =>
 				protect(
-					sql.withTransaction(
-						Effect.gen(function* () {
-							const active =
-								yield* sql`SELECT id FROM carneloot.notification_events WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`;
-							if (active.length === 0)
-								return yield* Effect.fail(
-									error('Conflict', 'Notification event is not active'),
-								);
-							return yield* Effect.forEach(recipients, (recipient) =>
-								Effect.flatMap(
-									recipient._tag === 'Reachable'
-										? sql<
-												Record<string, unknown>
-											>`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,${recipient.recipientChatId},${recipient.recipientRole},${recipient.channel},'pending',0,0,false,${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`
-										: sql<
-												Record<string, unknown>
-											>`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,safe_error_json,failed_at,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,NULL,${recipient.recipientRole},${recipient.channel},'failed',0,0,false,${sql.json(recipient.error)},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`,
-									oneDelivery,
-								),
+					Effect.gen(function* () {
+						const active =
+							yield* sql`SELECT id FROM carneloot.notification_events WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching')`;
+						if (active.length === 0)
+							return yield* Effect.fail(
+								error('Conflict', 'Notification event is not active'),
 							);
-						}),
-					),
+						return yield* Effect.forEach(recipients, (recipient) =>
+							Effect.flatMap(
+								recipient._tag === 'Reachable'
+									? sql<
+											Record<string, unknown>
+										>`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,${recipient.recipientChatId},${recipient.recipientRole},${recipient.channel},'pending',0,0,false,${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`
+									: sql<
+											Record<string, unknown>
+										>`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,safe_error_json,failed_at,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,NULL,${recipient.recipientRole},${recipient.channel},'failed',0,0,false,${sql.json(recipient.error)},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`,
+								oneDelivery,
+							),
+						);
+					}),
 				),
 			recoverExpired: (eventId, now) =>
 				protect(
@@ -374,6 +391,26 @@ export const layer = Layer.effect(
 						(rows) => rows.length > 0,
 					),
 				),
+			findSentByTelegramMessage: (botId, chatId, messageId) =>
+				!Number.isSafeInteger(chatId) ||
+				chatId === 0 ||
+				!Number.isSafeInteger(messageId) ||
+				messageId <= 0
+					? Effect.succeed(undefined)
+					: protect(
+							Effect.gen(function* () {
+								const rows = yield* sql<{
+									delivery: unknown;
+									event: unknown;
+								}>`SELECT to_jsonb(d) delivery,to_jsonb(e) event FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE d.status='sent' AND d.telegram_bot_id=${botId} AND d.recipient_chat_id=${chatId} AND d.telegram_message_id=${messageId}`;
+								const row = rows[0];
+								if (row === undefined) return undefined;
+								return {
+									delivery: yield* decodeDelivery(row.delivery),
+									event: yield* decodeEvent(row.event),
+								};
+							}),
+						),
 			summarizeAndComplete: (eventId, now) =>
 				protect(
 					sql.withTransaction(
