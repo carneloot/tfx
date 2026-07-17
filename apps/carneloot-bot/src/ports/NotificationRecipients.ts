@@ -2,7 +2,7 @@ import { Data } from 'effect';
 import * as Context from 'effect/Context';
 import type * as Effect from 'effect/Effect';
 
-import type { BotId, TelegramChatId, UserId } from '../domain/Ids.js';
+import type { BotId, PetId, TelegramChatId, UserId } from '../domain/Ids.js';
 import type { SafeError } from '../domain/notifications/DeliveryOutcome.js';
 import type { RecipientRole } from '../domain/notifications/RecipientRole.js';
 
@@ -24,11 +24,24 @@ export type ResolvedRecipient =
 			readonly channel: 'telegram';
 			readonly error: SafeError;
 	  };
+export interface PetNotificationRecipient {
+	readonly userId: UserId;
+	readonly role: 'owner' | 'caregiver';
+	readonly resolution: ResolvedRecipient;
+}
 export interface NotificationRecipientsService {
 	readonly resolveOwner: (
 		botId: BotId,
 		ownerUserId: UserId,
 	) => Effect.Effect<ResolvedRecipient, NotificationRecipientsError>;
+	readonly resolvePetRecipients: (
+		botId: BotId,
+		petId: PetId,
+		options?: { readonly excludeUserId?: UserId },
+	) => Effect.Effect<
+		ReadonlyArray<PetNotificationRecipient>,
+		NotificationRecipientsError
+	>;
 }
 export class NotificationRecipients extends Context.Service<
 	NotificationRecipients,

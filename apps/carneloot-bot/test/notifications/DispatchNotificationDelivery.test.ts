@@ -338,6 +338,7 @@ const harness = (
 	const layer = Layer.mergeAll(
 		Layer.succeed(NotificationRepository, repository),
 		Layer.succeed(NotificationRecipients, {
+			resolvePetRecipients: () => Effect.die('unused'),
 			resolveOwner: () =>
 				Effect.succeed(
 					options.reachable === false
