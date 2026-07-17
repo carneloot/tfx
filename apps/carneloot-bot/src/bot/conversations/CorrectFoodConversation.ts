@@ -257,13 +257,13 @@ export const built = ConversationBuilder.done(
 								},
 							),
 						);
-						if (
-							result._tag === 'Failure' &&
-							result.failure._tag === 'PetAccessDenied'
-						)
-							return unavailable();
-						if (result._tag === 'Failure')
+						if (result._tag === 'Failure') {
+							if (result.failure._tag === 'PetAccessDenied')
+								return unavailable();
+							if (result.failure._tag === 'InvalidDomainInput')
+								return yield* invalid;
 							return yield* Effect.fail(result.failure);
+						}
 						return ConversationBuilder.complete({
 							afterCommit: reply('Ração alterada com sucesso!', true),
 						});
