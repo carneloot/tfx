@@ -39,11 +39,16 @@ export const execute = (
 			if (byTime !== 0) return byTime;
 			return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 		});
-		return yield* Effect.forEach(ordered, (entry) =>
-			Effect.map(users.findById(botId, entry.recordedBy), (actor) => ({
-				entry,
-				actorDisplay: displayName(actor),
-				localTimestamp: formatLocalTimestamp(entry.fedAt, timeZone),
-			})),
+		const actorIds = [...new Set(ordered.map((entry) => entry.recordedBy))];
+		const actors = yield* Effect.forEach(actorIds, (actorId) =>
+			users.findById(botId, actorId),
 		);
+		const actorsById = new Map(
+			actors.map((actor) => [actor.user.id, actor] as const),
+		);
+		return ordered.map((entry) => ({
+			entry,
+			actorDisplay: displayName(actorsById.get(entry.recordedBy)!),
+			localTimestamp: formatLocalTimestamp(entry.fedAt, timeZone),
+		}));
 	});
