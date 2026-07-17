@@ -153,7 +153,7 @@ else
 								text: 'Conversa cancelada.',
 							});
 							expect(
-								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_conversations`,
+								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
 							).toHaveLength(0);
 							for (const text of ['/adicionar_cuidador', 'Rex', '@care_e2e'])
 								yield* send(text);
@@ -165,9 +165,14 @@ else
 							for (const text of ['/adicionar_cuidador', 'Rex', 'care_e2e'])
 								yield* send(text);
 							expect(yield* relation()).toHaveLength(1);
+							expect(sent).toContainEqual({
+								chatId: owner.id,
+								text: 'Esta pessoa já possui um vínculo com este pet.',
+							});
 							expect(sent.at(-1)?.text).toBe(
-								'Esta pessoa já possui um vínculo com este pet.',
+								'Envie o @username da pessoa cuidadora.',
 							);
+							yield* send('/cancelar');
 							for (const text of ['/convites_pet', 'Rex (Owner)', 'Sim'])
 								yield* send(text, caregiver);
 							expect((yield* relation())[0]?.status).toBe('accepted');
@@ -332,7 +337,7 @@ else
 							] as const)
 								yield* dispatchWith(first, update(id, text, who));
 							expect(
-								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_conversations`,
+								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
 							).toHaveLength(1);
 							const second = yield* Layer.build(makeGraph(sql, sent));
 							yield* sql`DELETE FROM carneloot.pet_caregivers`;
@@ -347,13 +352,13 @@ else
 								},
 							]);
 							expect(
-								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_update_attempts WHERE update_id='209'`,
+								yield* sql`SELECT update_id FROM tfx_caregiver_e2e.case_update_deduplication WHERE update_id=209`,
 							).toHaveLength(1);
 							expect(
 								yield* sql`SELECT * FROM carneloot.pet_caregivers`,
 							).toHaveLength(0);
 							expect(
-								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_conversations`,
+								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
 							).toHaveLength(0);
 						}),
 					),
@@ -388,7 +393,7 @@ else
 							] as const)
 								yield* dispatchWith(first, update(id, text, owner));
 							expect(
-								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_conversations`,
+								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
 							).toHaveLength(1);
 							const second = yield* Layer.build(makeGraph(sql, sent));
 							yield* sql`DELETE FROM carneloot.pets WHERE name='Rex'`;
@@ -403,10 +408,10 @@ else
 								),
 							).toHaveLength(1);
 							expect(
-								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_update_attempts WHERE update_id='105'`,
+								yield* sql`SELECT update_id FROM tfx_caregiver_e2e.case_update_deduplication WHERE update_id=105`,
 							).toHaveLength(1);
 							expect(
-								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_conversations`,
+								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
 							).toHaveLength(0);
 						}),
 					),
