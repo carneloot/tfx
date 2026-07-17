@@ -71,7 +71,7 @@ else
 				const input = {
 					id,
 					botId,
-					kind: 'feeding-reminder',
+					kind: 'food-added',
 					ownerUserId: owner.user.id,
 					petId: null,
 					foodEntryId: null,
@@ -85,6 +85,13 @@ else
 					...input,
 					id: eventId(),
 				});
+				const timestampConflicting = yield* Effect.result(
+					repository.createEvent({
+						...input,
+						id: eventId(),
+						foodTimestampExplicit: true,
+					}),
+				);
 				const conflicting = yield* Effect.result(
 					repository.createEvent({
 						...input,
@@ -161,6 +168,7 @@ else
 				return {
 					first,
 					repeated,
+					timestampConflicting,
 					conflicting,
 					a,
 					b,
@@ -186,6 +194,10 @@ else
 				recipientChatId: null,
 				retryable: false,
 				safeError: { code: 'MissingTelegramIdentity' },
+			});
+			expect(result.timestampConflicting).toMatchObject({
+				_tag: 'Failure',
+				failure: { reason: 'Conflict' },
 			});
 			expect(result.conflicting).toMatchObject({
 				_tag: 'Failure',

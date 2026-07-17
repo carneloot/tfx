@@ -33,6 +33,11 @@ describe('RecipientRole', () => {
 		expect(() =>
 			Schema.decodeUnknownSync(NotificationEvent)(missingMarker),
 		).toThrow();
+		const { foodTimestampExplicit: _foodTimestamp, ...missingTimestampFlag } =
+			event;
+		expect(() =>
+			Schema.decodeUnknownSync(NotificationEvent)(missingTimestampFlag),
+		).toThrow();
 	});
 
 	it('provides standard roles and round-trips unknown valid roles', () => {

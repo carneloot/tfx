@@ -209,6 +209,8 @@ export const layer = Layer.effect(
 								existing.ownerUserId !== input.ownerUserId ||
 								existing.petId !== input.petId ||
 								existing.foodEntryId !== input.foodEntryId ||
+								existing.foodTimestampExplicit !==
+									input.foodTimestampExplicit ||
 								!nullableDateTimeEquals(
 									existing.scheduledFor,
 									input.scheduledFor,
