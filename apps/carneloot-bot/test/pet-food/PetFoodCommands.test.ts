@@ -177,12 +177,17 @@ const repository = (
 	latestEntry: () => Effect.succeed(undefined),
 	findBySource: () => Effect.succeed(undefined),
 	findBusinessDuplicate: () => Effect.succeed(undefined),
+		findBusinessDuplicateExcluding: unused,
 	listEntries: () => Effect.die('unused'),
 	lockEntry: () => Effect.die('unused'),
 	findBusinessDuplicateExcluding: () => Effect.die('unused'),
 	updateEntry: () => Effect.die('unused'),
 	deleteEntry: () => Effect.die('unused'),
 	insert: () => Effect.die('unused'),
+	listEntries: unused,
+	lockEntry: unused,
+	updateEntry: unused,
+	deleteEntry: unused,
 	status: () => Effect.succeed(summary),
 });
 

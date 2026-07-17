@@ -138,6 +138,7 @@ const fixture = (options: FixtureOptions) => {
 					),
 				),
 			findBusinessDuplicate: () => Effect.succeed(undefined),
+		findBusinessDuplicateExcluding: unused,
 			insert: (entry: NewFoodEntry) =>
 				Effect.suspend(() => {
 					if (entry.petId === options.failInsertOnceFor && !failed) {
@@ -165,6 +166,10 @@ const fixture = (options: FixtureOptions) => {
 					entries.push(stored);
 					return Effect.succeed(stored);
 				}),
+			listEntries: unused,
+			lockEntry: unused,
+			updateEntry: unused,
+			deleteEntry: unused,
 			status: unused,
 		}),
 		Layer.succeed(ReminderScheduler, {

@@ -323,7 +323,12 @@ const harness = (
 			}),
 		findBySource: () => Effect.die('unused'),
 		findBusinessDuplicate: () => Effect.die('unused'),
+		findBusinessDuplicateExcluding: unused,
 		insert: () => Effect.die('unused'),
+		listEntries: unused,
+		lockEntry: unused,
+		updateEntry: unused,
+		deleteEntry: unused,
 		status: () =>
 			Effect.succeed({ totalMg: 120_000, latestFedAt: DateTime.makeUnsafe(0) }),
 	};

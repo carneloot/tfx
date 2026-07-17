@@ -226,7 +226,12 @@ const harness = (): Harness => {
 			} satisfies PetFoodEntry),
 		findBySource: () => Effect.succeed(undefined),
 		findBusinessDuplicate: () => Effect.succeed(undefined),
+		findBusinessDuplicateExcluding: unused,
 		insert: () => Effect.die('unused'),
+		listEntries: unused,
+		lockEntry: unused,
+		updateEntry: unused,
+		deleteEntry: unused,
 		status: () => Effect.die('unused'),
 	};
 	const users: UserRepositoryService = {
