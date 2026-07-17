@@ -25,7 +25,10 @@ import { PetName } from '../../src/domain/Pet.js';
 import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import { PetFoodRepository } from '../../src/ports/PetFoodRepository.js';
 import { PetRepository } from '../../src/ports/PetRepository.js';
-import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
+import {
+	ReminderScheduler,
+	ReminderSchedulerError,
+} from '../../src/ports/ReminderScheduler.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
 
 const ownerId = Schema.decodeUnknownSync(UserId)(
@@ -172,7 +175,12 @@ const harness = (hasEntry = true) => {
 		Layer.succeed(ReminderScheduler, {
 			cancelForPet: () =>
 				schedulerFails.value
-					? Effect.fail(new Error('scheduler failed'))
+					? Effect.fail(
+							new ReminderSchedulerError({
+								reason: 'PersistenceFailure',
+								message: 'scheduler failed',
+							}),
+						)
 					: Effect.void,
 			replaceForLatest: () => Effect.void,
 		} as never),

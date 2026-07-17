@@ -2,7 +2,10 @@ import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
 import { InvalidDomainInput } from '../DomainError.js';
-import { FoodAmount, type FoodAmount as FoodAmountValue } from './FoodAmount.js';
+import {
+	FoodAmount,
+	type FoodAmount as FoodAmountValue,
+} from './FoodAmount.js';
 import { FoodWhenInput } from './FoodWhenInput.js';
 
 export interface FoodCorrection {

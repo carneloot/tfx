@@ -46,9 +46,18 @@ export const execute = (
 		const actorsById = new Map(
 			actors.map((actor) => [actor.user.id, actor] as const),
 		);
-		return ordered.map((entry) => ({
-			entry,
-			actorDisplay: displayName(actorsById.get(entry.recordedBy)!),
-			localTimestamp: formatLocalTimestamp(entry.fedAt, timeZone),
-		}));
+		return yield* Effect.forEach(ordered, (entry) =>
+			Effect.gen(function* () {
+				const actor = actorsById.get(entry.recordedBy);
+				if (actor === undefined)
+					return yield* Effect.die(
+						new Error('Food entry actor lookup missing'),
+					);
+				return {
+					entry,
+					actorDisplay: displayName(actor),
+					localTimestamp: formatLocalTimestamp(entry.fedAt, timeZone),
+				};
+			}),
+		);
 	});

@@ -138,7 +138,7 @@ const fixture = (options: FixtureOptions) => {
 					),
 				),
 			findBusinessDuplicate: () => Effect.succeed(undefined),
-		findBusinessDuplicateExcluding: unused,
+			findBusinessDuplicateExcluding: unused,
 			insert: (entry: NewFoodEntry) =>
 				Effect.suspend(() => {
 					if (entry.petId === options.failInsertOnceFor && !failed) {

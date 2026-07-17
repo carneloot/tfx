@@ -25,7 +25,8 @@ const snapshotsEqual = (
 	left?.id === right?.id &&
 	(left === undefined ||
 		(right !== undefined &&
-			DateTime.toEpochMillis(left.fedAt) === DateTime.toEpochMillis(right.fedAt)));
+			DateTime.toEpochMillis(left.fedAt) ===
+				DateTime.toEpochMillis(right.fedAt)));
 
 /** Reconciles persistence-only scheduling within the caller's ambient transaction. */
 export const reconcile = (request: ReconcileFoodReminderRequest) =>
