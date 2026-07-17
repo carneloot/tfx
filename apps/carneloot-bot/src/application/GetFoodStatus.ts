@@ -11,7 +11,7 @@ import { PetRepository } from '../ports/PetRepository.js';
 import { authorize } from './PetFoodAccess.js';
 
 export interface Identity {
-	readonly ownerId: UserId;
+	readonly actorId: UserId;
 	readonly botId: BotId;
 	readonly telegramUserId: TelegramUserId;
 }
@@ -32,7 +32,7 @@ export const execute = (identity: Identity) =>
 		const food = yield* PetFoodRepository;
 		return yield* sql.withTransaction(
 			Effect.gen(function* () {
-				const owned = yield* pets.listOwned(identity.ownerId);
+				const owned = yield* pets.listAccessible(identity.actorId);
 				const now = yield* DateTime.now;
 				return yield* Effect.forEach(owned, (pet) =>
 					Effect.gen(function* () {

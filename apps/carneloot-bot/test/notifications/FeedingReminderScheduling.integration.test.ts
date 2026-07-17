@@ -321,7 +321,7 @@ else
 						Effect.andThen(
 							AddFood.execute(
 								{
-									ownerId: user.user.id,
+									actorId: user.user.id,
 									botId,
 									telegramUserId: user.profile.telegramUserId,
 									petId: pet.id,

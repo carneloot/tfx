@@ -7,7 +7,7 @@ import * as ConfigureReminderDelay from '../../src/application/ConfigureReminder
 import { BotId, PetId, TelegramUserId, UserId } from '../../src/domain/Ids.js';
 
 const access = {
-	ownerId: Schema.decodeUnknownSync(UserId)(
+	actorId: Schema.decodeUnknownSync(UserId)(
 		'00000000-0000-4000-8000-000000000001',
 	),
 	petId: Schema.decodeUnknownSync(PetId)(

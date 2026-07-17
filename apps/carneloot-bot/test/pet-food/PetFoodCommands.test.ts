@@ -6,6 +6,7 @@ import * as DispatchOutcome from 'tfx/DispatchOutcome';
 import * as MemoryUpdateDeduplicator from 'tfx/MemoryUpdateDeduplicator';
 import { MessageContext, type MessageContextService } from 'tfx/MessageContext';
 import { Telegram } from 'tfx/Telegram';
+import { UpdateContext } from 'tfx/UpdateContext';
 import { UpdateDeduplicator } from 'tfx/UpdateDeduplicator';
 import { describe, expect, it } from 'vitest';
 
@@ -29,6 +30,7 @@ import {
 	PetFoodSettings,
 } from '../../src/domain/pet-food/PetFood.js';
 import { PetName } from '../../src/domain/Pet.js';
+import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import {
 	PetFoodRepository,
 	type PetFoodRepositoryService,
@@ -113,6 +115,7 @@ const sql = Layer.succeed(PgClient.PgClient, {
 	withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
 } as never);
 const identity = Layer.succeed(UserRepository, {
+	findByUsername: () => Effect.die('unused'),
 	registerTelegramProfile: () => Effect.die('unused'),
 	findByTelegram: () => Effect.succeed(current),
 });
@@ -130,13 +133,31 @@ const provide = <A, E, R>(
 		Layer.mergeAll(
 			Layer.succeed(CurrentUser, current),
 			Layer.succeed(MessageContext, messageContext),
+			Layer.succeed(UpdateContext, {
+				update: { update_id: 10 } as never,
+				updateId: 10,
+				userId: 42,
+				chatId: 42,
+			}),
 			Layer.succeed(Telegram, {} as never),
 			Layer.succeed(PetRepository, {
+				lockById: () => Effect.succeed(pet),
+				listAccessible: () => Effect.succeed(pets),
 				findById: () => Effect.die('unused'),
 				addOwned: () => Effect.die('unused'),
 				listOwned: () => Effect.succeed(pets),
 			}),
 			Layer.succeed(PetFoodRepository, food),
+			Layer.succeed(PetCaregiverRepository, {
+				find: () => Effect.die('unused'),
+				lock: () => Effect.succeed(undefined),
+				insertPending: () => Effect.die('unused'),
+				setPendingResponse: () => Effect.die('unused'),
+				remove: () => Effect.die('unused'),
+				listForPet: () => Effect.die('unused'),
+				listPendingForUser: () => Effect.die('unused'),
+				listAcceptedForUser: () => Effect.die('unused'),
+			}),
 			identity,
 			scheduler,
 			sql,
@@ -220,13 +241,10 @@ describe('pet food command handlers', () => {
 				}),
 		};
 		const state = {
-			ownerId,
+			actorId: ownerId,
 			botId,
 			telegramUserId,
 			pets: [{ id: petId, name: petName }],
-			updateId: 10,
-			messageChatId: chatId,
-			messageId: 7,
 		};
 		const selected = await Effect.runPromise(
 			provide(
@@ -288,13 +306,10 @@ describe('pet food command handlers', () => {
 			latestEntry: () => Effect.succeed(entry),
 		};
 		const state = {
-			ownerId,
+			actorId: ownerId,
 			botId,
 			telegramUserId,
 			pets: [{ id: petId, name: petName }],
-			updateId: 10,
-			messageChatId: chatId,
-			messageId: 7,
 			petId,
 			petName,
 			timeZone: settings.timeZone!,
@@ -337,13 +352,10 @@ describe('pet food command handlers', () => {
 	it('stays safely when pet setup is missing', async () => {
 		replies.length = 0;
 		const state = {
-			ownerId,
+			actorId: ownerId,
 			botId,
 			telegramUserId,
 			pets: [{ id: petId, name: petName }],
-			updateId: 10,
-			messageChatId: chatId,
-			messageId: 7,
 		};
 		const food = repository({ totalMg: 0, latestFedAt: null }, false);
 		const transition = await Effect.runPromise(
@@ -398,13 +410,10 @@ describe('pet food command handlers', () => {
 				}),
 		};
 		const state = {
-			ownerId,
+			actorId: ownerId,
 			botId,
 			telegramUserId,
 			pets: [{ id: petId, name: petName }],
-			updateId: 10,
-			messageChatId: chatId,
-			messageId: 7,
 			petId,
 			petName,
 			timeZone: settings.timeZone!,
@@ -460,13 +469,10 @@ describe('pet food command handlers', () => {
 			latestEntry: () => Effect.succeed(latest),
 		};
 		const state = {
-			ownerId,
+			actorId: ownerId,
 			botId,
 			telegramUserId,
 			pets: [{ id: petId, name: petName }],
-			updateId: 10,
-			messageChatId: chatId,
-			messageId: 7,
 			petId,
 			petName,
 			timeZone: settings.timeZone!,

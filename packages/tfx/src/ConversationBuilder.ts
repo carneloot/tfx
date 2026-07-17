@@ -4,6 +4,7 @@ import type * as Conversation from './Conversation.js';
 import type * as ConversationInput from './ConversationInput.js';
 import type * as Transition from './internal/conversation/Transition.js';
 import type { TaggedError } from './TaggedError.js';
+import type * as UpdateContext from './UpdateContext.js';
 export {
 	to,
 	stay,
@@ -61,7 +62,11 @@ export interface Builder<
 		C,
 		Exclude<Remaining, Id>,
 		| R
-		| Exclude<SR, ConversationInput.ContextService<StepsOf<C>[Id]['input']>>
+		| Exclude<
+				SR,
+				| ConversationInput.ContextService<StepsOf<C>[Id]['input']>
+				| UpdateContext.UpdateContext
+		  >
 		| ConversationInput.Requirements<StepsOf<C>[Id]['input']>,
 		Implementations & { readonly [K in Id]: typeof handlers }
 	>;

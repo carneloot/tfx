@@ -31,6 +31,7 @@ import {
 } from '../../src/domain/pet-food/PetFood.js';
 import { PetAccessDenied } from '../../src/domain/pet-food/PetFoodError.js';
 import { PetName } from '../../src/domain/Pet.js';
+import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import {
 	PetFoodRepository,
 	type PetFoodRepositoryService,
@@ -92,7 +93,7 @@ const update = {
 	userId: scope.userId,
 };
 const startup = {
-	ownerId,
+	actorId: ownerId,
 	botId,
 	telegramUserId,
 	pets: [{ id: petId, name: petName }],
@@ -230,12 +231,18 @@ const harness = (): Harness => {
 	};
 	const users: UserRepositoryService = {
 		registerTelegramProfile: () => Effect.die('unused'),
+		findByUsername: () => Effect.die('unused'),
 		findByTelegram: () => Effect.succeed(current),
 	};
 	const pets: PetRepositoryService = {
 		findById: () => Effect.die('unused'),
+		lockById: () =>
+			authorizationFails.value
+				? Effect.succeed(undefined)
+				: Effect.succeed(pet),
 		addOwned: () => Effect.die('unused'),
 		listOwned: () => Effect.succeed([pet]),
+		listAccessible: () => Effect.succeed([pet]),
 	};
 	const reminders: ReminderSchedulerService = {
 		replaceForLatest: (value) =>
@@ -253,6 +260,16 @@ const harness = (): Harness => {
 		Layer.succeed(PetFoodRepository, food),
 		Layer.succeed(UserRepository, users),
 		Layer.succeed(PetRepository, pets),
+		Layer.succeed(PetCaregiverRepository, {
+			find: () => Effect.die('unused'),
+			lock: () => Effect.succeed(undefined),
+			insertPending: () => Effect.die('unused'),
+			setPendingResponse: () => Effect.die('unused'),
+			remove: () => Effect.die('unused'),
+			listForPet: () => Effect.die('unused'),
+			listPendingForUser: () => Effect.die('unused'),
+			listAcceptedForUser: () => Effect.die('unused'),
+		}),
 		Layer.succeed(ReminderScheduler, reminders),
 		Layer.succeed(PgClient.PgClient, client as unknown as PgClient.PgClient),
 		Layer.succeed(MessageContext, context),
@@ -494,15 +511,7 @@ describe('pet food conversation transcripts', () => {
 		for (const selection of [
 			DayStart.built.implementations.pet.onInput(startup, 'Rex'),
 			Reminder.built.implementations.pet.onInput(startup, 'Rex'),
-			AddFood.built.implementations.pet.onInput(
-				{
-					...startup,
-					updateId: 1,
-					messageChatId: privateChatId,
-					messageId: 1,
-				},
-				'Rex',
-			),
+			AddFood.built.implementations.pet.onInput(startup, 'Rex'),
 		] as ReadonlyArray<Effect.Effect<unknown, unknown, unknown>>) {
 			const h = harness();
 			h.authorizationFails.value = true;
@@ -580,8 +589,10 @@ describe('pet food conversation transcripts', () => {
 		const h = harness();
 		const emptyPets: PetRepositoryService = {
 			findById: () => Effect.die('unused'),
+			lockById: () => Effect.die('unused'),
 			addOwned: () => Effect.die('unused'),
 			listOwned: () => Effect.succeed([]),
+			listAccessible: () => Effect.succeed([]),
 		};
 		await run(
 			Effect.provide(

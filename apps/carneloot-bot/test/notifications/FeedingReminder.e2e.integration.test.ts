@@ -235,7 +235,7 @@ else
 				expect(yield* runFresh).toMatchObject({ status: 'completed' });
 				yield* ConfigureReminderDelay.set(
 					{
-						ownerId: fixture.user.user.id,
+						actorId: fixture.user.user.id,
 						botId,
 						telegramUserId: fixture.user.profile.telegramUserId,
 						petId: fixture.pet.id,
@@ -268,7 +268,7 @@ else
 				yield* Deferred.await(control.started!);
 				yield* ConfigureReminderDelay.set(
 					{
-						ownerId: fixture.user.user.id,
+						actorId: fixture.user.user.id,
 						botId,
 						telegramUserId: fixture.user.profile.telegramUserId,
 						petId: fixture.pet.id,

@@ -17,13 +17,15 @@ import { ApplicationError } from '../../domain/ApplicationError.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../domain/Ids.js';
 import { ReminderDelay } from '../../domain/pet-food/PetFood.js';
 import { PetName } from '../../domain/Pet.js';
+import { PetCaregiverRepository } from '../../ports/PetCaregiverRepository.js';
 import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
+import { PetRepository } from '../../ports/PetRepository.js';
 import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
 import { UserRepository } from '../../ports/UserRepository.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
 const Base = {
-	ownerId: UserId,
+	actorId: UserId,
 	botId: BotId,
 	telegramUserId: TelegramUserId,
 	pets: Schema.Array(PetOption),
@@ -57,6 +59,8 @@ const required = <A, E extends TaggedError, R>(
 	Effect.gen(function* () {
 		yield* PgClient.PgClient;
 		yield* PetFoodRepository;
+		yield* PetRepository;
+		yield* PetCaregiverRepository;
 		yield* ReminderScheduler;
 		yield* UserRepository;
 		return yield* effect;
@@ -136,7 +140,7 @@ export const declaration = Conversation.make('configure-reminder-delay', {
 });
 
 const access = (state: typeof SelectedState.Type) => ({
-	ownerId: state.ownerId,
+	actorId: state.actorId,
 	botId: state.botId,
 	telegramUserId: state.telegramUserId,
 	petId: state.petId,
@@ -156,7 +160,7 @@ export const built = ConversationBuilder.done(
 							const pet = state.pets.find((item) => item.name === value);
 							if (pet === undefined) return yield* invalidChoice;
 							yield* authorize({
-								ownerId: state.ownerId,
+								actorId: state.actorId,
 								botId: state.botId,
 								telegramUserId: state.telegramUserId,
 								petId: pet.id,
@@ -190,7 +194,7 @@ export const built = ConversationBuilder.done(
 				required(
 					Effect.gen(function* () {
 						const selected = {
-							ownerId: state.ownerId,
+							actorId: state.actorId,
 							botId: state.botId,
 							telegramUserId: state.telegramUserId,
 							pets: state.pets,

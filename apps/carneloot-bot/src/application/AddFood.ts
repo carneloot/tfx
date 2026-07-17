@@ -75,7 +75,7 @@ export const execute = (
 		const scheduler = yield* ReminderScheduler;
 		const result = yield* sql.withTransaction(
 			Effect.gen(function* () {
-				yield* authorize(access);
+				const authorized = yield* authorize(access);
 				const replay = yield* repository.findBySource(
 					access.petId,
 					source.botId,
@@ -126,7 +126,7 @@ export const execute = (
 				const entry = yield* repository.insert({
 					id,
 					petId: access.petId,
-					recordedBy: access.ownerId,
+					recordedBy: authorized.actorId,
 					amountMg,
 					fedAt,
 					source,
@@ -137,7 +137,7 @@ export const execute = (
 				if (isLatest && settings.reminderDelay !== null)
 					yield* scheduler.replaceForLatest({
 						botId: access.botId,
-						ownerUserId: access.ownerId,
+						ownerUserId: authorized.ownerId,
 						petId: access.petId,
 						foodEntryId: entry.id,
 						runAt: DateTime.addDuration(entry.fedAt, settings.reminderDelay),
@@ -154,7 +154,7 @@ export const execute = (
 			result.replayed ? 'carneloot.food.replayed' : 'carneloot.food.recorded',
 		).pipe(
 			Effect.annotateLogs({
-				ownerId: access.ownerId,
+				actorId: access.actorId,
 				petId: access.petId,
 				foodEntryId: result.entry.id,
 				latest: result.latest,

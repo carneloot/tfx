@@ -7,12 +7,14 @@ import {
 	ConversationBuilder,
 	ConversationInput,
 	MessageContext,
+	UpdateContext,
 } from 'tfx';
 import type { TaggedError } from 'tfx/TaggedError';
 
 import * as AddFood from '../../application/AddFood.js';
 import { authorize } from '../../application/PetFoodAccess.js';
 import { ApplicationError } from '../../domain/ApplicationError.js';
+import { InvalidDomainInput } from '../../domain/DomainError.js';
 import {
 	BotId,
 	PetId,
@@ -23,19 +25,18 @@ import {
 import { FoodAmount } from '../../domain/pet-food/FoodAmount.js';
 import { IanaTimeZone } from '../../domain/pet-food/FoodDateTime.js';
 import { PetName } from '../../domain/Pet.js';
+import { PetCaregiverRepository } from '../../ports/PetCaregiverRepository.js';
 import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
+import { PetRepository } from '../../ports/PetRepository.js';
 import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
 import { UserRepository } from '../../ports/UserRepository.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
 const Base = {
-	ownerId: UserId,
+	actorId: UserId,
 	botId: BotId,
 	telegramUserId: TelegramUserId,
 	pets: Schema.Array(PetOption),
-	updateId: Schema.Number,
-	messageChatId: TelegramChatId,
-	messageId: Schema.Number,
 };
 const PetState = Schema.Struct(Base);
 const AmountState = Schema.Struct({
@@ -58,7 +59,10 @@ const required = <A, E extends TaggedError, R>(
 ) =>
 	Effect.gen(function* () {
 		yield* PgClient.PgClient;
+		yield* UpdateContext.UpdateContext;
 		yield* PetFoodRepository;
+		yield* PetRepository;
+		yield* PetCaregiverRepository;
 		yield* ReminderScheduler;
 		yield* UserRepository;
 		return yield* effect;
@@ -129,7 +133,7 @@ export const built = ConversationBuilder.done(
 							if (pet === undefined)
 								return yield* stay('Por favor, escolha uma opção');
 							yield* authorize({
-								ownerId: state.ownerId,
+								actorId: state.actorId,
 								botId: state.botId,
 								telegramUserId: state.telegramUserId,
 								petId: pet.id,
@@ -173,10 +177,23 @@ export const built = ConversationBuilder.done(
 								return yield* stay(
 									'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',
 								);
+							const context = yield* MessageContext.MessageContext;
+							const update = yield* UpdateContext.UpdateContext;
+							const messageChatId = yield* Schema.decodeUnknownEffect(
+								TelegramChatId,
+							)(context.chatId).pipe(
+								Effect.mapError(
+									(cause) =>
+										new InvalidDomainInput({
+											message: 'Invalid source chat id',
+											cause,
+										}),
+								),
+							);
 							const result = yield* Effect.result(
 								AddFood.execute(
 									{
-										ownerId: state.ownerId,
+										actorId: state.actorId,
 										botId: state.botId,
 										telegramUserId: state.telegramUserId,
 										petId: state.petId,
@@ -185,9 +202,9 @@ export const built = ConversationBuilder.done(
 									parsed.dateTime,
 									{
 										botId: state.botId,
-										updateId: state.updateId,
-										messageChatId: state.messageChatId,
-										messageId: state.messageId,
+										updateId: update.updateId,
+										messageChatId,
+										messageId: context.messageId,
 									},
 								),
 							);
@@ -202,7 +219,6 @@ export const built = ConversationBuilder.done(
 									'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',
 								);
 							}
-							const context = yield* MessageContext.MessageContext;
 							const base = `Foram adicionados ${amountText(result.success.entry.amountMg)} de ração para o pet ${state.petName}.`;
 							const text = result.success.latest
 								? base

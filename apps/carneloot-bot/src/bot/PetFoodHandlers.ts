@@ -1,16 +1,14 @@
 import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
-import * as Schema from 'effect/Schema';
 import { Conversations, MessageContext, UpdateContext } from 'tfx';
 
 import * as GetFoodStatus from '../application/GetFoodStatus.js';
 import * as ListPets from '../application/ListPets.js';
 import { ConversationOperationError } from '../domain/ApplicationError.js';
-import { InvalidDomainInput } from '../domain/DomainError.js';
-import { TelegramChatId } from '../domain/Ids.js';
 import type { Pet } from '../domain/Pet.js';
 import type { RegisteredUser } from '../domain/User.js';
+import { PetRepository } from '../ports/PetRepository.js';
 import * as AddFoodConversation from './conversations/AddFoodConversation.js';
 import * as ConfigureDayStartConversation from './conversations/ConfigureDayStartConversation.js';
 import * as ConfigureReminderDelayConversation from './conversations/ConfigureReminderDelayConversation.js';
@@ -18,7 +16,7 @@ import { CurrentUser } from './CurrentUser.js';
 import { botId } from './Declaration.js';
 
 const input = (current: RegisteredUser, pets: ReadonlyArray<Pet>) => ({
-	ownerId: current.user.id,
+	actorId: current.user.id,
 	botId: current.profile.botId,
 	telegramUserId: current.profile.telegramUserId,
 	pets: pets.map(({ id, name }) => ({ id, name })),
@@ -89,7 +87,7 @@ const grams = (milligrams: number) => {
 export const foodStatus = Effect.gen(function* () {
 	const current = yield* CurrentUser;
 	const statuses = yield* GetFoodStatus.execute({
-		ownerId: current.user.id,
+		actorId: current.user.id,
 		botId: current.profile.botId,
 		telegramUserId: current.profile.telegramUserId,
 	});
@@ -111,7 +109,7 @@ export const foodStatus = Effect.gen(function* () {
 
 export const startAddFood = Effect.gen(function* () {
 	const current = yield* CurrentUser;
-	const pets = yield* ListPets.execute(current.user.id);
+	const pets = yield* (yield* PetRepository).listAccessible(current.user.id);
 	const context = yield* MessageContext.MessageContext;
 	if (pets.length === 0) {
 		yield* context.reply('Você não tem pets');
@@ -126,31 +124,11 @@ export const startAddFood = Effect.gen(function* () {
 			}),
 		);
 	const conversations = yield* Conversations.Conversations;
-	const messageChatId = yield* Schema.decodeUnknownEffect(TelegramChatId)(
-		context.chatId,
-	).pipe(
-		Effect.mapError(
-			(cause) =>
-				new InvalidDomainInput({
-					message: 'Invalid Telegram chat id',
-					cause,
-				}),
-		),
-	);
 	yield* conversations
-		.start(
-			AddFoodConversation.built,
-			{
-				...input(current, pets),
-				updateId: update.updateId,
-				messageChatId,
-				messageId: context.messageId,
-			},
-			{
-				scope: { botId, chatId: update.chatId, userId: update.userId },
-				conflict: 'replace',
-			},
-		)
+		.start(AddFoodConversation.built, input(current, pets), {
+			scope: { botId, chatId: update.chatId, userId: update.userId },
+			conflict: 'replace',
+		})
 		.pipe(
 			Effect.mapError(
 				(cause) =>

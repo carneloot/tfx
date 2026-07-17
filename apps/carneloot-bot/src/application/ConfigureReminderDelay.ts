@@ -6,6 +6,7 @@ import * as Schema from 'effect/Schema';
 
 import { InvalidDomainInput } from '../domain/DomainError.js';
 import { ReminderDelay } from '../domain/pet-food/PetFood.js';
+import { PetAccessDenied } from '../domain/pet-food/PetFoodError.js';
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { ReminderScheduler } from '../ports/ReminderScheduler.js';
 import { authorize, type PetFoodAccess } from './PetFoodAccess.js';
@@ -28,7 +29,13 @@ export const set = (access: PetFoodAccess, delayInput: unknown) =>
 		const scheduler = yield* ReminderScheduler;
 		const result = yield* sql.withTransaction(
 			Effect.gen(function* () {
-				yield* authorize(access);
+				const authorized = yield* authorize(access);
+				if (authorized.role !== 'owner')
+					return yield* Effect.fail(
+						new PetAccessDenied({
+							message: 'Only pet owner may configure food settings',
+						}),
+					);
 				const now = yield* DateTime.now;
 				const settings = yield* repository.setReminderDelay(
 					access.petId,
@@ -39,7 +46,7 @@ export const set = (access: PetFoodAccess, delayInput: unknown) =>
 				if (latest !== undefined)
 					yield* scheduler.replaceForLatest({
 						botId: access.botId,
-						ownerUserId: access.ownerId,
+						ownerUserId: authorized.ownerId,
 						petId: access.petId,
 						foodEntryId: latest.id,
 						runAt: DateTime.addDuration(latest.fedAt, delay),
@@ -49,7 +56,7 @@ export const set = (access: PetFoodAccess, delayInput: unknown) =>
 		);
 		yield* Effect.logInfo('carneloot.pet.reminder_delay_configured').pipe(
 			Effect.annotateLogs({
-				ownerId: access.ownerId,
+				actorId: access.actorId,
 				petId: access.petId,
 				delayMs: Duration.toMillis(delay),
 				reminderScheduled: result.reminderScheduled,
@@ -65,7 +72,13 @@ export const remove = (access: PetFoodAccess) =>
 		const scheduler = yield* ReminderScheduler;
 		const settings = yield* sql.withTransaction(
 			Effect.gen(function* () {
-				yield* authorize(access);
+				const authorized = yield* authorize(access);
+				if (authorized.role !== 'owner')
+					return yield* Effect.fail(
+						new PetAccessDenied({
+							message: 'Only pet owner may configure food settings',
+						}),
+					);
 				const now = yield* DateTime.now;
 				const settings = yield* repository.clearReminderDelay(
 					access.petId,
@@ -80,7 +93,7 @@ export const remove = (access: PetFoodAccess) =>
 		);
 		yield* Effect.logInfo('carneloot.pet.reminder_delay_removed').pipe(
 			Effect.annotateLogs({
-				ownerId: access.ownerId,
+				actorId: access.actorId,
 				petId: access.petId,
 			}),
 		);

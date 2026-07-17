@@ -5,6 +5,7 @@ import * as Schema from 'effect/Schema';
 
 import { InvalidDomainInput } from '../domain/DomainError.js';
 import { IanaTimeZone, LocalTime } from '../domain/pet-food/FoodDateTime.js';
+import { PetAccessDenied } from '../domain/pet-food/PetFoodError.js';
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { authorize, type PetFoodAccess } from './PetFoodAccess.js';
 
@@ -37,7 +38,13 @@ export const execute = (
 		const repository = yield* PetFoodRepository;
 		const settings = yield* sql.withTransaction(
 			Effect.gen(function* () {
-				yield* authorize(access);
+				const authorized = yield* authorize(access);
+				if (authorized.role !== 'owner')
+					return yield* Effect.fail(
+						new PetAccessDenied({
+							message: 'Only pet owner may configure food settings',
+						}),
+					);
 				const now = yield* DateTime.now;
 				return yield* repository.setDayStart(
 					access.petId,
@@ -49,7 +56,7 @@ export const execute = (
 		);
 		yield* Effect.logInfo('carneloot.pet.day_start_configured').pipe(
 			Effect.annotateLogs({
-				ownerId: access.ownerId,
+				actorId: access.actorId,
 				petId: access.petId,
 				dayStart,
 				timeZone,

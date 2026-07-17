@@ -164,7 +164,7 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 								yield* conversations.start(
 									ConfigureReminderDelayConversation.built,
 									{
-										ownerId: owner.user.id,
+										actorId: owner.user.id,
 										botId: owner.profile.botId,
 										telegramUserId: owner.profile.telegramUserId,
 										pets: [{ id: pet.id, name: pet.name }],
