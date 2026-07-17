@@ -10,7 +10,17 @@
 
 - `pnpm --filter <package> test -- <file>` may still run the package's entire configured suite. For exact files, use `pnpm exec vitest run path/to/test.ts`.
 - PostgreSQL integration tests skip unless `TEST_DATABASE_URL` is set or `RUN_TESTCONTAINERS=true`.
+- Run the full PostgreSQL suite with `RUN_TESTCONTAINERS=true pnpm test:integration`.
+- Run one PostgreSQL integration file with `RUN_TESTCONTAINERS=true pnpm exec vitest run --config vitest.integration.config.ts <path>`.
+- Vitest `describe.sequential` is deprecated. Plain `describe` runs tests sequentially by default.
+- TFX conversation rows use `(bot_id, chat_id, user_id)` rather than a generic `id` column. Update-deduplication rows use `(bot_id, update_id)`, and the prefixed table name is `<prefix>update_deduplication`.
+- When adding an application migration, update every test that asserts exact migration ledger versions, names, or checksums.
 - In non-interactive environments, reinstall dependencies with `CI=true pnpm install --frozen-lockfile`.
+
+## Conversation Tests
+
+- `ConversationBuilder.stay({ afterCommit })` emits `afterCommit`, then re-enters the current step and emits its prompt. Assert the error output exists; the final output may be the repeated prompt.
+- Active conversations receive ordinary messages and commands before command routing. `/cancelar` is special-cased; cancel the active workflow before starting another command in E2E transcripts.
 
 ## Parallel Worktrees
 
