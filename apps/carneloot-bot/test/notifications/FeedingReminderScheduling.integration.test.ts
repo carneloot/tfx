@@ -14,6 +14,7 @@ import * as AddFood from '../../src/application/AddFood.js';
 import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import { FoodAmountMg } from '../../src/domain/pet-food/FoodAmount.js';
+import { FoodAmount } from '../../src/domain/pet-food/FoodAmount.js';
 import {
 	IanaTimeZone,
 	LocalTime,
@@ -33,6 +34,21 @@ import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
+const executeAddFood = (
+	access: Parameters<typeof AddFood.execute>[0],
+	amount: string,
+	when: string,
+	source: AddFood.SourceInput,
+) =>
+	AddFood.execute(
+		access,
+		{
+			amountMg: Schema.decodeUnknownSync(FoodAmount)(amount),
+			when,
+			messageDate: DateTime.makeUnsafe('2024-01-02T12:00:00Z'),
+		},
+		source,
+	);
 const implementation = Job.implement(
 	FeedingReminderJob.declaration,
 	() => Effect.void,
@@ -319,7 +335,7 @@ else
 				const result = yield* Effect.result(
 					sql.withTransaction(
 						Effect.andThen(
-							AddFood.execute(
+							executeAddFood(
 								{
 									actorId: user.user.id,
 									botId,

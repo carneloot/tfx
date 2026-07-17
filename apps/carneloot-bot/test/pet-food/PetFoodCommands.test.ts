@@ -87,7 +87,7 @@ const replies: Array<string> = [];
 const reactions: Array<unknown> = [];
 let failReply = false;
 const messageContext = {
-	message: {} as never,
+	message: { date: Date.parse('2024-01-02T12:00:00Z') / 1_000 } as never,
 	chatId: 42,
 	messageId: 7,
 	messageThreadId: undefined,

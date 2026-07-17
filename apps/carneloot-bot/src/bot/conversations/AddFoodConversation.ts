@@ -198,8 +198,13 @@ export const built = ConversationBuilder.done(
 										telegramUserId: state.telegramUserId,
 										petId: state.petId,
 									},
-									parsed.amount,
-									parsed.dateTime,
+									{
+										amountMg: amount.success,
+										when: parsed.dateTime,
+										messageDate: DateTime.makeUnsafe(
+											context.message.date * 1_000,
+										),
+									},
 									{
 										botId: state.botId,
 										updateId: update.updateId,

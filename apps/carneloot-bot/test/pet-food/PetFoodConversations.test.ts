@@ -134,7 +134,7 @@ const harness = (): Harness => {
 	const outputFailure = { value: false };
 	const removeKeyboardReplies: Array<boolean> = [];
 	const context = {
-		message: {} as never,
+		message: { date: Date.parse('2024-01-02T12:00:00Z') / 1_000 } as never,
 		chatId: scope.chatId,
 		messageId: 1,
 		messageThreadId: undefined,

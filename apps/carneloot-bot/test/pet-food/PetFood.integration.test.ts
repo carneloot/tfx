@@ -18,6 +18,7 @@ import * as ConfigureDayStart from '../../src/application/ConfigureDayStart.js';
 import * as ConfigureReminderDelay from '../../src/application/ConfigureReminderDelay.js';
 import * as GetFoodStatus from '../../src/application/GetFoodStatus.js';
 import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
+import { FoodAmount } from '../../src/domain/pet-food/FoodAmount.js';
 import { PetName } from '../../src/domain/Pet.js';
 import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import { PetRepository } from '../../src/ports/PetRepository.js';
@@ -38,6 +39,21 @@ import * as RecordingScheduler from './internal/RecordingReminderScheduler.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
+const executeAddFood = (
+	access: Parameters<typeof AddFood.execute>[0],
+	amount: string,
+	when: string,
+	source: AddFood.SourceInput,
+) =>
+	AddFood.execute(
+		access,
+		{
+			amountMg: Schema.decodeUnknownSync(FoodAmount)(amount),
+			when,
+			messageDate: DateTime.makeUnsafe('2024-01-02T12:00:00Z'),
+		},
+		source,
+	);
 const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
 	const logs: Array<{
 		readonly message: unknown;
@@ -151,13 +167,13 @@ else
 				const { sql, access, pet } = yield* setup;
 				yield* ConfigureDayStart.execute(access, '00:00', 'UTC');
 				yield* ConfigureReminderDelay.set(access, Duration.millis(60_000));
-				const first = yield* AddFood.execute(
+				const first = yield* executeAddFood(
 					access,
 					'50g',
 					'10:00',
 					source(access.botId, 1),
 				);
-				const replay = yield* AddFood.execute(
+				const replay = yield* executeAddFood(
 					access,
 					'0g',
 					'10:00',
@@ -166,20 +182,20 @@ else
 				expect(replay.replayed).toBe(true);
 				expect(replay.entry.id).toBe(first.entry.id);
 				const duplicate = yield* Effect.result(
-					AddFood.execute(access, '1g', '10:00', source(access.botId, 2)),
+					executeAddFood(access, '1g', '10:00', source(access.botId, 2)),
 				);
 				expect(duplicate).toMatchObject({
 					_tag: 'Failure',
 					failure: { _tag: 'DuplicateFoodEntry' },
 				});
-				const exact = yield* AddFood.execute(
+				const exact = yield* executeAddFood(
 					access,
 					'10g',
 					'10:01',
 					source(access.botId, 3),
 				);
 				expect(exact.replayed).toBe(false);
-				const backdated = yield* AddFood.execute(
+				const backdated = yield* executeAddFood(
 					access,
 					'5g',
 					'09:00',
@@ -290,7 +306,7 @@ else
 					telegramUserId: caregiver.profile.telegramUserId,
 				});
 
-				const added = yield* AddFood.execute(
+				const added = yield* executeAddFood(
 					accessFor(accepted),
 					'25g',
 					'10:00',
@@ -310,7 +326,7 @@ else
 					[rejected, 403],
 				] as const) {
 					const denied = yield* Effect.result(
-						AddFood.execute(
+						executeAddFood(
 							accessFor(caregiver),
 							'1g',
 							'11:00',
@@ -324,7 +340,7 @@ else
 				}
 
 				const mismatch = yield* Effect.result(
-					AddFood.execute(
+					executeAddFood(
 						{
 							...accessFor(accepted),
 							telegramUserId: pending.profile.telegramUserId,
@@ -343,7 +359,7 @@ else
 				yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${reassignedUserId}::uuid,${new Date()},${new Date()})`;
 				yield* sql`UPDATE carneloot.telegram_identities SET user_id=${reassignedUserId}::uuid WHERE bot_id=${accepted.profile.botId} AND telegram_user_id=${accepted.profile.telegramUserId}`;
 				const reassigned = yield* Effect.result(
-					AddFood.execute(
+					executeAddFood(
 						accessFor(accepted),
 						'1g',
 						'11:00',
@@ -363,7 +379,7 @@ else
 					count: string;
 				}>`SELECT count(*)::text AS count FROM carneloot.pet_food_entries WHERE pet_id=${pet.id}::uuid`;
 				const revoked = yield* Effect.result(
-					AddFood.execute(
+					executeAddFood(
 						previouslySelectedAccess,
 						'1g',
 						'11:00',
@@ -446,7 +462,7 @@ else
 					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
 				).toHaveLength(0);
 				const result = yield* Effect.result(
-					AddFood.execute(access, '50g', '10:00', source(access.botId, 10)),
+					executeAddFood(access, '50g', '10:00', source(access.botId, 10)),
 				);
 				expect(result._tag).toBe('Failure');
 				const rows =
@@ -555,7 +571,7 @@ else
 				const { sql, access, pet } = yield* setup;
 				yield* ConfigureDayStart.execute(access, '00:00', 'UTC');
 				// No delay: a successful insertion emits no scheduler action.
-				const noDelay = yield* AddFood.execute(
+				const noDelay = yield* executeAddFood(
 					access,
 					'1g',
 					'08:00',
@@ -572,7 +588,7 @@ else
 						[1, 2].map(() =>
 							Effect.andThen(
 								Deferred.await(sourceGate),
-								AddFood.execute(
+								executeAddFood(
 									access,
 									'2g',
 									'10:00',
@@ -596,7 +612,7 @@ else
 							Effect.andThen(
 								Deferred.await(businessGate),
 								Effect.result(
-									AddFood.execute(
+									executeAddFood(
 										access,
 										'3g',
 										'11:00',
@@ -647,7 +663,7 @@ else
 					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${pet.id}::uuid,${access.actorId}::uuid,1000,${new Date(fedAt)},${access.botId},${updateId},${new Date(fedAt)},${new Date(fedAt)})`;
 				yield* seed(new Date('2024-01-02T10:00:00.001Z').getTime(), 300);
 				const below = yield* Effect.result(
-					AddFood.execute(access, '1g', '10:01', source(access.botId, 301)),
+					executeAddFood(access, '1g', '10:01', source(access.botId, 301)),
 				);
 				expect(below).toMatchObject({
 					_tag: 'Failure',
@@ -656,7 +672,7 @@ else
 				const exactFixture = yield* setup;
 				yield* ConfigureDayStart.execute(exactFixture.access, '00:00', 'UTC');
 				yield* exactFixture.sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${exactFixture.pet.id}::uuid,${exactFixture.access.actorId}::uuid,1000,${new Date('2024-01-02T10:00:00Z')},${exactFixture.access.botId},302,${new Date('2024-01-02T10:00:00Z')},${new Date('2024-01-02T10:00:00Z')})`;
-				const exact = yield* AddFood.execute(
+				const exact = yield* executeAddFood(
 					exactFixture.access,
 					'1g',
 					'10:01',
