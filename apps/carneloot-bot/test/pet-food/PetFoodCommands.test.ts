@@ -182,6 +182,52 @@ const repository = (
 });
 
 describe('pet food command handlers', () => {
+	it('adds food to all accessible pets and renders exact empty and success output', async () => {
+		replies.length = 0;
+		reactions.length = 0;
+		await Effect.runPromise(
+			provide(
+				PetFoodHandlers.addFoodToAll({
+					amount: Schema.decodeUnknownSync(FoodAmountMg)(50_000),
+				}),
+				repository({ totalMg: 0, latestFedAt: null }),
+				[],
+			),
+		);
+		expect(replies).toEqual(['Você não possui nenhum pet.']);
+		expect(reactions).toEqual([]);
+
+		replies.length = 0;
+		const entry = {
+			id: entryId,
+			petId,
+			recordedBy: ownerId,
+			amountMg: Schema.decodeUnknownSync(FoodAmountMg)(50_000),
+			fedAt: DateTime.makeUnsafe('2024-01-02T12:00:00Z'),
+			sourceBotId: botId,
+			sourceUpdateId: 10,
+			sourceMessageChatId: chatId,
+			sourceMessageId: 7,
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
+		};
+		const food: PetFoodRepositoryService = {
+			...repository({ totalMg: 0, latestFedAt: null }),
+			insert: () => Effect.succeed(entry),
+			latestEntry: () => Effect.succeed(entry),
+		};
+		await Effect.runPromise(
+			provide(
+				PetFoodHandlers.addFoodToAll({
+					amount: Schema.decodeUnknownSync(FoodAmountMg)(50_000),
+				}),
+				food,
+			),
+		);
+		expect(replies).toEqual(['Ração registrada para 1 pet: Rex.']);
+		expect(reactions).toEqual([[{ type: 'emoji', emoji: '👍' }]]);
+	});
+
 	it('renders no pets, missing setup, zero, and configured status exactly', async () => {
 		const now = Date.parse('2024-01-02T12:00:00Z');
 		const run = async (food: PetFoodRepositoryService, pets = [pet]) => {

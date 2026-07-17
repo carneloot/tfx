@@ -8,7 +8,7 @@ describe('portable Node composition', () => {
 	it('exports complete router metadata and production polling options', () => {
 		expect(Router.accountHandlers.entries).toHaveLength(1);
 		expect(Router.petHandlers.entries).toHaveLength(8);
-		expect(Router.petFoodHandlers.entries).toHaveLength(4);
+		expect(Router.petFoodHandlers.entries).toHaveLength(5);
 		expect(Router.conversations).toHaveLength(10);
 		const polling = Production.pollingOptions(testConfig);
 		expect(polling.commands).toEqual([
@@ -37,6 +37,14 @@ describe('portable Node composition', () => {
 			},
 			{ command: 'status_racao', description: 'Consultar o status de ração' },
 			{ command: 'colocar_racao', description: 'Registrar ração para um pet' },
+			{
+				command: 'colocar_racao_todos',
+				description: 'Registrar ração para todos os pets',
+			},
+			{
+				command: 'todos',
+				description: 'Registrar ração para todos os pets',
+			},
 		]);
 		expect(polling.languageCode).toBe('pt');
 		expect(polling.allowedUpdates).toContain('callback_query');

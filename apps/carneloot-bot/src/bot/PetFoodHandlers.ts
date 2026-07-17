@@ -3,6 +3,7 @@ import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import { Conversations, MessageContext, UpdateContext } from 'tfx';
 
+import * as AddFoodToAll from '../application/AddFoodToAll.js';
 import * as GetFoodStatus from '../application/GetFoodStatus.js';
 import * as ListPets from '../application/ListPets.js';
 import { ConversationOperationError } from '../domain/ApplicationError.js';
@@ -106,6 +107,62 @@ export const foodStatus = Effect.gen(function* () {
 	});
 	yield* context.reply(lines.join('\n'));
 });
+
+export const addFoodToAll = (input: {
+	readonly amount: import('../domain/pet-food/FoodAmount.js').FoodAmount;
+	readonly when?: string;
+}) =>
+	Effect.gen(function* () {
+		const current = yield* CurrentUser;
+		const context = yield* MessageContext.MessageContext;
+		const update = yield* UpdateContext.UpdateContext;
+		const result = yield* AddFoodToAll.execute(
+			{
+				actorId: current.user.id,
+				botId: current.profile.botId,
+				telegramUserId: current.profile.telegramUserId,
+			},
+			{
+				amountMg: input.amount,
+				when: input.when ?? '',
+				messageDate: DateTime.makeUnsafe(context.message.date * 1_000),
+			},
+			{
+				botId: current.profile.botId,
+				updateId: update.updateId,
+				messageChatId: context.chatId,
+				messageId: context.messageId,
+			},
+		);
+		if (result.items.length === 0) {
+			yield* context.reply('Você não possui nenhum pet.');
+			return;
+		}
+		const names = (tag: AddFoodToAll.AddFoodToAllItem['_tag']) =>
+			result.items
+				.filter((item) => item._tag === tag)
+				.map((item) => item.pet.name)
+				.join(', ');
+		const successful = result.items.filter(
+			(item) => item._tag === 'Added' || item._tag === 'Replayed',
+		);
+		const lines: Array<string> = [];
+		if (successful.length > 0)
+			lines.push(
+				`Ração registrada para ${successful.length} ${successful.length === 1 ? 'pet' : 'pets'}: ${successful.map((item) => item.pet.name).join(', ')}.`,
+			);
+		const setupMissing = names('SetupMissing');
+		if (setupMissing !== '')
+			lines.push(`Configuração pendente: ${setupMissing} (início do dia).`);
+		const duplicates = names('Duplicate');
+		if (duplicates !== '')
+			lines.push(`Ignorados: ${duplicates} (registro duplicado).`);
+		const accessLost = names('AccessLost');
+		if (accessLost !== '') lines.push(`Acesso perdido: ${accessLost}.`);
+		yield* context.reply(lines.join('\n'));
+		if (successful.length > 0)
+			yield* context.react([{ type: 'emoji', emoji: '👍' }]);
+	});
 
 export const startAddFood = Effect.gen(function* () {
 	const current = yield* CurrentUser;

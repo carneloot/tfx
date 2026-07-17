@@ -37,7 +37,8 @@ describe('public bot Layer construction', () => {
 					() => PetFoodHandlers.startConfigureReminderDelay,
 				)
 				.handle('foodStatus', () => PetFoodHandlers.foodStatus)
-				.handle('addFood', () => PetFoodHandlers.startAddFood),
+				.handle('addFood', () => PetFoodHandlers.startAddFood)
+				.handle('addFoodToAll', PetFoodHandlers.addFoodToAll),
 		);
 		const middleware = Middleware.layer(RegisteredUser.live);
 		const integrated = Layer.provide(

@@ -136,9 +136,9 @@ export const petFood = BotGroup.make('petFood')
 			middleware: [RegisteredUser],
 			error: ApplicationError,
 		}),
-	);
+	)
+	.add(addFoodToAll);
 
-// Task 5 must bind addFoodToAll before this declaration can join petFood/Carneloot.
 export const Carneloot = Bot.make('carneloot')
 	.add(account)
 	.add(pets)
