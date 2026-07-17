@@ -15,7 +15,7 @@
 - Create: `apps/carneloot-bot/test/e2e/Slice2Concurrency.e2e.integration.test.ts`
 - Create: `apps/carneloot-bot/test/e2e/Slice2Cutover.e2e.integration.test.ts`
 - Create: `docs/demos/2026-07-16-slice-2-shared-pet-food.md`
-- Create: `.changeset/typed-message-handlers.md`
+- Create: `.changeset/typed-message-handlers-and-command-aliases.md`
 - Modify: `apps/carneloot-bot/src/AppLive.ts`
 - Modify: `apps/carneloot-bot/src/DomainLive.ts`
 - Modify: `apps/carneloot-bot/src/PersistenceLive.ts`
@@ -254,14 +254,14 @@ Add exact date/runtime/database versions and command outcomes to demo runbook va
 
 - [ ] **Step 1: Create changeset**
 
-Create `.changeset/typed-message-handlers.md`:
+Create `.changeset/typed-message-handlers-and-command-aliases.md`:
 
 ```markdown
 ---
 "tfx": minor
 ---
 
-Add typed message and reply-handler declarations with exhaustive builder and runtime routing support.
+Add command aliases plus typed message and reply-handler declarations with exhaustive builder and runtime routing support.
 ```
 
 Expected: one minor changeset for `tfx`; Carneloot app remains private and has no publication entry.
@@ -269,7 +269,7 @@ Expected: one minor changeset for `tfx`; Carneloot app remains private and has n
 - [ ] **Step 2: Dry-run package validation**
 
 Run: `pnpm check:tfx:package && pnpm check:packed && pnpm check:packed:consumers`
-Expected: tfx packed exports include MessageHandler/MessageInput/MessageHandlerResult; no internal test helper or Carneloot code leaks.
+Expected: tfx packed command declarations support aliases, exports include MessageHandler/MessageInput/MessageHandlerResult, and no internal test helper or Carneloot code leaks.
 
 - [ ] **Step 3: Run fresh code review**
 
@@ -293,5 +293,5 @@ git commit -m "chore: prepare slice two release proof"
 - Restart, duplicate updates, same-chat ordering, cross-chat concurrency, correction/deletion, backdated food, Telegram failures, and malformed results are covered.
 - Import dry-run/cutover/rerun is proven end to end.
 - Node 24.18.0 and Bun 1.3.14 gates pass.
-- tfx packed package exports message-handler API and no private harness.
+- tfx packed package supports command aliases, exports message-handler API, and contains no private harness.
 - Fresh review confirms Slice 2 coverage and no Slice 3 behavior creep.

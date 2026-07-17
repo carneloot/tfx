@@ -2,7 +2,7 @@
 
 **Goal:** Extend listing/status/single-food workflows to accepted caregivers and add replay-safe `/colocar_racao_todos` plus `/todos` across every accessible pet.
 
-**Architecture:** One typed `CommandInput` declaration supplies both aliases. `AddFood` accepts already-decoded amount plus raw optional local date/time, while `AddFoodToAll` runs bounded per-pet transactions so redelivery replays committed pets through existing `(bot, update, pet)` idempotency.
+**Architecture:** One `Command` declaration owns canonical `/colocar_racao_todos` plus `/todos` alias, so input, middleware, errors, handler, and menu metadata cannot drift. `AddFood` accepts already-decoded amount plus raw optional local date/time, while `AddFoodToAll` runs bounded per-pet transactions so redelivery replays committed pets through existing `(bot, update, pet)` idempotency.
 
 **Tech Stack:** tfx CommandInput/Conversation, Effect concurrency, PostgreSQL, TestClock, Vitest.
 
@@ -10,6 +10,11 @@
 
 ## File map
 
+- Modify: `packages/tfx/src/Command.ts`
+- Modify: `packages/tfx/src/Bot.ts`
+- Modify: `packages/tfx/src/BotRouter.ts`
+- Modify: `packages/tfx/test/Bot.test.ts`
+- Modify: `packages/tfx/test/BotRouter.test.ts`
 - Create: `apps/carneloot-bot/src/domain/pet-food/FoodWhenInput.ts`
 - Create: `apps/carneloot-bot/src/application/AddFoodToAll.ts`
 - Create: `apps/carneloot-bot/test/pet-food/AddFoodToAll.test.ts`
@@ -37,21 +42,24 @@
 
 - [ ] **Step 1: Write failing parser tests**
 
-Add tests for empty optional time, `HH:mm`, `DD/MM HH:mm`, `DD-MM HH:mm`, and four-digit-year forms. Reject date without time, extra tokens, seconds, malformed date, and arbitrary text before any pet lookup. Use Telegram message instant as anchor: omitted date uses message's pet-local date, and time-only later than message local time rolls back one local calendar day. Test delayed processing where `Clock` is one day after Telegram message.
+Add tests for omitted optional time at `CommandInput.optional`, plus `HH:mm`, `DD/MM HH:mm`, `DD-MM HH:mm`, and four-digit-year forms. `FoodWhenInput` itself rejects an empty string, date without time, mixed date separators, extra tokens, seconds, malformed date, and arbitrary text before any pet lookup. Use Telegram message instant as anchor: omitted date uses message's pet-local date, and time-only later than message local time rolls back one local calendar day. Test delayed processing where `Clock` is one day after Telegram message.
 
 - [ ] **Step 2: Add raw time syntax codec**
 
 Create `FoodWhenInput` as a string-to-string codec that validates only supported syntax; it does not choose timezone or instant:
 
 ```ts
+const FoodWhenPattern =
+  /^(?:\d{2}:\d{2}|\d{2}\/\d{2}(?:\/\d{4})? \d{2}:\d{2}|\d{2}-\d{2}(?:-\d{4})? \d{2}:\d{2})$/u
+
 export const FoodWhenInput = Schema.String.check(
-  Schema.makeFilter(
-    value => value.length === 0 ||
-      /^(?:\d{2}:\d{2}|\d{2}[/-]\d{2}(?:[/-]\d{4})? \d{2}:\d{2})$/u.test(value),
-    { message: "Expected HH:mm or DD/MM[/YYYY] HH:mm" }
-  )
+  Schema.isPattern(FoodWhenPattern, {
+    message: "Expected HH:mm or DD/MM[/YYYY] HH:mm"
+  })
 )
 ```
+
+`CommandInput.optional` represents omitted time, so codec does not need an empty-string branch.
 
 `FoodDateTime.parse` remains responsible for timezone, calendar, DST, and `TestClock` interpretation per pet.
 
@@ -142,13 +150,61 @@ git add apps/carneloot-bot/src/application apps/carneloot-bot/src/bot apps/carne
 git commit -m "feat(carneloot): share pet food with accepted caregivers"
 ```
 
-### Task 4: Declare both all-pet aliases
+### Task 4: Add command aliases and declare one all-pet command
 
-- [ ] **Step 1: Add compile-time parser tests**
+- [ ] **Step 1: Write failing tfx alias tests**
+
+In `Bot.test.ts`, require immutable alias storage, invalid alias rejection, canonical/alias collision rejection within and across groups, canonical-first menu output, and one menu row per alias using canonical description. In `BotRouter.test.ts`, dispatch canonical and alias updates—including `@bot_username` suffix—and assert both invoke same handler with same decoded input exactly once.
+
+Run: `pnpm --filter tfx test -- Bot.test.ts BotRouter.test.ts`
+Expected: FAIL because `Command.make` has no `aliases` option.
+
+- [ ] **Step 2: Add aliases to `Command.make`**
+
+Extend command model/options:
+
+```ts
+export interface Command<
+  Id extends string,
+  Input extends CommandInput.CommandInput<any, any>,
+  ES extends ErrorSchema.ErrorSchema,
+  Middlewares extends ReadonlyArray<Middleware.AnyMiddleware> = readonly []
+> {
+  readonly _tag: "Command"
+  readonly id: Id
+  readonly name: string
+  readonly aliases: ReadonlyArray<string>
+  readonly input: Input
+  readonly error: ES
+  readonly description: string | undefined
+  readonly language: string | undefined
+  readonly middleware: Middlewares
+}
+
+export interface Options<
+  Input extends CommandInput.CommandInput<any, any>,
+  ES extends ErrorSchema.ErrorSchema,
+  Middlewares extends ReadonlyArray<Middleware.AnyMiddleware>
+> {
+  readonly name: string
+  readonly aliases?: ReadonlyArray<string>
+  readonly input?: Input
+  readonly error: ES
+  readonly description?: string
+  readonly language?: string
+  readonly middleware?: Middlewares
+}
+```
+
+`Command.make` copies and freezes `aliases`, defaulting to an empty array. Alias values are bare Telegram command names without `/`.
+
+- [ ] **Step 3: Validate, route, and publish aliases**
+
+`Bot.add` validates canonical name and every alias against same Telegram pattern, rejects alias equal to canonical name, duplicate aliases on one command, and collisions against any canonical/alias name in assembled bot. `BotRouter` indexes `[command.name, ...command.aliases]` to same declaration and matches invoked name while retaining one command ID/handler. `Bot.commandMenu` emits canonical row followed by alias rows, all using command description/language metadata, so `/todos` counts among real Telegram menu commands.
+
+- [ ] **Step 4: Add compile-time parser tests and one declaration**
 
 Prove inferred handler input is readonly `{ amount: FoodAmount; when?: string }`; missing amount and malformed time fail parsing; `Schema.Number` remains rejected as text leaf through `@ts-expect-error` fixture.
-
-- [ ] **Step 2: Create shared declaration input**
 
 ```ts
 export const AddFoodToAllInput = CommandInput.sequence(
@@ -157,25 +213,35 @@ export const AddFoodToAllInput = CommandInput.sequence(
     CommandInput.rest("when", FoodWhenInput)
   )
 )
+
+Command.make("addFoodToAll", {
+  name: "colocar_racao_todos",
+  aliases: ["todos"],
+  description: "Registrar ração para todos os pets",
+  input: AddFoodToAllInput,
+  middleware: [RegisteredUser],
+  error: ApplicationError
+})
 ```
 
-Declare:
+- [ ] **Step 5: Bind one exhaustive handler**
 
-```text
-addFoodToAll → colocar_racao_todos → Registrar ração para todos os pets
-addFoodAlias → todos              → Registrar ração para todos os pets
-```
+Bind only command ID `addFoodToAll` to `PetFoodHandlers.addFoodToAll`. Update command-menu and builder tests to assert one implementation but two published/matched command names.
 
-Both declarations reference same immutable input value, `RegisteredUser`, and `ApplicationError`.
+- [ ] **Step 6: Run alias/declaration tests**
 
-- [ ] **Step 3: Make exhaustive router compile**
-
-Bind both command IDs to one `PetFoodHandlers.addFoodToAll` function. Update command-menu and builder tests.
-
-- [ ] **Step 4: Run declaration tests**
+Run: `pnpm --filter tfx test -- Bot.test.ts BotRouter.test.ts`
+Expected: PASS for validation, routing, suffix matching, and menu output.
 
 Run: `pnpm --filter carneloot-bot test -- BotLayers.test.ts NodeSmoke.test.ts PetFoodCommands.test.ts`
-Expected: PASS with both aliases and identical decoded input.
+Expected: PASS with one command declaration/handler and both command names.
+
+- [ ] **Step 7: Commit alias support**
+
+```bash
+git add packages/tfx/src/Command.ts packages/tfx/src/Bot.ts packages/tfx/src/BotRouter.ts packages/tfx/test/Bot.test.ts packages/tfx/test/BotRouter.test.ts apps/carneloot-bot/src/bot/Declaration.ts apps/carneloot-bot/src/Router.ts apps/carneloot-bot/test/BotLayers.test.ts apps/carneloot-bot/test/NodeSmoke.test.ts apps/carneloot-bot/test/pet-food/PetFoodCommands.test.ts
+git commit -m "feat(tfx): support command aliases"
+```
 
 ### Task 5: Implement bounded replay-safe all-pet addition
 
