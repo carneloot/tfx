@@ -24,7 +24,8 @@ const botId = Schema.decodeUnknownSync(BotId)('carneloot');
 const telegramUserId = Schema.decodeUnknownSync(TelegramUserId)(2);
 const identity = { ownerId, botId, telegramUserId };
 const userLayer = Layer.succeed(UserRepository, {
-	findByUsername: () => Effect.succeed([]),
+	findById: () => Effect.die('unused'),
+			findByUsername: () => Effect.succeed([]),
 	registerTelegramProfile: () => Effect.die('unused'),
 	findByTelegram: () =>
 		Effect.succeed({

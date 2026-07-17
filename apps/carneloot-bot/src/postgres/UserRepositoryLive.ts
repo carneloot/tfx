@@ -155,6 +155,21 @@ export const layer = Layer.effect(
 					ORDER BY u.id`.pipe(Effect.mapError(persistence));
 					return yield* Effect.forEach(rows, decode);
 				}),
+			findById: (botId, userId) =>
+				Effect.gen(function* () {
+					yield* Effect.all([
+						Schema.decodeUnknownEffect(BotId)(botId),
+						Schema.decodeUnknownEffect(UserId)(userId),
+					]).pipe(Effect.mapError(persistence));
+					const rows = yield* sql<Record<string, unknown>>`SELECT u.id,i.bot_id,i.telegram_user_id,i.username,i.first_name,i.last_name,i.private_chat_id,u.created_at,u.updated_at
+					FROM carneloot.telegram_identities i JOIN carneloot.users u ON u.id=i.user_id
+					WHERE i.bot_id=${botId} AND u.id=${userId}::uuid`.pipe(
+						Effect.mapError(persistence),
+					);
+					if (rows[0] === undefined)
+						return yield* Effect.fail(new UserNotRegistered({ message: 'User is not registered for bot' }));
+					return yield* decode(rows[0]);
+				}),
 			findByTelegram: (botId, telegramUserId) =>
 				Effect.gen(function* () {
 					yield* Effect.all([

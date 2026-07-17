@@ -51,6 +51,7 @@ const authorizationLayers = (
 	Layer.mergeAll(
 		Layer.succeed(UserRepository, {
 			registerTelegramProfile: unused,
+			findById: () => Effect.die('unused'),
 			findByUsername: unused,
 			findByTelegram: () =>
 				Effect.succeed({

@@ -10,6 +10,7 @@ import {
 	CaregiverRelationshipExists,
 	CaregiverSelfInvitation,
 	CaregiverUsernameAmbiguous,
+	CaregiverUsernameNotFound,
 } from './caregivers/CaregiverError.js';
 import {
 	DomainPersistenceError,
@@ -35,6 +36,7 @@ export const ApplicationError = Schema.Union([
 	PetNameAlreadyExists,
 	DomainPersistenceError,
 	CaregiverUsernameAmbiguous,
+	CaregiverUsernameNotFound,
 	CaregiverSelfInvitation,
 	CaregiverRelationshipExists,
 	CaregiverInvitationNotFound,

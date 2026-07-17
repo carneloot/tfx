@@ -1,5 +1,10 @@
 import * as Schema from 'effect/Schema';
 
+export class CaregiverUsernameNotFound extends Schema.TaggedErrorClass<CaregiverUsernameNotFound>()(
+	'CaregiverUsernameNotFound',
+	{ message: Schema.String },
+) {}
+
 export class CaregiverUsernameAmbiguous extends Schema.TaggedErrorClass<CaregiverUsernameAmbiguous>()(
 	'CaregiverUsernameAmbiguous',
 	{ message: Schema.String },

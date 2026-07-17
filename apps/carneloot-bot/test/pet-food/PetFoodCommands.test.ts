@@ -115,7 +115,8 @@ const sql = Layer.succeed(PgClient.PgClient, {
 	withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
 } as never);
 const identity = Layer.succeed(UserRepository, {
-	findByUsername: () => Effect.die('unused'),
+	findById: () => Effect.die('unused'),
+			findByUsername: () => Effect.die('unused'),
 	registerTelegramProfile: () => Effect.die('unused'),
 	findByTelegram: () => Effect.succeed(current),
 });

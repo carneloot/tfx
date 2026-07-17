@@ -231,7 +231,8 @@ const harness = (): Harness => {
 	};
 	const users: UserRepositoryService = {
 		registerTelegramProfile: () => Effect.die('unused'),
-		findByUsername: () => Effect.die('unused'),
+		findById: () => Effect.die('unused'),
+			findByUsername: () => Effect.die('unused'),
 		findByTelegram: () => Effect.succeed(current),
 	};
 	const pets: PetRepositoryService = {

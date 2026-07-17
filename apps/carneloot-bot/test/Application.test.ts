@@ -55,7 +55,8 @@ const pets = Layer.succeed(PetRepository, {
 });
 const users = (id = ownerId) =>
 	Layer.succeed(UserRepository, {
-		findByUsername: () => Effect.succeed([]),
+		findById: () => Effect.die('unused'),
+			findByUsername: () => Effect.succeed([]),
 		registerTelegramProfile: () => Effect.die('unused'),
 		findByTelegram: () =>
 			Effect.succeed({
@@ -119,6 +120,7 @@ describe('pet application services', () => {
 			profile: sensitiveProfile,
 		};
 		const registration = Layer.succeed(UserRepository, {
+			findById: () => Effect.die('unused'),
 			findByUsername: () => Effect.succeed([]),
 			registerTelegramProfile: () => Effect.succeed(registered),
 			findByTelegram: () => Effect.die('unused'),
@@ -144,6 +146,7 @@ describe('pet application services', () => {
 	it('rejects removed or remapped identities without insertion', async () => {
 		insertions = 0;
 		const removed = Layer.succeed(UserRepository, {
+			findById: () => Effect.die('unused'),
 			findByUsername: () => Effect.succeed([]),
 			registerTelegramProfile: () => Effect.die('unused'),
 			findByTelegram: () =>
