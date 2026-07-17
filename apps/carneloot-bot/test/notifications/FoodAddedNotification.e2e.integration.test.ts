@@ -9,10 +9,6 @@ import * as AddFood from '../../src/application/AddFood.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../src/domain/Ids.js';
 import { FoodAmount } from '../../src/domain/pet-food/FoodAmount.js';
 import * as FoodAddedNotificationJob from '../../src/jobs/FoodAddedNotificationJob.js';
-import {
-	FoodNotificationScheduler,
-	FoodNotificationSchedulerError,
-} from '../../src/ports/FoodNotificationScheduler.js';
 import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
 import * as FoodNotificationSchedulerLive from '../../src/postgres/FoodNotificationSchedulerLive.js';
 import * as RepositoriesLive from '../../src/postgres/RepositoriesLive.js';
@@ -112,14 +108,20 @@ else
 				const events = yield* fixture.sql<{
 					id: string;
 					job_id: string | null;
+					scheduled_for: Date;
 					food_timestamp_explicit: boolean;
 					recipients_materialized_at: Date | null;
-				}>`SELECT id,job_id,food_timestamp_explicit,recipients_materialized_at FROM carneloot.notification_events WHERE kind='food-added' AND food_entry_id=${first.entry.id}::uuid`;
+				}>`SELECT id,job_id,scheduled_for,food_timestamp_explicit,recipients_materialized_at FROM carneloot.notification_events WHERE kind='food-added' AND food_entry_id=${first.entry.id}::uuid`;
 				const deliveries = yield* fixture.sql<{
 					recipient_user_id: string;
 					status: string;
 				}>`SELECT recipient_user_id,status FROM carneloot.notification_deliveries WHERE event_id=${events[0]?.id}::uuid`;
-				return { first, replay, events, deliveries, fixture };
+				const jobs = yield* fixture.sql<{
+					declaration: string;
+					conflict_key: string | null;
+					run_at: Date;
+				}>`SELECT declaration,conflict_key,run_at FROM tfx_food_added_test.case_jobs WHERE id=${events[0]?.job_id}::uuid`;
+				return { first, replay, events, deliveries, jobs, fixture };
 			});
 			const result = await Effect.runPromise(
 				Effect.provide(program, liveLayer),
@@ -131,6 +133,15 @@ else
 			});
 			expect(result.events[0]?.job_id).not.toBeNull();
 			expect(result.events[0]?.recipients_materialized_at).not.toBeNull();
+			expect(result.jobs).toEqual([
+				expect.objectContaining({
+					declaration: 'food-added-notification',
+					conflict_key: `food-added:${result.fixture.botId}:${result.fixture.petId}:71`,
+				}),
+			]);
+			expect(result.jobs[0]?.run_at.getTime()).toBe(
+				result.events[0]?.scheduled_for.getTime(),
+			);
 			expect(result.deliveries).toEqual([
 				{ recipient_user_id: result.fixture.ownerId, status: 'pending' },
 			]);
@@ -160,29 +171,32 @@ else
 			expect(result.ownerEvents).toHaveLength(0);
 		});
 
-		it('rolls back food when notification scheduling fails', async () => {
-			const failing = Layer.succeed(FoodNotificationScheduler, {
-				scheduleAdded: () =>
-					Effect.fail(
-						new FoodNotificationSchedulerError({
-							reason: 'PersistenceFailure',
-							message: 'injected',
-						}),
-					),
-			});
-			const layer = Layer.mergeAll(stores, reminder, failing);
+		it('rolls back food, event, deliveries, and durable job when attach fails', async () => {
 			const program = Effect.gen(function* () {
 				const fixture = yield* setup();
+				yield* fixture.sql`CREATE FUNCTION carneloot.fail_food_added_job_attach() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='food-added' AND NEW.job_id IS NOT NULL THEN RAISE EXCEPTION 'forced attach failure'; END IF; RETURN NEW; END $$`;
+				yield* fixture.sql`CREATE TRIGGER fail_food_added_job_attach BEFORE UPDATE ON carneloot.notification_events FOR EACH ROW EXECUTE FUNCTION carneloot.fail_food_added_job_attach()`;
 				const result = yield* Effect.result(add(fixture.caregiverAccess, 74));
-				const rows =
+				const food =
 					yield* fixture.sql`SELECT id FROM carneloot.pet_food_entries WHERE pet_id=${fixture.petId}::uuid`;
-				return { result, rows };
+				const events =
+					yield* fixture.sql`SELECT id FROM carneloot.notification_events WHERE pet_id=${fixture.petId}::uuid AND kind='food-added'`;
+				const deliveries =
+					yield* fixture.sql`SELECT d.id FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.pet_id=${fixture.petId}::uuid`;
+				const jobs =
+					yield* fixture.sql`SELECT id FROM tfx_food_added_test.case_jobs WHERE conflict_key=${`food-added:${fixture.botId}:${fixture.petId}:74`}`;
+				return { result, food, events, deliveries, jobs };
 			});
-			const result = await Effect.runPromise(Effect.provide(program, layer));
+			const result = await Effect.runPromise(
+				Effect.provide(program, liveLayer),
+			);
 			expect(result.result).toMatchObject({
 				_tag: 'Failure',
 				failure: { _tag: 'FoodNotificationSchedulerError' },
 			});
-			expect(result.rows).toHaveLength(0);
+			expect(result.food).toHaveLength(0);
+			expect(result.events).toHaveLength(0);
+			expect(result.deliveries).toHaveLength(0);
+			expect(result.jobs).toHaveLength(0);
 		});
 	});

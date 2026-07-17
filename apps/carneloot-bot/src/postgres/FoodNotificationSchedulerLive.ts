@@ -15,6 +15,7 @@ import {
 import { NotificationRecipients } from '../ports/NotificationRecipients.js';
 import {
 	NotificationRepository,
+	NotificationRepositoryError,
 	type RecipientInput,
 } from '../ports/NotificationRepository.js';
 
@@ -33,7 +34,11 @@ const safeCause = (cause: unknown) => {
 const schedulerError = (
 	message: string,
 	cause?: unknown,
-	reason: 'PersistenceFailure' | 'InvariantViolation' = 'PersistenceFailure',
+	reason: 'PersistenceFailure' | 'InvariantViolation' = cause instanceof
+		NotificationRepositoryError &&
+	(cause.reason === 'Conflict' || cause.reason === 'InvariantViolation')
+		? 'InvariantViolation'
+		: 'PersistenceFailure',
 ) =>
 	new FoodNotificationSchedulerError({
 		reason,

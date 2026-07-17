@@ -1,10 +1,19 @@
-import { Duration, Schema } from 'effect';
+import { Duration, Effect, Layer, Schema } from 'effect';
+import { JobRuntime, type JobRuntimeService } from 'tfx/JobRuntime';
 import { describe, expect, it } from 'vitest';
 
-import { BotId, PetId } from '../../src/domain/Ids.js';
+import { BotId, PetId, TelegramChatId, UserId } from '../../src/domain/Ids.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
+import * as RecipientRole from '../../src/domain/notifications/RecipientRole.js';
 import { FoodEntryId } from '../../src/domain/pet-food/PetFood.js';
 import * as FoodAddedNotificationJob from '../../src/jobs/FoodAddedNotificationJob.js';
+import { FoodNotificationScheduler } from '../../src/ports/FoodNotificationScheduler.js';
+import { NotificationRecipients } from '../../src/ports/NotificationRecipients.js';
+import {
+	NotificationRepository,
+	NotificationRepositoryError,
+} from '../../src/ports/NotificationRepository.js';
+import * as FoodNotificationSchedulerLive from '../../src/postgres/FoodNotificationSchedulerLive.js';
 
 describe('FoodAddedNotificationJob declaration', () => {
 	it('owns versioned payload and bounded retry policy', () => {
@@ -51,5 +60,83 @@ describe('FoodAddedNotificationJob declaration', () => {
 				Duration.minutes(30),
 			),
 		).toBe(true);
+	});
+
+	it('classifies repository conflicts and invariants as non-retryable', async () => {
+		const botId = Schema.decodeUnknownSync(BotId)('carneloot');
+		const ownerUserId = Schema.decodeUnknownSync(UserId)(
+			'00000000-0000-4000-8000-000000000004',
+		);
+		const actorUserId = Schema.decodeUnknownSync(UserId)(
+			'00000000-0000-4000-8000-000000000005',
+		);
+		const petId = Schema.decodeUnknownSync(PetId)(
+			'00000000-0000-4000-8000-000000000002',
+		);
+		const foodEntryId = Schema.decodeUnknownSync(FoodEntryId)(
+			'00000000-0000-4000-8000-000000000003',
+		);
+		const jobs: JobRuntimeService = {
+			schedule: () => Effect.die('unused'),
+			runOne: () => Effect.die('unused'),
+			problems: Effect.succeed([]),
+			cancel: () => Effect.die('unused'),
+			releaseFailed: () => Effect.die('unused'),
+		};
+		const recipients = Layer.succeed(NotificationRecipients, {
+			resolveOwner: () => Effect.die('unused'),
+			resolvePetRecipients: () =>
+				Effect.succeed([
+					{
+						userId: ownerUserId,
+						role: 'owner' as const,
+						resolution: {
+							_tag: 'Reachable' as const,
+							recipientUserId: ownerUserId,
+							recipientChatId: Schema.decodeUnknownSync(TelegramChatId)(42),
+							recipientRole: RecipientRole.owner,
+							channel: 'telegram' as const,
+						},
+					},
+				]),
+		});
+		for (const [repositoryReason, expectedReason] of [
+			['Conflict', 'InvariantViolation'],
+			['InvariantViolation', 'InvariantViolation'],
+			['PersistenceFailure', 'PersistenceFailure'],
+		] as const) {
+			const repository = Layer.succeed(NotificationRepository, {
+				createEvent: () =>
+					Effect.fail(
+						new NotificationRepositoryError({
+							reason: repositoryReason,
+							message: 'injected',
+						}),
+					),
+			} as never);
+			const layer = Layer.provide(
+				FoodNotificationSchedulerLive.layer,
+				Layer.mergeAll(recipients, repository, Layer.succeed(JobRuntime, jobs)),
+			);
+			const result = await Effect.runPromise(
+				Effect.result(
+					Effect.flatMap(FoodNotificationScheduler, (scheduler) =>
+						scheduler.scheduleAdded({
+							botId,
+							ownerUserId,
+							actorUserId,
+							petId,
+							foodEntryId,
+							sourceUpdateId: 1,
+							timestampExplicit: false,
+						}),
+					),
+				).pipe(Effect.provide(layer)),
+			);
+			expect(result).toMatchObject({
+				_tag: 'Failure',
+				failure: { reason: expectedReason },
+			});
+		}
 	});
 });
