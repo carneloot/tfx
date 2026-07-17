@@ -146,6 +146,15 @@ else
 								sql<{
 									status: string;
 								}>`SELECT status FROM carneloot.pet_caregivers`;
+							yield* send('/adicionar_cuidador');
+							yield* send('/cancelar');
+							expect(sent.at(-1)).toEqual({
+								chatId: owner.id,
+								text: 'Conversa cancelada.',
+							});
+							expect(
+								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_conversations`,
+							).toHaveLength(0);
 							for (const text of ['/adicionar_cuidador', 'Rex', '@care_e2e'])
 								yield* send(text);
 							expect((yield* relation())[0]?.status).toBe('pending');
@@ -252,6 +261,35 @@ else
 							expect(
 								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_jobs WHERE status='scheduled'`,
 							).toHaveLength(0);
+							const countSent = (chatId: number, text: string) =>
+								sent.filter(
+									(message) =>
+										message.chatId === chatId && message.text === text,
+								).length;
+							expect(
+								countSent(
+									caregiver.id,
+									'Owner convidou você para cuidar do pet Rex.\nUse /convites_pet para responder.',
+								),
+							).toBe(3);
+							expect(
+								countSent(
+									owner.id,
+									'Caregiver aceitou o convite para cuidar do pet Rex.',
+								),
+							).toBe(2);
+							expect(
+								countSent(
+									owner.id,
+									'Caregiver rejeitou o convite para cuidar do pet Rex.',
+								),
+							).toBe(1);
+							expect(
+								countSent(caregiver.id, 'Você não cuida mais do pet Rex.'),
+							).toBe(2);
+							expect(
+								countSent(owner.id, 'Caregiver parou de cuidar do pet Rex.'),
+							).toBe(1);
 						}),
 					),
 					postgres,
