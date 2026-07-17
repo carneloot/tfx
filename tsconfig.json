@@ -9,6 +9,7 @@
 		"packages/*/type-test/**/*.ts",
 		"apps/*/test/**/*.ts",
 		"apps/*/type-test/**/*.ts",
+		"apps/*/scripts/**/*.ts",
 		"vitest.config.ts",
 		"vitest.integration.config.ts"
 	],

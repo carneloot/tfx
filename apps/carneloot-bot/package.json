@@ -8,6 +8,8 @@
 		"check": "tsc -b ../../tsconfig.json --pretty false",
 		"test": "vitest run --root ../.. apps/carneloot-bot/test",
 		"test:integration": "vitest run --root ../.. --config vitest.integration.config.ts apps/carneloot-bot/test",
+		"migrations:generate": "node scripts/generate-migration-artifacts.ts",
+		"migrations:check": "node scripts/generate-migration-artifacts.ts --check",
 		"demo": "fnox exec -- bun src/bin.ts",
 		"start": "pnpm demo",
 		"demo:test": "bun src/demo-test.ts"
