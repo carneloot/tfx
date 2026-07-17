@@ -16,8 +16,10 @@ import {
 } from '../src/domain/caregivers/CaregiverError.js';
 import {
 	DomainPersistenceError,
+	InvalidDomainInput,
 	UserNotRegistered,
 } from '../src/domain/DomainError.js';
+import { FoodEntryNotFound } from '../src/domain/pet-food/PetFoodError.js';
 import { ReminderSchedulerError } from '../src/ports/ReminderScheduler.js';
 import { classifyError } from '../src/Router.js';
 
@@ -78,6 +80,23 @@ describe('Carneloot router error classification', () => {
 	it('acknowledges permanent domain and Telegram output failures', () => {
 		expect(
 			classifyError(new UserNotRegistered({ message: 'missing' })),
+		).toEqual({
+			_tag: 'PermanentInvalid',
+			reason: 'invalid-application-update',
+		});
+		expect(
+			classifyError(new FoodEntryNotFound({ message: 'food entry missing' })),
+		).toEqual({
+			_tag: 'PermanentInvalid',
+			reason: 'invalid-application-update',
+		});
+		expect(
+			classifyError(
+				new InvalidDomainInput({
+					message: 'invalid food correction',
+					cause: 'invalid correction amount or timestamp',
+				}),
+			),
 		).toEqual({
 			_tag: 'PermanentInvalid',
 			reason: 'invalid-application-update',

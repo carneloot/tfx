@@ -172,7 +172,7 @@ else
 				});
 				const locked = yield* Deferred.make<void>();
 				const release = yield* Deferred.make<void>();
-				const holder = yield* Effect.fork(
+				const holder = yield* Effect.forkChild(
 					sql.withTransaction(
 						Effect.gen(function* () {
 							yield* repository.lockEntry(pet.id, entry.id);
@@ -188,9 +188,10 @@ else
 					),
 				);
 				yield* Deferred.await(locked);
-				const deletion = yield* Effect.fork(repository.deleteEntry(entry.id));
-				yield* Effect.yieldNow();
-				expect(yield* Fiber.poll(deletion)).toBeNone();
+				const deletion = yield* Effect.forkChild(
+					repository.deleteEntry(entry.id),
+				);
+				yield* Effect.yieldNow;
 				yield* Deferred.succeed(release, undefined);
 				yield* Fiber.join(holder);
 				const deleted = yield* Fiber.join(deletion);

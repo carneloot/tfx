@@ -151,6 +151,7 @@ interface HarnessOptions {
 	readonly mismatchedEvent?: boolean;
 	readonly repositoryFailure?: NotificationRepositoryError['reason'];
 }
+const unused = () => Effect.die('unused');
 const harness = (
 	send: Effect.Effect<{ readonly message_id: number }, TelegramError>,
 	options: HarnessOptions = {},

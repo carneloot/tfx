@@ -316,8 +316,8 @@ describe('food mutation services', () => {
 		for (const operation of ['correct', 'delete'] as const) {
 			const h = harness({ status });
 			const effect = operation === 'correct'
-				? CorrectFood.execute(h.access, selected.id, { correction: '75g', messageDate: DateTime.makeUnsafe('2024-01-02T12:00:00Z') })
-				: DeleteFood.execute(h.access, selected.id);
+				? Effect.asVoid(CorrectFood.execute(h.access, selected.id, { correction: '75g', messageDate: DateTime.makeUnsafe('2024-01-02T12:00:00Z') }))
+				: Effect.asVoid(DeleteFood.execute(h.access, selected.id));
 			const exit = await Effect.runPromiseExit(h.provide(atNow(effect)));
 			expect(String(exit)).toContain('PetAccessDenied');
 		}

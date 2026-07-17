@@ -123,6 +123,8 @@ interface Harness {
 	>;
 	context: MessageContextService;
 }
+const unused = () => Effect.die('unused');
+
 const harness = (): Harness => {
 	const replies: Array<string> = [];
 	const settings: Harness['settings'] = { value: undefined };

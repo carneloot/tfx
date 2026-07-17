@@ -165,6 +165,7 @@ const provide = <A, E, R>(
 			sql,
 		),
 	) as Effect.Effect<A, E>;
+const unused = () => Effect.die('unused');
 const repository = (
 	summary: { totalMg: number; latestFedAt: DateTime.Utc | null },
 	configured = true,
@@ -177,13 +178,8 @@ const repository = (
 	latestEntry: () => Effect.succeed(undefined),
 	findBySource: () => Effect.succeed(undefined),
 	findBusinessDuplicate: () => Effect.succeed(undefined),
-		findBusinessDuplicateExcluding: unused,
-	listEntries: () => Effect.die('unused'),
-	lockEntry: () => Effect.die('unused'),
-	findBusinessDuplicateExcluding: () => Effect.die('unused'),
-	updateEntry: () => Effect.die('unused'),
-	deleteEntry: () => Effect.die('unused'),
-	insert: () => Effect.die('unused'),
+	findBusinessDuplicateExcluding: unused,
+	insert: unused,
 	listEntries: unused,
 	lockEntry: unused,
 	updateEntry: unused,
