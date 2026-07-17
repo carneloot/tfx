@@ -68,6 +68,14 @@ const persistence = (cause: unknown) =>
 				message: 'Pet repository failed',
 				cause,
 			});
+const persistenceOnly = (cause: unknown) =>
+	cause instanceof DomainPersistenceError
+		? cause
+		: new DomainPersistenceError({
+				reason: 'PersistenceFailure',
+				message: 'Pet repository failed',
+				cause,
+			});
 
 export const layer = Layer.effect(
 	PetRepository,
@@ -113,7 +121,7 @@ export const layer = Layer.effect(
 			deleteOwned: (ownerId, petId) =>
 				sql`DELETE FROM carneloot.pets WHERE id=${petId}::uuid AND owner_id=${ownerId}::uuid RETURNING id`.pipe(
 					Effect.map((rows) => rows.length === 1),
-					Effect.mapError(persistence),
+					Effect.mapError(persistenceOnly),
 				),
 			addOwned: (ownerId, name) =>
 				sql
