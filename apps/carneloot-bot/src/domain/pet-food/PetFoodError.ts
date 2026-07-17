@@ -15,6 +15,11 @@ export class DuplicateFoodEntry extends Schema.TaggedErrorClass<DuplicateFoodEnt
 	{ message: Schema.String },
 ) {}
 
+export class FoodEntryNotFound extends Schema.TaggedErrorClass<FoodEntryNotFound>()(
+	'FoodEntryNotFound',
+	{ message: Schema.String },
+) {}
+
 export class PetFoodError extends Schema.TaggedErrorClass<PetFoodError>()(
 	'PetFoodError',
 	{

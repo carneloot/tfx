@@ -5,16 +5,28 @@ import { describe, expect, it } from 'vitest';
 import * as ReconcileFoodReminder from '../../src/application/ReconcileFoodReminder.js';
 import { BotId, PetId, UserId } from '../../src/domain/Ids.js';
 import { FoodAmountMg } from '../../src/domain/pet-food/FoodAmount.js';
-import { FoodEntryId, type PetFoodEntry } from '../../src/domain/pet-food/PetFood.js';
+import {
+	FoodEntryId,
+	type PetFoodEntry,
+} from '../../src/domain/pet-food/PetFood.js';
+import { FoodEntryNotFound } from '../../src/domain/pet-food/PetFoodError.js';
 import { PetFoodRepository } from '../../src/ports/PetFoodRepository.js';
 import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
 
 const botId = Schema.decodeUnknownSync(BotId)('bot');
-const petId = Schema.decodeUnknownSync(PetId)('00000000-0000-4000-8000-000000000001');
-const ownerUserId = Schema.decodeUnknownSync(UserId)('00000000-0000-4000-8000-000000000002');
-const actorId = Schema.decodeUnknownSync(UserId)('00000000-0000-4000-8000-000000000003');
+const petId = Schema.decodeUnknownSync(PetId)(
+	'00000000-0000-4000-8000-000000000001',
+);
+const ownerUserId = Schema.decodeUnknownSync(UserId)(
+	'00000000-0000-4000-8000-000000000002',
+);
+const actorId = Schema.decodeUnknownSync(UserId)(
+	'00000000-0000-4000-8000-000000000003',
+);
 const entry = (suffix: number, fedAt: number): PetFoodEntry => ({
-	id: Schema.decodeUnknownSync(FoodEntryId)(`00000000-0000-4000-8000-${String(suffix).padStart(12, '0')}`),
+	id: Schema.decodeUnknownSync(FoodEntryId)(
+		`00000000-0000-4000-8000-${String(suffix).padStart(12, '0')}`,
+	),
 	petId,
 	recordedBy: actorId,
 	amountMg: Schema.decodeUnknownSync(FoodAmountMg)(50_000),
@@ -36,14 +48,15 @@ const run = async (
 	const calls: Array<{ type: 'replace' | 'cancel'; request: unknown }> = [];
 	const repository = Layer.succeed(PetFoodRepository, {
 		lockOwnedPet: unused,
-		getSettings: () => Effect.succeed({
-			petId,
-			dayStart: null,
-			timeZone: null,
-			reminderDelay: delay,
-			createdAt: DateTime.makeUnsafe(0),
-			updatedAt: DateTime.makeUnsafe(0),
-		}),
+		getSettings: () =>
+			Effect.succeed({
+				petId,
+				dayStart: null,
+				timeZone: null,
+				reminderDelay: delay,
+				createdAt: DateTime.makeUnsafe(0),
+				updatedAt: DateTime.makeUnsafe(0),
+			}),
 		setDayStart: unused,
 		setReminderDelay: unused,
 		clearReminderDelay: unused,
@@ -54,17 +67,40 @@ const run = async (
 		status: unused,
 	});
 	const scheduler = Layer.succeed(ReminderScheduler, {
-		replaceForLatest: (request) => Effect.sync(() => { calls.push({ type: 'replace', request }); }),
-		cancelForPet: (request) => Effect.sync(() => { calls.push({ type: 'cancel', request }); }),
+		replaceForLatest: (request) =>
+			Effect.sync(() => {
+				calls.push({ type: 'replace', request });
+			}),
+		cancelForPet: (request) =>
+			Effect.sync(() => {
+				calls.push({ type: 'cancel', request });
+			}),
 	});
-	await Effect.runPromise(ReconcileFoodReminder.reconcile({
-		botId,
-		ownerUserId,
-		petId,
-		before: before === undefined ? undefined : { id: before.id, fedAt: before.fedAt },
-	}).pipe(Effect.provide(Layer.merge(repository, scheduler))));
+	await Effect.runPromise(
+		ReconcileFoodReminder.reconcile({
+			botId,
+			ownerUserId,
+			petId,
+			before:
+				before === undefined
+					? undefined
+					: { id: before.id, fedAt: before.fedAt },
+		}).pipe(Effect.provide(Layer.merge(repository, scheduler))),
+	);
 	return calls;
 };
+
+describe('food mutation errors', () => {
+	it('uses one non-leaking error for an unavailable selected entry', () => {
+		const error = new FoodEntryNotFound({
+			message: 'Food entry was not found',
+		});
+		expect(error).toMatchObject({
+			_tag: 'FoodEntryNotFound',
+			message: 'Food entry was not found',
+		});
+	});
+});
 
 describe('reminder reconciliation', () => {
 	it('does nothing when latest identity and timestamp are unchanged', async () => {
@@ -82,7 +118,12 @@ describe('reminder reconciliation', () => {
 		expect(calls).toHaveLength(1);
 		expect(calls[0]).toMatchObject({
 			type: 'replace',
-			request: { foodEntryId: latest.id, runAt: DateTime.makeUnsafe(DateTime.toEpochMillis(latest.fedAt) + 10_000) },
+			request: {
+				foodEntryId: latest.id,
+				runAt: DateTime.makeUnsafe(
+					DateTime.toEpochMillis(latest.fedAt) + 10_000,
+				),
+			},
 		});
 	});
 
@@ -102,17 +143,29 @@ describe('reminder reconciliation', () => {
 
 	it('propagates scheduler failure', async () => {
 		const repository = Layer.succeed(PetFoodRepository, {
-			lockOwnedPet: unused, getSettings: () => Effect.succeed(undefined), setDayStart: unused,
-			setReminderDelay: unused, clearReminderDelay: unused, latestEntry: () => Effect.succeed(undefined),
-			findBySource: unused, findBusinessDuplicate: unused, insert: unused, status: unused,
+			lockOwnedPet: unused,
+			getSettings: () => Effect.succeed(undefined),
+			setDayStart: unused,
+			setReminderDelay: unused,
+			clearReminderDelay: unused,
+			latestEntry: () => Effect.succeed(undefined),
+			findBySource: unused,
+			findBusinessDuplicate: unused,
+			insert: unused,
+			status: unused,
 		});
 		const scheduler = Layer.succeed(ReminderScheduler, {
 			replaceForLatest: unused,
 			cancelForPet: () => Effect.fail(new Error('scheduler failed') as never),
 		});
-		const result = await Effect.runPromiseExit(ReconcileFoodReminder.reconcile({
-			botId, ownerUserId, petId, before: { id: entry(1, 1_000).id, fedAt: DateTime.makeUnsafe(1_000) },
-		}).pipe(Effect.provide(Layer.merge(repository, scheduler))));
+		const result = await Effect.runPromiseExit(
+			ReconcileFoodReminder.reconcile({
+				botId,
+				ownerUserId,
+				petId,
+				before: { id: entry(1, 1_000).id, fedAt: DateTime.makeUnsafe(1_000) },
+			}).pipe(Effect.provide(Layer.merge(repository, scheduler))),
+		);
 		expect(result._tag).toBe('Failure');
 	});
 });
