@@ -184,7 +184,7 @@ else
 							for (const text of [
 								'/remover_cuidador',
 								'Rex',
-								'Caregiver (recusado)',
+								'Caregiver (rejeitado)',
 							])
 								yield* send(text);
 							expect(yield* relation()).toHaveLength(0);
@@ -251,6 +251,71 @@ else
 								).toHaveLength(0);
 							expect(
 								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_jobs WHERE status='scheduled'`,
+							).toHaveLength(0);
+						}),
+					),
+					postgres,
+				),
+			);
+		});
+
+		it('resumes invitation confirmation after restart and deduplicates a concurrently revoked relation', async () => {
+			await Effect.runPromise(
+				Effect.provide(
+					Effect.scoped(
+						Effect.gen(function* () {
+							const sql = yield* PgClient.PgClient;
+							yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
+							yield* sql.unsafe(
+								'DROP SCHEMA IF EXISTS tfx_caregiver_e2e CASCADE',
+							);
+							const sent: Sent[] = [];
+							const owner: Sender = {
+								id: 6301,
+								first_name: 'Owner',
+								username: 'relation_owner',
+							};
+							const caregiver: Sender = {
+								id: 6302,
+								first_name: 'Caregiver',
+								username: 'relation_caregiver',
+							};
+							const first = yield* Layer.build(makeGraph(sql, sent));
+							for (const [id, text, who] of [
+								[200, '/cadastrar', owner],
+								[201, '/cadastrar', caregiver],
+								[202, '/adicionar_pet', owner],
+								[203, 'Rex', owner],
+								[204, '/adicionar_cuidador', owner],
+								[205, 'Rex', owner],
+								[206, '@relation_caregiver', owner],
+								[207, '/convites_pet', caregiver],
+								[208, 'Rex (Owner)', caregiver],
+							] as const)
+								yield* dispatchWith(first, update(id, text, who));
+							expect(
+								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_conversations`,
+							).toHaveLength(1);
+							const second = yield* Layer.build(makeGraph(sql, sent));
+							yield* sql`DELETE FROM carneloot.pet_caregivers`;
+							const before = sent.length;
+							const final = update(209, 'Sim', caregiver);
+							yield* dispatchWith(second, final);
+							yield* dispatchWith(second, final);
+							expect(sent.slice(before)).toEqual([
+								{
+									chatId: caregiver.id,
+									text: 'Este convite não está mais disponível.',
+								},
+							]);
+							expect(
+								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_update_attempts WHERE update_id='209'`,
+							).toHaveLength(1);
+							expect(
+								yield* sql`SELECT * FROM carneloot.pet_caregivers`,
+							).toHaveLength(0);
+							expect(
+								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_conversations`,
 							).toHaveLength(0);
 						}),
 					),
