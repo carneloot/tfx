@@ -34,7 +34,9 @@ describe('Bot declarations', () => {
 		aliases.push('later');
 		expect(command.aliases).toEqual(['add']);
 		expect(Object.isFrozen(command.aliases)).toBe(true);
-		expect(Command.make('list', { name: 'list', error: Schema.Void }).aliases).toEqual([]);
+		expect(
+			Command.make('list', { name: 'list', error: Schema.Void }).aliases,
+		).toEqual([]);
 	});
 
 	it('rejects invalid Telegram command names with fragment context', () => {
@@ -71,7 +73,11 @@ describe('Bot declarations', () => {
 			Command.make('add', { name: 'shared', error: Schema.Void }),
 		);
 		const food = BotGroup.make('food').add(
-			Command.make('add', { name: 'food', aliases: ['shared'], error: Schema.Void }),
+			Command.make('add', {
+				name: 'food',
+				aliases: ['shared'],
+				error: Schema.Void,
+			}),
 		);
 		expect(() => Bot.make('App').add(pets).add(food)).toThrow(
 			"fragments 'pets' and 'food'",
