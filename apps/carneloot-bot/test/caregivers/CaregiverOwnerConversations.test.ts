@@ -17,7 +17,22 @@ describe('owner caregiver conversation declarations', () => {
 		expect(declaration.version).toBe(1);
 		expect(declaration.initialStep).toBe('pet');
 		expect(Object.keys(declaration.steps)).toEqual(steps);
-		expect(Duration.toMillis(declaration.idleTimeout ?? 0)).toBe(15 * 60 * 1000);
+		expect(Duration.toMillis(declaration.idleTimeout ?? 0)).toBe(
+			15 * 60 * 1000,
+		);
+	});
+
+	it('rejects empty owned-pet startup arrays', () => {
+		const input = {
+			actorId: '00000000-0000-4000-8000-000000000001',
+			botId: 'bot',
+			telegramUserId: 1,
+			pets: [],
+		};
+		expect(() => DeletePet.declaration.startup.make(input)).toThrow();
+		expect(() => InviteCaregiver.declaration.startup.make(input)).toThrow();
+		expect(() => RemoveCaregiver.declaration.startup.make(input)).toThrow();
+		expect(() => ListCaregivers.declaration.startup.make(input)).toThrow();
 	});
 
 	it('keeps every declared step implemented for durable resume', () => {

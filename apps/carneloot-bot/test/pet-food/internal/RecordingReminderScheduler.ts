@@ -31,9 +31,9 @@ export const layer: Layer.Layer<ReminderScheduler, never, PgClient.PgClient> =
 						),
 						'Recording scheduler replace failed',
 					),
-				cancelForPet: (petId) =>
+				cancelForPet: (request) =>
 					mapSql(
-						sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id) VALUES ('cancel',${petId}::uuid)`.pipe(
+						sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id) VALUES ('cancel',${request.petId}::uuid)`.pipe(
 							Effect.asVoid,
 						),
 						'Recording scheduler cancel failed',

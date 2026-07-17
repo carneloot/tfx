@@ -1,9 +1,15 @@
 import * as Effect from 'effect/Effect';
-import { Conversations, MessageContext, UpdateContext } from 'tfx';
+import {
+	Conversation,
+	Conversations,
+	MessageContext,
+	UpdateContext,
+} from 'tfx';
 
 import * as ListPetInvitations from '../application/ListPetInvitations.js';
 import * as ListPets from '../application/ListPets.js';
 import { ConversationOperationError } from '../domain/ApplicationError.js';
+import type { PetId } from '../domain/Ids.js';
 import { PetCaregiverRepository } from '../ports/PetCaregiverRepository.js';
 import { PetRepository } from '../ports/PetRepository.js';
 import * as DeletePetConversation from './conversations/DeletePetConversation.js';
@@ -21,43 +27,108 @@ const actor = (current: typeof CurrentUser.Service) => ({
 	telegramUserId: current.profile.telegramUserId,
 });
 
-const start = <A, E, R>(built: Parameters<typeof Conversations.Conversations.Service['start']>[0], input: A) =>
+const start = <B extends Conversations.BuiltConversation<any, any>>(
+	built: B,
+	input: Conversation.StartupOf<B['declaration']>,
+) =>
 	Effect.gen(function* () {
 		const update = yield* UpdateContext.UpdateContext;
 		if (update.chatId === undefined || update.userId === undefined)
-			return yield* Effect.fail(new ConversationOperationError({ message: 'Missing conversation scope', cause: { _tag: 'MissingConversationScope' } }));
+			return yield* Effect.fail(
+				new ConversationOperationError({
+					message: 'Missing conversation scope',
+					cause: { _tag: 'MissingConversationScope' },
+				}),
+			);
 		const conversations = yield* Conversations.Conversations;
-		yield* conversations.start(built as never, input as never, {
-			scope: { botId, chatId: update.chatId, userId: update.userId },
-			conflict: 'replace',
-		}).pipe(Effect.mapError((cause) => new ConversationOperationError({ message: 'Could not start caregiver conversation', cause })));
+		yield* conversations
+			.start(built, input, {
+				scope: { botId, chatId: update.chatId, userId: update.userId },
+				conflict: 'replace',
+			})
+			.pipe(
+				Effect.mapError(
+					(cause) =>
+						new ConversationOperationError({
+							message: 'Could not start caregiver conversation',
+							cause,
+						}),
+				),
+			);
 	});
 
-const owned = (built: Parameters<typeof Conversations.Conversations.Service['start']>[0]) => Effect.gen(function* () {
-	const current = yield* CurrentUser;
-	const pets = yield* ListPets.execute(current.user.id);
-	if (pets.length === 0) {
-		yield* (yield* MessageContext.MessageContext).reply('Você não tem pets');
-		return;
-	}
-	yield* start(built, { ...actor(current), pets: pets.map(({ id, name }) => ({ id, name })) });
-});
+const owned = <B extends Conversations.BuiltConversation<any, any>>(
+	built: B,
+	startup: (
+		current: typeof CurrentUser.Service,
+		pets: [
+			{ readonly id: PetId; readonly name: string },
+			...Array<{ readonly id: PetId; readonly name: string }>,
+		],
+	) => Conversation.StartupOf<B['declaration']>,
+) =>
+	Effect.gen(function* () {
+		const current = yield* CurrentUser;
+		const pets = yield* ListPets.execute(current.user.id);
+		const first = pets[0];
+		if (first === undefined) {
+			yield* (yield* MessageContext.MessageContext).reply('Você não tem pets');
+			return;
+		}
+		const options: [
+			{ readonly id: PetId; readonly name: string },
+			...Array<{ readonly id: PetId; readonly name: string }>,
+		] = [
+			{ id: first.id, name: first.name },
+			...pets.slice(1).map(({ id, name }) => ({ id, name })),
+		];
+		yield* start(built, startup(current, options));
+	});
 
-export const startDeletePet = owned(DeletePetConversation.built);
-export const startInviteCaregiver = owned(InviteCaregiverConversation.built);
-export const startRemoveCaregiver = owned(RemoveCaregiverConversation.built);
-export const startListCaregivers = owned(ListCaregiversConversation.built);
+const ownedStartup = (
+	current: typeof CurrentUser.Service,
+	pets: Parameters<Parameters<typeof owned>[1]>[1],
+) => ({ ...actor(current), pets });
+export const startDeletePet = owned(DeletePetConversation.built, ownedStartup);
+export const startInviteCaregiver = owned(
+	InviteCaregiverConversation.built,
+	ownedStartup,
+);
+export const startRemoveCaregiver = owned(
+	RemoveCaregiverConversation.built,
+	ownedStartup,
+);
+export const startListCaregivers = owned(
+	ListCaregiversConversation.built,
+	ownedStartup,
+);
 
 export const startPetInvitations = Effect.gen(function* () {
 	const current = yield* CurrentUser;
 	const invitations = yield* ListPetInvitations.execute(actor(current));
-	if (invitations.length === 0) {
-		yield* (yield* MessageContext.MessageContext).reply('Você não tem convites pendentes.');
+	const first = invitations[0];
+	if (first === undefined) {
+		yield* (yield* MessageContext.MessageContext).reply(
+			'Você não tem convites pendentes.',
+		);
 		return;
 	}
 	yield* start(PetInvitationsConversation.built, {
 		...actor(current),
-		invitations: invitations.map(({ pet, ownerDisplayName }) => ({ petId: pet.id, petName: pet.name, ownerDisplayName })),
+		invitations: [
+			{
+				petId: first.pet.id,
+				petName: first.pet.name,
+				ownerDisplayName: first.ownerDisplayName,
+			},
+			...invitations
+				.slice(1)
+				.map(({ pet, ownerDisplayName }) => ({
+					petId: pet.id,
+					petName: pet.name,
+					ownerDisplayName,
+				})),
+		],
 	});
 });
 
@@ -66,10 +137,21 @@ export const startStopCaring = Effect.gen(function* () {
 	const caregivers = yield* PetCaregiverRepository;
 	const pets = yield* PetRepository;
 	const relations = yield* caregivers.listAcceptedForUser(current.user.id);
-	const caredPets = (yield* Effect.forEach(relations, (relation) => pets.findById(relation.petId))).filter((pet) => pet !== undefined);
-	if (caredPets.length === 0) {
-		yield* (yield* MessageContext.MessageContext).reply('Você não está cuidando de nenhum pet.');
+	const caredPets = (yield* Effect.forEach(relations, (relation) =>
+		pets.findById(relation.petId),
+	)).filter((pet) => pet !== undefined);
+	const first = caredPets[0];
+	if (first === undefined) {
+		yield* (yield* MessageContext.MessageContext).reply(
+			'Você não está cuidando de nenhum pet.',
+		);
 		return;
 	}
-	yield* start(StopCaringConversation.built, { ...actor(current), pets: caredPets.map(({ id, name }) => ({ id, name })) });
+	yield* start(StopCaringConversation.built, {
+		...actor(current),
+		pets: [
+			{ id: first.id, name: first.name },
+			...caredPets.slice(1).map(({ id, name }) => ({ id, name })),
+		],
+	});
 });
