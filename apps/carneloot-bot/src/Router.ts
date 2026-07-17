@@ -116,6 +116,12 @@ export const classifyError = (
 			return isRetryableError(error)
 				? DispatchOutcome.retryableFailure('reminder-scheduler-unavailable')
 				: DispatchOutcome.fatal('reminder-scheduler-invariant');
+		case 'FoodNotificationSchedulerError':
+			return isRetryableError(error)
+				? DispatchOutcome.retryableFailure(
+						'food-notification-scheduler-unavailable',
+					)
+				: DispatchOutcome.fatal('food-notification-scheduler-invariant');
 		case 'TelegramError':
 			// All Telegram operations exposed by Carneloot handlers are outputs.
 			return DispatchOutcome.handledWithOutputFailure('telegram-output-failed');

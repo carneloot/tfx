@@ -25,6 +25,7 @@ import {
 import { FoodAmount } from '../../domain/pet-food/FoodAmount.js';
 import { IanaTimeZone } from '../../domain/pet-food/FoodDateTime.js';
 import { PetName } from '../../domain/Pet.js';
+import { FoodNotificationScheduler } from '../../ports/FoodNotificationScheduler.js';
 import { PetCaregiverRepository } from '../../ports/PetCaregiverRepository.js';
 import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
 import { PetRepository } from '../../ports/PetRepository.js';
@@ -64,6 +65,7 @@ const required = <A, E extends TaggedError, R>(
 		yield* PetRepository;
 		yield* PetCaregiverRepository;
 		yield* ReminderScheduler;
+		yield* FoodNotificationScheduler;
 		yield* UserRepository;
 		return yield* effect;
 	});

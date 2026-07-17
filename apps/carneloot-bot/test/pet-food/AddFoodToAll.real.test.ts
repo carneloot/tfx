@@ -22,6 +22,7 @@ import {
 	type PetFoodSettings,
 } from '../../src/domain/pet-food/PetFood.js';
 import { PetName, type Pet } from '../../src/domain/Pet.js';
+import { FoodNotificationScheduler } from '../../src/ports/FoodNotificationScheduler.js';
 import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import {
 	PetFoodRepository,
@@ -175,6 +176,9 @@ const fixture = (options: FixtureOptions) => {
 		Layer.succeed(ReminderScheduler, {
 			replaceForLatest: () => Effect.void,
 			cancelForPet: () => Effect.void,
+		}),
+		Layer.succeed(FoodNotificationScheduler, {
+			scheduleAdded: () => Effect.void,
 		}),
 	);
 	const run = (overrides: Partial<typeof input> = {}) =>

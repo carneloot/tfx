@@ -23,6 +23,7 @@ import {
 import { FoodEntryId } from '../../src/domain/pet-food/PetFood.js';
 import { PetName } from '../../src/domain/Pet.js';
 import * as FeedingReminderJob from '../../src/jobs/FeedingReminderJob.js';
+import { FoodNotificationScheduler } from '../../src/ports/FoodNotificationScheduler.js';
 import { NotificationRepository } from '../../src/ports/NotificationRepository.js';
 import { PetFoodRepository } from '../../src/ports/PetFoodRepository.js';
 import { PetRepository } from '../../src/ports/PetRepository.js';
@@ -73,7 +74,15 @@ const scheduler = Layer.provideMerge(
 	ReminderSchedulerLive.layer,
 	Layer.merge(stores, runtime),
 );
-const layer = Layer.mergeAll(stores, runtime, scheduler, TestClock.layer());
+const layer = Layer.mergeAll(
+	stores,
+	runtime,
+	scheduler,
+	Layer.succeed(FoodNotificationScheduler, {
+		scheduleAdded: () => Effect.void,
+	}),
+	TestClock.layer(),
+);
 const botId = Schema.decodeUnknownSync(BotId)('carneloot');
 
 const fixture = Effect.gen(function* () {

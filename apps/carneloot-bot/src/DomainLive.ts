@@ -5,6 +5,7 @@ import * as Middleware from 'tfx/Middleware';
 
 import * as RegisteredUser from './bot/RegisteredUser.js';
 import * as FeedingReminderJobLive from './jobs/FeedingReminderJobLive.js';
+import * as FoodNotificationSchedulerLive from './postgres/FoodNotificationSchedulerLive.js';
 import * as ReminderSchedulerLive from './postgres/ReminderSchedulerLive.js';
 
 const core = Layer.mergeAll(
@@ -13,4 +14,7 @@ const core = Layer.mergeAll(
 	JobRuntimeLive.layer(FeedingReminderJobLive.implementation),
 );
 
-export const layer = Layer.provideMerge(ReminderSchedulerLive.layer, core);
+export const layer = Layer.provideMerge(
+	Layer.merge(ReminderSchedulerLive.layer, FoodNotificationSchedulerLive.layer),
+	core,
+);

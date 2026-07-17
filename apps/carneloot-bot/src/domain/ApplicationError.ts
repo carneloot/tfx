@@ -2,6 +2,7 @@ import * as Schema from 'effect/Schema';
 import { SqlError } from 'effect/unstable/sql/SqlError';
 import { TelegramError } from 'tfx/TelegramError';
 
+import { FoodNotificationSchedulerError } from '../ports/FoodNotificationScheduler.js';
 import { ReminderSchedulerError } from '../ports/ReminderScheduler.js';
 import {
 	CaregiverAccessLost,
@@ -49,6 +50,7 @@ export const ApplicationError = Schema.Union([
 	FoodEntryNotFound,
 	PetFoodError,
 	ReminderSchedulerError,
+	FoodNotificationSchedulerError,
 	ConversationOperationError,
 	SqlError,
 	TelegramError,

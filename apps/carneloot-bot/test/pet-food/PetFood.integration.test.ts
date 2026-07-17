@@ -20,6 +20,7 @@ import * as GetFoodStatus from '../../src/application/GetFoodStatus.js';
 import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
 import { FoodAmount } from '../../src/domain/pet-food/FoodAmount.js';
 import { PetName } from '../../src/domain/Pet.js';
+import { FoodNotificationScheduler } from '../../src/ports/FoodNotificationScheduler.js';
 import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import { PetRepository } from '../../src/ports/PetRepository.js';
 import {
@@ -83,6 +84,9 @@ const dependencies = (
 			PetFoodRepositoryLive.layer,
 			PetCaregiverRepositoryLive.layer,
 			scheduler,
+			Layer.succeed(FoodNotificationScheduler, {
+				scheduleAdded: () => Effect.void,
+			}),
 		),
 		PostgresTestLayer.layer,
 	);

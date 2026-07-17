@@ -12,6 +12,7 @@ import {
 	DuplicateFoodEntry,
 	PetFoodSetupMissing,
 } from '../domain/pet-food/PetFoodError.js';
+import { FoodNotificationScheduler } from '../ports/FoodNotificationScheduler.js';
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { ReminderScheduler } from '../ports/ReminderScheduler.js';
 import { authorize, type PetFoodAccess } from './PetFoodAccess.js';
@@ -78,6 +79,7 @@ export const execute = (
 		const sql = yield* PgClient.PgClient;
 		const repository = yield* PetFoodRepository;
 		const scheduler = yield* ReminderScheduler;
+		const foodNotifications = yield* FoodNotificationScheduler;
 		const result = yield* sql.withTransaction(
 			Effect.gen(function* () {
 				const authorized = yield* authorize(access);
@@ -146,6 +148,15 @@ export const execute = (
 						foodEntryId: entry.id,
 						runAt: DateTime.addDuration(entry.fedAt, settings.reminderDelay),
 					});
+				yield* foodNotifications.scheduleAdded({
+					botId: access.botId,
+					ownerUserId: authorized.ownerId,
+					actorUserId: authorized.actorId,
+					petId: access.petId,
+					foodEntryId: entry.id,
+					sourceUpdateId: source.updateId,
+					timestampExplicit: input.when.length > 0,
+				});
 				return {
 					entry,
 					replayed: false,
