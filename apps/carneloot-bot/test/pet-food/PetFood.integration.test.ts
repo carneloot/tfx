@@ -179,7 +179,7 @@ else
 				);
 				const replay = yield* executeAddFood(
 					access,
-					'0g',
+					'1g',
 					'10:00',
 					source(access.botId, 1),
 				);

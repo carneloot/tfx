@@ -178,7 +178,7 @@ else
 								food_entry_id: string;
 								scheduled_for: Date;
 							}>`
-								SELECT food_entry_id,scheduled_for FROM carneloot.notification_events WHERE status='scheduled'`;
+								SELECT food_entry_id,scheduled_for FROM carneloot.notification_events WHERE status='scheduled' AND kind='feeding-reminder'`;
 							const jobs = () => sql<{ run_at: Date }>`
 								SELECT run_at FROM tfx_food_mutation_e2e.case_jobs WHERE status='scheduled' AND conflict_key LIKE 'feeding-reminder:%'`;
 							const assertReminder = (target: string, iso: string) =>
