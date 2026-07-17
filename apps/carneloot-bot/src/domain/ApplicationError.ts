@@ -4,6 +4,14 @@ import { TelegramError } from 'tfx/TelegramError';
 
 import { ReminderSchedulerError } from '../ports/ReminderScheduler.js';
 import {
+	CaregiverAccessLost,
+	CaregiverInvitationNotFound,
+	CaregiverInvitationNotPending,
+	CaregiverRelationshipExists,
+	CaregiverSelfInvitation,
+	CaregiverUsernameAmbiguous,
+} from './caregivers/CaregiverError.js';
+import {
 	DomainPersistenceError,
 	InvalidDomainInput,
 	PetNameAlreadyExists,
@@ -26,6 +34,12 @@ export const ApplicationError = Schema.Union([
 	UserNotRegistered,
 	PetNameAlreadyExists,
 	DomainPersistenceError,
+	CaregiverUsernameAmbiguous,
+	CaregiverSelfInvitation,
+	CaregiverRelationshipExists,
+	CaregiverInvitationNotFound,
+	CaregiverInvitationNotPending,
+	CaregiverAccessLost,
 	PetAccessDenied,
 	PetFoodSetupMissing,
 	DuplicateFoodEntry,
