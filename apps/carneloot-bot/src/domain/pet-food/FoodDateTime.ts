@@ -82,16 +82,21 @@ const validCalendarDate = (parts: LocalParts): boolean => {
 	);
 };
 
-/** Parses supported local food timestamps using Effect Clock and DateTime only. */
-export const parse = (input: string, timeZone: IanaTimeZone) =>
+/** Parses a supported local food timestamp relative to its Telegram message. */
+export const parse = (
+	input: string,
+	timeZone: IanaTimeZone,
+	messageDate: DateTime.Utc,
+) =>
 	Effect.gen(function* () {
 		if (Option.isNone(DateTime.zoneMakeNamed(timeZone)))
 			return yield* Effect.fail(
 				invalid('Invalid IANA time zone', 'InvalidTimeZone'),
 			);
-		const now = yield* DateTime.now;
-		const zonedNow = DateTime.makeZonedUnsafe(now, { timeZone });
-		const current = DateTime.toParts(zonedNow);
+		const zonedMessageDate = DateTime.makeZonedUnsafe(messageDate, {
+			timeZone,
+		});
+		const current = DateTime.toParts(zonedMessageDate);
 		const timeOnly = /^(\d{2}):(\d{2})$/u.exec(input);
 		let parts: LocalParts;
 		let yearless = false;
@@ -103,6 +108,21 @@ export const parse = (input: string, timeZone: IanaTimeZone) =>
 				hour: Number(timeOnly[1]),
 				minute: Number(timeOnly[2]),
 			};
+			const sameDay = makeLocal(parts, timeZone);
+			if (
+				sameDay !== undefined &&
+				DateTime.toEpochMillis(sameDay) > DateTime.toEpochMillis(messageDate)
+			) {
+				const previous = DateTime.toParts(
+					DateTime.subtract(zonedMessageDate, { days: 1 }),
+				);
+				parts = {
+					...parts,
+					year: previous.year,
+					month: previous.month,
+					day: previous.day,
+				};
+			}
 		} else {
 			const dated =
 				/^(\d{2})([/-])(\d{2})(?:\2(\d{4}))? (\d{2}):(\d{2})$/u.exec(input);
@@ -136,7 +156,7 @@ export const parse = (input: string, timeZone: IanaTimeZone) =>
 		if (
 			yearless &&
 			DateTime.toEpochMillis(parsed) >
-				DateTime.toEpochMillis(DateTime.add(zonedNow, { days: 366 }))
+				DateTime.toEpochMillis(DateTime.add(zonedMessageDate, { days: 366 }))
 		)
 			return yield* Effect.fail(
 				invalid('Yearless date is more than 366 local days away'),

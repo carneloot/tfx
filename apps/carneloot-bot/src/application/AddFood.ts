@@ -5,7 +5,7 @@ import * as Schema from 'effect/Schema';
 
 import { InvalidDomainInput } from '../domain/DomainError.js';
 import { BotId, TelegramChatId } from '../domain/Ids.js';
-import { FoodAmount } from '../domain/pet-food/FoodAmount.js';
+import type { FoodAmount } from '../domain/pet-food/FoodAmount.js';
 import * as FoodDateTime from '../domain/pet-food/FoodDateTime.js';
 import { FoodEntryId } from '../domain/pet-food/PetFood.js';
 import {
@@ -15,6 +15,12 @@ import {
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { ReminderScheduler } from '../ports/ReminderScheduler.js';
 import { authorize, type PetFoodAccess } from './PetFoodAccess.js';
+
+export interface ParsedFoodInput {
+	readonly amountMg: FoodAmount;
+	readonly when: string;
+	readonly messageDate: DateTime.Utc;
+}
 
 export interface SourceInput {
 	readonly botId: unknown;
@@ -33,8 +39,7 @@ const invalid = (message: string, cause: unknown) =>
 
 export const execute = (
 	access: PetFoodAccess,
-	amountInput: unknown,
-	foodDateTimeInput: string,
+	input: ParsedFoodInput,
 	sourceInput: SourceInput,
 ) =>
 	Effect.gen(function* () {
@@ -91,11 +96,6 @@ export const execute = (
 						timeZone: settings?.timeZone ?? null,
 					};
 				}
-				const amountMg = yield* Schema.decodeUnknownEffect(FoodAmount)(
-					amountInput,
-				).pipe(
-					Effect.mapError((cause) => invalid('Invalid food amount', cause)),
-				);
 				const settings = yield* repository.getSettings(access.petId);
 				if (
 					settings === undefined ||
@@ -109,9 +109,13 @@ export const execute = (
 					);
 				const now = yield* DateTime.now;
 				const fedAt =
-					foodDateTimeInput.trim().length === 0
-						? now
-						: yield* FoodDateTime.parse(foodDateTimeInput, settings.timeZone);
+					input.when.length === 0
+						? input.messageDate
+						: yield* FoodDateTime.parse(
+								input.when,
+								settings.timeZone,
+								input.messageDate,
+							);
 				const duplicate = yield* repository.findBusinessDuplicate(
 					access.petId,
 					fedAt,
@@ -127,7 +131,7 @@ export const execute = (
 					id,
 					petId: access.petId,
 					recordedBy: authorized.actorId,
-					amountMg,
+					amountMg: input.amountMg,
 					fedAt,
 					source,
 					now,

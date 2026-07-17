@@ -13,6 +13,7 @@ import {
 	TelegramUserId,
 	UserId,
 } from '../../src/domain/Ids.js';
+import { FoodAmount } from '../../src/domain/pet-food/FoodAmount.js';
 import { PetName } from '../../src/domain/Pet.js';
 import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import { PetRepository } from '../../src/ports/PetRepository.js';
@@ -184,10 +185,18 @@ describe('pet food application validation', () => {
 	it('rejects unsafe update id before SQL', async () => {
 		const source = await Effect.runPromise(
 			Effect.result(
-				AddFood.execute(access, '10g', '10:00', {
-					botId: 'bot',
-					updateId: Number.MAX_SAFE_INTEGER + 1,
-				}),
+				AddFood.execute(
+					access,
+					{
+						amountMg: Schema.decodeUnknownSync(FoodAmount)('10g'),
+						when: '10:00',
+						messageDate: now,
+					},
+					{
+						botId: 'bot',
+						updateId: Number.MAX_SAFE_INTEGER + 1,
+					},
+				),
 			) as Effect.Effect<any>,
 		);
 		expect(source).toMatchObject({
