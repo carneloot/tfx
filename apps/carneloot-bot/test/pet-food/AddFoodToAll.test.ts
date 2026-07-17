@@ -1,5 +1,5 @@
 import { Effect, Layer, Schema } from 'effect';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AddFoodToAllResult } from '../../src/application/AddFoodToAll.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../src/domain/Ids.js';
@@ -65,6 +65,8 @@ const run = (layer: Layer.Layer<PetRepository>) => {
 };
 
 describe('AddFoodToAll', () => {
+	beforeEach(() => vi.resetAllMocks());
+
 	it('returns no items and loads accessible pets once', async () => {
 		const repository = repositoryLayer([]);
 		const result = await run(repository.layer);

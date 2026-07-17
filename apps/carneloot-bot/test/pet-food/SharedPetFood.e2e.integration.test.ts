@@ -251,10 +251,12 @@ else
 								{ chatId: caregiver.id, messageId: todosId },
 							]);
 							// Delivery replay is absorbed without duplicate per-pet writes or output.
+							const sentBeforeReplay = sent.length;
 							yield* dispatchWith(context, todosUpdate);
 							expect(
 								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
 							).toHaveLength(2);
+							expect(sent).toHaveLength(sentBeforeReplay);
 							expect(reactions).toHaveLength(1);
 						}),
 					),
