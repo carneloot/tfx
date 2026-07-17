@@ -3,8 +3,8 @@ import { BotBuilder, Middleware } from 'tfx';
 import { describe, expect, it } from 'vitest';
 
 import * as AccountHandlers from '../src/bot/AccountHandlers.js';
-import * as CaregiverHandlers from '../src/bot/CaregiverHandlers.js';
 import { built } from '../src/bot/AddPetConversation.js';
+import * as CaregiverHandlers from '../src/bot/CaregiverHandlers.js';
 import { Carneloot } from '../src/bot/Declaration.js';
 import * as PetFoodHandlers from '../src/bot/PetFoodHandlers.js';
 import * as PetHandlers from '../src/bot/PetHandlers.js';

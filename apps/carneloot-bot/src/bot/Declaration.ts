@@ -33,12 +33,54 @@ export const pets = BotGroup.make('pets')
 			error: ApplicationError,
 		}),
 	)
-	.add(Command.make('deletePet', { name: 'deletar_pet', description: 'Deletar um pet', middleware: [RegisteredUser], error: ApplicationError }))
-	.add(Command.make('inviteCaregiver', { name: 'adicionar_cuidador', description: 'Convidar cuidador', middleware: [RegisteredUser], error: ApplicationError }))
-	.add(Command.make('removeCaregiver', { name: 'remover_cuidador', description: 'Remover cuidador', middleware: [RegisteredUser], error: ApplicationError }))
-	.add(Command.make('listCaregivers', { name: 'listar_cuidadores', description: 'Listar cuidadores', middleware: [RegisteredUser], error: ApplicationError }))
-	.add(Command.make('petInvitations', { name: 'convites_pet', description: 'Responder convites de pets', middleware: [RegisteredUser], error: ApplicationError }))
-	.add(Command.make('stopCaring', { name: 'parar_de_cuidar_pet', description: 'Parar de cuidar de um pet', middleware: [RegisteredUser], error: ApplicationError }));
+	.add(
+		Command.make('deletePet', {
+			name: 'deletar_pet',
+			description: 'Deletar um pet',
+			middleware: [RegisteredUser],
+			error: ApplicationError,
+		}),
+	)
+	.add(
+		Command.make('inviteCaregiver', {
+			name: 'adicionar_cuidador',
+			description: 'Convidar cuidador',
+			middleware: [RegisteredUser],
+			error: ApplicationError,
+		}),
+	)
+	.add(
+		Command.make('removeCaregiver', {
+			name: 'remover_cuidador',
+			description: 'Remover cuidador',
+			middleware: [RegisteredUser],
+			error: ApplicationError,
+		}),
+	)
+	.add(
+		Command.make('listCaregivers', {
+			name: 'listar_cuidadores',
+			description: 'Listar cuidadores',
+			middleware: [RegisteredUser],
+			error: ApplicationError,
+		}),
+	)
+	.add(
+		Command.make('petInvitations', {
+			name: 'convites_pet',
+			description: 'Responder convites de pets',
+			middleware: [RegisteredUser],
+			error: ApplicationError,
+		}),
+	)
+	.add(
+		Command.make('stopCaring', {
+			name: 'parar_de_cuidar_pet',
+			description: 'Parar de cuidar de um pet',
+			middleware: [RegisteredUser],
+			error: ApplicationError,
+		}),
+	);
 export const petFood = BotGroup.make('petFood')
 	.add(
 		Command.make('configureDayStart', {

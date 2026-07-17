@@ -1,4 +1,9 @@
-import type { BotId, TelegramChatId, TelegramUserId, UserId } from '../domain/Ids.js';
+import type {
+	BotId,
+	TelegramChatId,
+	TelegramUserId,
+	UserId,
+} from '../domain/Ids.js';
 
 export interface PrivateNotice {
 	readonly chatId: TelegramChatId;

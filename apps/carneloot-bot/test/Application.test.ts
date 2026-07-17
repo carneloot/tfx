@@ -56,7 +56,7 @@ const pets = Layer.succeed(PetRepository, {
 const users = (id = ownerId) =>
 	Layer.succeed(UserRepository, {
 		findById: () => Effect.die('unused'),
-			findByUsername: () => Effect.succeed([]),
+		findByUsername: () => Effect.succeed([]),
 		registerTelegramProfile: () => Effect.die('unused'),
 		findByTelegram: () =>
 			Effect.succeed({

@@ -19,7 +19,10 @@ export interface UserRepositoryService {
 	readonly findById: (
 		botId: BotId,
 		userId: UserId,
-	) => Effect.Effect<RegisteredUser, DomainPersistenceError | UserNotRegistered>;
+	) => Effect.Effect<
+		RegisteredUser,
+		DomainPersistenceError | UserNotRegistered
+	>;
 	readonly findByTelegram: (
 		botId: BotId,
 		telegramUserId: TelegramUserId,

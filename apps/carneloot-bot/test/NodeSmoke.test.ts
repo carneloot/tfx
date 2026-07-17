@@ -23,7 +23,10 @@ describe('portable Node composition', () => {
 			{ command: 'remover_cuidador', description: 'Remover cuidador' },
 			{ command: 'listar_cuidadores', description: 'Listar cuidadores' },
 			{ command: 'convites_pet', description: 'Responder convites de pets' },
-			{ command: 'parar_de_cuidar_pet', description: 'Parar de cuidar de um pet' },
+			{
+				command: 'parar_de_cuidar_pet',
+				description: 'Parar de cuidar de um pet',
+			},
 			{
 				command: 'configurar_inicio_dia',
 				description: 'Configurar início do dia do pet',

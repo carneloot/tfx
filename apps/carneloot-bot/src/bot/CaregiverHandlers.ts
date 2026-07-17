@@ -121,13 +121,11 @@ export const startPetInvitations = Effect.gen(function* () {
 				petName: first.pet.name,
 				ownerDisplayName: first.ownerDisplayName,
 			},
-			...invitations
-				.slice(1)
-				.map(({ pet, ownerDisplayName }) => ({
-					petId: pet.id,
-					petName: pet.name,
-					ownerDisplayName,
-				})),
+			...invitations.slice(1).map(({ pet, ownerDisplayName }) => ({
+				petId: pet.id,
+				petName: pet.name,
+				ownerDisplayName,
+			})),
 		],
 	});
 });

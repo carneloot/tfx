@@ -33,7 +33,7 @@ const context = (message: unknown) =>
 	}) as unknown as MessageContextService;
 const repository = Layer.succeed(UserRepository, {
 	findById: () => Effect.die('unused'),
-			findByUsername: () => Effect.succeed([]),
+	findByUsername: () => Effect.succeed([]),
 	registerTelegramProfile: (profile) =>
 		Effect.succeed({
 			user: {

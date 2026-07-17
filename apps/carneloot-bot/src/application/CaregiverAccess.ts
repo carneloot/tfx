@@ -13,7 +13,10 @@ export const displayName = (registered: RegisteredUser): string =>
 export const currentActor = (actor: CaregiverActor) =>
 	Effect.gen(function* () {
 		const users = yield* UserRepository;
-		const current = yield* users.findByTelegram(actor.botId, actor.telegramUserId);
+		const current = yield* users.findByTelegram(
+			actor.botId,
+			actor.telegramUserId,
+		);
 		if (current.user.id !== actor.actorId)
 			return yield* Effect.fail(
 				new CaregiverAccessLost({ message: 'Actor identity changed' }),

@@ -339,21 +339,30 @@ describe('caregiver durable conversation transcripts', () => {
 			expect(h.mutations).toContain('keyboard-removed');
 		}
 	});
-	it('rejects non-empty startup arrays containing invalid entries', () => {
+	it('rejects empty startup choices and invalid entries', () => {
 		expect(() =>
-			DeletePet.declaration.startup.make({ ...ownerStartup, pets: [{}] }),
+			DeletePet.declaration.startup.make({ ...ownerStartup, pets: [] }),
+		).toThrow();
+		expect(() =>
+			Invite.declaration.startup.make({ ...ownerStartup, pets: [] }),
+		).toThrow();
+		expect(() =>
+			List.declaration.startup.make({ ...ownerStartup, pets: [] }),
+		).toThrow();
+		expect(() =>
+			Remove.declaration.startup.make({ ...ownerStartup, pets: [] }),
 		).toThrow();
 		expect(() =>
 			Invitations.declaration.startup.make({
 				...inviteeStartup,
-				invitations: [{}],
+				invitations: [],
 			}),
 		).toThrow();
 		expect(() =>
-			Stop.declaration.startup.make({
-				...caredStartup,
-				pets: [{ id: '', name: '' }],
-			}),
+			Stop.declaration.startup.make({ ...caredStartup, pets: [] }),
+		).toThrow();
+		expect(() =>
+			DeletePet.declaration.startup.make({ ...ownerStartup, pets: [{}] }),
 		).toThrow();
 	});
 });

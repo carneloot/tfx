@@ -116,7 +116,7 @@ const sql = Layer.succeed(PgClient.PgClient, {
 } as never);
 const identity = Layer.succeed(UserRepository, {
 	findById: () => Effect.die('unused'),
-			findByUsername: () => Effect.die('unused'),
+	findByUsername: () => Effect.die('unused'),
 	registerTelegramProfile: () => Effect.die('unused'),
 	findByTelegram: () => Effect.succeed(current),
 });
