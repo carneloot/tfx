@@ -188,10 +188,15 @@ else
 					),
 				);
 				yield* Deferred.await(locked);
+				const deletionStarted = yield* Deferred.make<void>();
 				const deletion = yield* Effect.forkChild(
-					repository.deleteEntry(entry.id),
+					Effect.gen(function* () {
+						yield* Deferred.succeed(deletionStarted, undefined);
+						return yield* repository.deleteEntry(entry.id);
+					}),
 				);
-				yield* Effect.yieldNow;
+				yield* Deferred.await(deletionStarted);
+				expect(deletion.pollUnsafe()).toBeUndefined();
 				yield* Deferred.succeed(release, undefined);
 				yield* Fiber.join(holder);
 				const deleted = yield* Fiber.join(deletion);
