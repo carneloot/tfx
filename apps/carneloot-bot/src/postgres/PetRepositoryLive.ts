@@ -151,9 +151,14 @@ export const layer = Layer.effect(
 							yield* assertOwner(userId);
 							const rows = yield* sql<
 								Record<string, unknown>
-							>`SELECT DISTINCT p.* FROM carneloot.pets p
-							LEFT JOIN carneloot.pet_caregivers pc ON pc.pet_id=p.id AND pc.caregiver_user_id=${userId}::uuid AND pc.status='accepted'
-							WHERE p.owner_id=${userId}::uuid OR pc.pet_id IS NOT NULL
+							>`SELECT p.* FROM carneloot.pets p
+							WHERE p.owner_id=${userId}::uuid
+								OR EXISTS (
+									SELECT 1 FROM carneloot.pet_caregivers pc
+									WHERE pc.pet_id=p.id
+										AND pc.caregiver_user_id=${userId}::uuid
+										AND pc.status='accepted'
+								)
 							ORDER BY p.name_key,p.id`;
 							return yield* Effect.forEach(rows, decode);
 						}),

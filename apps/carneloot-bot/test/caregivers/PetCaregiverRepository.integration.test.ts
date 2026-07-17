@@ -1,3 +1,4 @@
+import * as PgClient from '@effect/sql-pg/PgClient';
 import { Effect, Layer, Schema } from 'effect';
 import * as DateTime from 'effect/DateTime';
 import { describe, expect, it } from 'vitest';
@@ -22,8 +23,9 @@ const adapters = Layer.mergeAll(
 	PetCaregiverRepositoryLive.layer,
 ).pipe(Layer.provideMerge(PostgresTestLayer.layer));
 const botId = Schema.decodeUnknownSync(BotId)('caregiver-tests');
-const profile = (telegramId: number, username: string) => ({
-	botId,
+const otherBotId = Schema.decodeUnknownSync(BotId)('caregiver-tests-other');
+const profile = (bot: BotId, telegramId: number, username: string) => ({
+	botId: bot,
 	telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(telegramId),
 	username,
 	firstName: username,
@@ -31,73 +33,112 @@ const profile = (telegramId: number, username: string) => ({
 	privateChatId: Schema.decodeUnknownSync(TelegramChatId)(telegramId),
 });
 
+const names = (pets: ReadonlyArray<{ readonly name: string }>) =>
+	pets.map((pet) => pet.name);
+
 describe.skipIf(!enabled)('caregiver PostgreSQL repositories', () => {
-	it('persists transitions and grants access only when accepted', async () => {
+	it('persists every status, removes relationships, and cascades pet deletion', async () => {
 		const program = Effect.gen(function* () {
 			yield* migrate;
+			const sql = yield* PgClient.PgClient;
 			const users = yield* UserRepository;
 			const pets = yield* PetRepository;
 			const caregivers = yield* PetCaregiverRepository;
 			const owner = yield* users.registerTelegramProfile(
-				profile(81001, 'OwnerCase'),
+				profile(botId, 81001, 'OwnerStatus'),
 			);
-			const caregiver = yield* users.registerTelegramProfile(
-				profile(81002, 'SharedCase'),
+			const pendingUser = yield* users.registerTelegramProfile(
+				profile(botId, 81002, 'PendingStatus'),
 			);
-			const other = yield* users.registerTelegramProfile(
-				profile(81003, 'sharedcase'),
+			const acceptedUser = yield* users.registerTelegramProfile(
+				profile(botId, 81003, 'AcceptedStatus'),
+			);
+			const rejectedUser = yield* users.registerTelegramProfile(
+				profile(botId, 81004, 'RejectedStatus'),
 			);
 			const pet = yield* pets.addOwned(
 				owner.user.id,
-				Schema.decodeUnknownSync(PetName)('Zelda'),
-			);
-			const ownPet = yield* pets.addOwned(
-				caregiver.user.id,
-				Schema.decodeUnknownSync(PetName)('Alfa'),
+				Schema.decodeUnknownSync(PetName)('Status Pet'),
 			);
 			const now = yield* DateTime.now;
-			const pending = yield* caregivers.insertPending(
+			yield* caregivers.insertPending(pet.id, pendingUser.user.id, now);
+			yield* caregivers.insertPending(pet.id, acceptedUser.user.id, now);
+			yield* caregivers.insertPending(pet.id, rejectedUser.user.id, now);
+			yield* caregivers.setPendingResponse(
 				pet.id,
-				caregiver.user.id,
-				now,
-			);
-			const before = yield* pets.listAccessible(caregiver.user.id);
-			const duplicate = yield* Effect.result(
-				caregivers.insertPending(pet.id, caregiver.user.id, now),
-			);
-			const accepted = yield* caregivers.setPendingResponse(
-				pet.id,
-				caregiver.user.id,
+				acceptedUser.user.id,
 				'accepted',
 				now,
+			);
+			yield* caregivers.setPendingResponse(
+				pet.id,
+				rejectedUser.user.id,
+				'rejected',
+				now,
+			);
+
+			const duplicate = yield* Effect.result(
+				caregivers.insertPending(pet.id, pendingUser.user.id, now),
 			);
 			const repeated = yield* Effect.result(
 				caregivers.setPendingResponse(
 					pet.id,
-					caregiver.user.id,
+					acceptedUser.user.id,
 					'rejected',
 					now,
 				),
 			);
+			const all = yield* caregivers.listForPet(pet.id);
+			const pending = yield* caregivers.listPendingForUser(pendingUser.user.id);
+			const accepted = yield* caregivers.listAcceptedForUser(
+				acceptedUser.user.id,
+			);
+			const rejectedPending = yield* caregivers.listPendingForUser(
+				rejectedUser.user.id,
+			);
+			const rejectedAccepted = yield* caregivers.listAcceptedForUser(
+				rejectedUser.user.id,
+			);
+			const removed = [
+				yield* caregivers.remove(pet.id, pendingUser.user.id),
+				yield* caregivers.remove(pet.id, acceptedUser.user.id),
+				yield* caregivers.remove(pet.id, rejectedUser.user.id),
+				yield* caregivers.remove(pet.id, rejectedUser.user.id),
+			];
+
+			const cascadePet = yield* pets.addOwned(
+				owner.user.id,
+				Schema.decodeUnknownSync(PetName)('Cascade Pet'),
+			);
+			yield* caregivers.insertPending(cascadePet.id, pendingUser.user.id, now);
+			yield* sql`DELETE FROM carneloot.pets WHERE id=${cascadePet.id}::uuid`;
+
 			return {
+				all,
 				pending,
 				accepted,
-				before,
-				after: yield* pets.listAccessible(caregiver.user.id),
+				rejectedPending,
+				rejectedAccepted,
+				removed,
 				duplicate,
 				repeated,
-				matches: yield* users.findByUsername(botId, ' @SHAREDCASE '),
-				removed: yield* caregivers.remove(pet.id, caregiver.user.id),
-				removedAgain: yield* caregivers.remove(pet.id, caregiver.user.id),
-				ownPet,
-				other,
+				cascadeRelationship: yield* caregivers.find(
+					cascadePet.id,
+					pendingUser.user.id,
+				),
 			};
 		});
 		const result = await Effect.runPromise(Effect.provide(program, adapters));
-		expect(result.pending.status).toBe('pending');
-		expect(result.accepted.status).toBe('accepted');
-		expect(result.before.map((pet) => pet.name)).toEqual(['Alfa']);
-		expect(result.after.map((pet) => pet.name)).toEqual(['Alfa', 'Zelda']);
+		expect(
+			result.all.map((relationship) => relationship.status).sort(),
+		).toEqual(['accepted', 'pending', 'rejected']);
+		expect(result.pending).toHaveLength(1);
+		expect(result.pending[0]?.status).toBe('pending');
+		expect(result.accepted).toHaveLength(1);
+		expect(result.accepted[0]?.status).toBe('accepted');
+		expect(result.rejectedPending).toEqual([]);
+		expect(result.rejectedAccepted).toEqual([]);
+		expect(result.removed).toEqual([true, true, true, false]);
 		expect(result.duplicate).toMatchObject({
 			_tag: 'Failure',
 			failure: { _tag: 'CaregiverRelationshipExists' },
@@ -106,8 +147,103 @@ describe.skipIf(!enabled)('caregiver PostgreSQL repositories', () => {
 			_tag: 'Failure',
 			failure: { _tag: 'CaregiverInvitationNotPending' },
 		});
-		expect(result.matches).toHaveLength(2);
+		expect(result.cascadeRelationship).toBeUndefined();
+	});
+
+	it('grants accepted access only and deduplicates owned pets in name order', async () => {
+		const program = Effect.gen(function* () {
+			yield* migrate;
+			const users = yield* UserRepository;
+			const pets = yield* PetRepository;
+			const caregivers = yield* PetCaregiverRepository;
+			const owner = yield* users.registerTelegramProfile(
+				profile(botId, 81101, 'AccessOwner'),
+			);
+			const caregiver = yield* users.registerTelegramProfile(
+				profile(botId, 81102, 'AccessCaregiver'),
+			);
+			const acceptedPet = yield* pets.addOwned(
+				owner.user.id,
+				Schema.decodeUnknownSync(PetName)('Bravo'),
+			);
+			const pendingPet = yield* pets.addOwned(
+				owner.user.id,
+				Schema.decodeUnknownSync(PetName)('Charlie'),
+			);
+			const rejectedPet = yield* pets.addOwned(
+				owner.user.id,
+				Schema.decodeUnknownSync(PetName)('Delta'),
+			);
+			const ownFirst = yield* pets.addOwned(
+				caregiver.user.id,
+				Schema.decodeUnknownSync(PetName)('Alpha'),
+			);
+			const ownLast = yield* pets.addOwned(
+				caregiver.user.id,
+				Schema.decodeUnknownSync(PetName)('Echo'),
+			);
+			const now = yield* DateTime.now;
+			yield* caregivers.insertPending(acceptedPet.id, caregiver.user.id, now);
+			yield* caregivers.setPendingResponse(
+				acceptedPet.id,
+				caregiver.user.id,
+				'accepted',
+				now,
+			);
+			yield* caregivers.insertPending(pendingPet.id, caregiver.user.id, now);
+			yield* caregivers.insertPending(rejectedPet.id, caregiver.user.id, now);
+			yield* caregivers.setPendingResponse(
+				rejectedPet.id,
+				caregiver.user.id,
+				'rejected',
+				now,
+			);
+			// An accepted self-relationship must not duplicate an already-owned pet.
+			yield* caregivers.insertPending(ownLast.id, caregiver.user.id, now);
+			yield* caregivers.setPendingResponse(
+				ownLast.id,
+				caregiver.user.id,
+				'accepted',
+				now,
+			);
+			return {
+				beforeRemoval: yield* pets.listAccessible(caregiver.user.id),
+				removed: yield* caregivers.remove(acceptedPet.id, caregiver.user.id),
+				afterRemoval: yield* pets.listAccessible(caregiver.user.id),
+				ownFirst,
+			};
+		});
+		const result = await Effect.runPromise(Effect.provide(program, adapters));
+		expect(names(result.beforeRemoval)).toEqual(['Alpha', 'Bravo', 'Echo']);
+		expect(result.beforeRemoval).toHaveLength(3);
 		expect(result.removed).toBe(true);
-		expect(result.removedAgain).toBe(false);
+		expect(names(result.afterRemoval)).toEqual(['Alpha', 'Echo']);
+	});
+
+	it('finds usernames case-insensitively within one bot, including zero and multiple matches', async () => {
+		const program = Effect.gen(function* () {
+			yield* migrate;
+			const users = yield* UserRepository;
+			const first = yield* users.registerTelegramProfile(
+				profile(botId, 81201, 'SharedCase'),
+			);
+			const second = yield* users.registerTelegramProfile(
+				profile(botId, 81202, 'sharedcase'),
+			);
+			yield* users.registerTelegramProfile(
+				profile(otherBotId, 81203, 'SHAREDCASE'),
+			);
+			return {
+				matches: yield* users.findByUsername(botId, ' @sHaReDcAsE '),
+				none: yield* users.findByUsername(botId, 'missing-user'),
+				first,
+				second,
+			};
+		});
+		const result = await Effect.runPromise(Effect.provide(program, adapters));
+		expect(result.matches.map(({ user }) => user.id)).toEqual(
+			[result.first.user.id, result.second.user.id].sort(),
+		);
+		expect(result.none).toEqual([]);
 	});
 });
