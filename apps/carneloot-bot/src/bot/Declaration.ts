@@ -1,6 +1,15 @@
-import { Bot, BotGroup, Command, MessageContext, Middleware } from 'tfx';
+import {
+	Bot,
+	BotGroup,
+	Command,
+	CommandInput,
+	MessageContext,
+	Middleware,
+} from 'tfx';
 
 import { ApplicationError } from '../domain/ApplicationError.js';
+import { FoodAmount } from '../domain/pet-food/FoodAmount.js';
+import { FoodWhenInput } from '../domain/pet-food/FoodWhenInput.js';
 import { CurrentUser } from './CurrentUser.js';
 
 export const RegisteredUser = Middleware.make('registered-user', {
@@ -81,6 +90,20 @@ export const pets = BotGroup.make('pets')
 			error: ApplicationError,
 		}),
 	);
+export const AddFoodToAllInput = CommandInput.sequence(
+	CommandInput.argument('amount', FoodAmount),
+	CommandInput.optional(CommandInput.rest('when', FoodWhenInput)),
+);
+
+export const addFoodToAll = Command.make('addFoodToAll', {
+	name: 'colocar_racao_todos',
+	aliases: ['todos'],
+	description: 'Registrar ração para todos os pets',
+	input: AddFoodToAllInput,
+	middleware: [RegisteredUser],
+	error: ApplicationError,
+});
+
 export const petFood = BotGroup.make('petFood')
 	.add(
 		Command.make('configureDayStart', {
@@ -114,6 +137,8 @@ export const petFood = BotGroup.make('petFood')
 			error: ApplicationError,
 		}),
 	);
+
+// Task 5 must bind addFoodToAll before this declaration can join petFood/Carneloot.
 export const Carneloot = Bot.make('carneloot')
 	.add(account)
 	.add(pets)

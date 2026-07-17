@@ -6,10 +6,11 @@ import type * as Middleware from './Middleware.js';
 import { UpdateContext } from './UpdateContext.js';
 
 type BuiltIn = UpdateContext | MessageContext;
+type AnyCommandInput = CommandInput.CommandInput<any, any, any, any, any>;
 
 export interface Command<
 	Id extends string,
-	Input extends CommandInput.CommandInput<any, any>,
+	Input extends AnyCommandInput,
 	ES extends ErrorSchema.ErrorSchema,
 	Middlewares extends ReadonlyArray<Middleware.AnyMiddleware> = readonly [],
 > {
@@ -26,7 +27,7 @@ export interface Command<
 }
 
 export interface Options<
-	Input extends CommandInput.CommandInput<any, any>,
+	Input extends AnyCommandInput,
 	ES extends ErrorSchema.ErrorSchema,
 	Middlewares extends ReadonlyArray<Middleware.AnyMiddleware>,
 > {
@@ -49,7 +50,7 @@ const scopeRank: Record<Middleware.Scope, number> = {
 export const make = <
 	const Id extends string,
 	ES extends ErrorSchema.ErrorSchema,
-	Input extends CommandInput.CommandInput<any, any> = typeof none,
+	Input extends AnyCommandInput = typeof none,
 	const Middlewares extends ReadonlyArray<Middleware.AnyMiddleware> =
 		readonly [],
 >(
