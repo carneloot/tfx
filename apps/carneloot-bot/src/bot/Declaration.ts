@@ -137,6 +137,22 @@ export const petFood = BotGroup.make('petFood')
 			error: ApplicationError,
 		}),
 	)
+	.add(
+		Command.make('correctFood', {
+			name: 'corrigir_racao',
+			description: 'Corrigir um registro de ração',
+			middleware: [RegisteredUser],
+			error: ApplicationError,
+		}),
+	)
+	.add(
+		Command.make('deleteFood', {
+			name: 'deletar_racao',
+			description: 'Deletar um registro de ração',
+			middleware: [RegisteredUser],
+			error: ApplicationError,
+		}),
+	)
 	.add(addFoodToAll);
 
 export const Carneloot = Bot.make('carneloot')

@@ -13,6 +13,8 @@ import { PetRepository } from '../ports/PetRepository.js';
 import * as AddFoodConversation from './conversations/AddFoodConversation.js';
 import * as ConfigureDayStartConversation from './conversations/ConfigureDayStartConversation.js';
 import * as ConfigureReminderDelayConversation from './conversations/ConfigureReminderDelayConversation.js';
+import * as CorrectFoodConversation from './conversations/CorrectFoodConversation.js';
+import * as DeleteFoodConversation from './conversations/DeleteFoodConversation.js';
 import { CurrentUser } from './CurrentUser.js';
 import { botId } from './Declaration.js';
 
@@ -164,6 +166,56 @@ export const addFoodToAll = (input: {
 		if (successful.length > 0)
 			yield* context.react([{ type: 'emoji', emoji: '👍' }]);
 	});
+
+const startFoodMutation = (
+	built:
+		| typeof CorrectFoodConversation.built
+		| typeof DeleteFoodConversation.built,
+	operation: string,
+) =>
+	Effect.gen(function* () {
+		const current = yield* CurrentUser;
+		const pets = (yield* ListPets.execute(current.user.id)).map(
+			({ pet }) => pet,
+		);
+		const context = yield* MessageContext.MessageContext;
+		if (pets.length === 0) {
+			yield* context.reply('Você não tem pets');
+			return;
+		}
+		const update = yield* UpdateContext.UpdateContext;
+		if (update.chatId === undefined || update.userId === undefined)
+			return yield* Effect.fail(
+				new ConversationOperationError({
+					message: 'Missing conversation scope',
+					cause: { _tag: 'MissingConversationScope' },
+				}),
+			);
+		const conversations = yield* Conversations.Conversations;
+		yield* conversations
+			.start(built, input(current, pets), {
+				scope: { botId, chatId: update.chatId, userId: update.userId },
+				conflict: 'replace',
+			})
+			.pipe(
+				Effect.mapError(
+					(cause) =>
+						new ConversationOperationError({
+							message: `Could not start ${operation} conversation`,
+							cause,
+						}),
+				),
+			);
+	});
+
+export const startCorrectFood = startFoodMutation(
+	CorrectFoodConversation.built,
+	'correct-food',
+);
+export const startDeleteFood = startFoodMutation(
+	DeleteFoodConversation.built,
+	'delete-food',
+);
 
 export const startAddFood = Effect.gen(function* () {
 	const current = yield* CurrentUser;

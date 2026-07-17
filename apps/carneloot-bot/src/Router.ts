@@ -8,6 +8,8 @@ import * as CaregiverHandlers from './bot/CaregiverHandlers.js';
 import * as AddFoodConversation from './bot/conversations/AddFoodConversation.js';
 import * as ConfigureDayStartConversation from './bot/conversations/ConfigureDayStartConversation.js';
 import * as ConfigureReminderDelayConversation from './bot/conversations/ConfigureReminderDelayConversation.js';
+import * as CorrectFoodConversation from './bot/conversations/CorrectFoodConversation.js';
+import * as DeleteFoodConversation from './bot/conversations/DeleteFoodConversation.js';
 import * as DeletePetConversation from './bot/conversations/DeletePetConversation.js';
 import * as InviteCaregiverConversation from './bot/conversations/InviteCaregiverConversation.js';
 import * as ListCaregiversConversation from './bot/conversations/ListCaregiversConversation.js';
@@ -50,6 +52,8 @@ export const petFoodHandlers = BotBuilder.buildGroup(
 			)
 			.handle('foodStatus', () => PetFoodHandlers.foodStatus)
 			.handle('addFood', () => PetFoodHandlers.startAddFood)
+			.handle('correctFood', () => PetFoodHandlers.startCorrectFood)
+			.handle('deleteFood', () => PetFoodHandlers.startDeleteFood)
 			.handle('addFoodToAll', PetFoodHandlers.addFoodToAll),
 );
 export const conversations = Object.freeze([
@@ -57,6 +61,8 @@ export const conversations = Object.freeze([
 	ConfigureDayStartConversation.built,
 	ConfigureReminderDelayConversation.built,
 	AddFoodConversation.built,
+	CorrectFoodConversation.built,
+	DeleteFoodConversation.built,
 	DeletePetConversation.built,
 	InviteCaregiverConversation.built,
 	RemoveCaregiverConversation.built,
@@ -89,6 +95,7 @@ export const classifyError = (
 		case 'PetAccessDenied':
 		case 'PetFoodSetupMissing':
 		case 'DuplicateFoodEntry':
+		case 'FoodEntryNotFound':
 		case 'PetFoodError':
 		case 'MissingConversationScope':
 		case 'CaregiverUsernameAmbiguous':

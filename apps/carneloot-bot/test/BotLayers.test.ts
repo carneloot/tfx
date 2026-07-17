@@ -38,6 +38,8 @@ describe('public bot Layer construction', () => {
 				)
 				.handle('foodStatus', () => PetFoodHandlers.foodStatus)
 				.handle('addFood', () => PetFoodHandlers.startAddFood)
+				.handle('correctFood', () => PetFoodHandlers.startCorrectFood)
+				.handle('deleteFood', () => PetFoodHandlers.startDeleteFood)
 				.handle('addFoodToAll', PetFoodHandlers.addFoodToAll),
 		);
 		const middleware = Middleware.layer(RegisteredUser.live);

@@ -32,6 +32,8 @@ BotBuilder.group(Carneloot, 'petFood', (handlers) =>
 		)
 		.handle('foodStatus', () => Effect.map(CurrentUser, () => undefined))
 		.handle('addFood', () => Effect.map(CurrentUser, () => undefined))
+		.handle('correctFood', () => Effect.map(CurrentUser, () => undefined))
+		.handle('deleteFood', () => Effect.map(CurrentUser, () => undefined))
 		.handle('addFoodToAll', () => Effect.map(CurrentUser, () => undefined)),
 );
 class Audit extends Context.Service<Audit, { readonly id: string }>()(

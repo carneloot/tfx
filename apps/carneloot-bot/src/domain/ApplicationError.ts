@@ -20,6 +20,7 @@ import {
 } from './DomainError.js';
 import {
 	DuplicateFoodEntry,
+	FoodEntryNotFound,
 	PetAccessDenied,
 	PetFoodError,
 	PetFoodSetupMissing,
@@ -45,6 +46,7 @@ export const ApplicationError = Schema.Union([
 	PetAccessDenied,
 	PetFoodSetupMissing,
 	DuplicateFoodEntry,
+	FoodEntryNotFound,
 	PetFoodError,
 	ReminderSchedulerError,
 	ConversationOperationError,
