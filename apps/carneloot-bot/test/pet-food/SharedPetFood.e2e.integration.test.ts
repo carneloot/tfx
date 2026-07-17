@@ -211,7 +211,7 @@ else
 							FROM carneloot.pet_food_entries e
 							JOIN carneloot.pets p ON p.id=e.pet_id
 							JOIN carneloot.pet_food_settings s ON s.pet_id=p.id
-							JOIN carneloot.user_telegram_profiles up ON up.user_id=e.recorded_by
+							JOIN carneloot.telegram_identities up ON up.user_id=e.recorded_by
 							ORDER BY p.name`;
 							expect(rows).toHaveLength(2);
 							expect(
