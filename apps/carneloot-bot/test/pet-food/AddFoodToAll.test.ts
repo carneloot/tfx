@@ -1,6 +1,7 @@
 import { Effect, Layer, Schema } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { AddFoodToAllResult } from '../../src/application/AddFoodToAll.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../src/domain/Ids.js';
 import {
 	DuplicateFoodEntry,
@@ -17,25 +18,22 @@ vi.mock('../../src/application/AddFood.js', () => ({
 
 const AddFoodToAll = await import('../../src/application/AddFoodToAll.js');
 
-const decode = <A>(
-	schema: Schema.Top & { readonly Type: A },
-	value: unknown,
-): A => Schema.decodeUnknownSync(schema)(value);
-const actorId = decode(UserId, '00000000-0000-4000-8000-000000000001');
+const actorId = Schema.decodeUnknownSync(UserId)(
+	'00000000-0000-4000-8000-000000000001',
+);
 const access = {
 	actorId,
-	botId: decode(BotId, 'bot'),
-	telegramUserId: decode(TelegramUserId, 42),
+	botId: Schema.decodeUnknownSync(BotId)('bot'),
+	telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(42),
 };
 const input = { amountMg: 50_000 as never, when: '', messageDate: {} as never };
 const source = { botId: 'bot', updateId: 10 };
 const pet = (index: number) => ({
-	id: decode(
-		PetId,
+	id: Schema.decodeUnknownSync(PetId)(
 		`00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
 	),
 	ownerId: actorId,
-	name: decode(PetName, `Pet ${index}`),
+	name: Schema.decodeUnknownSync(PetName)(`Pet ${index}`),
 	createdAt: {} as never,
 	updatedAt: {} as never,
 });
@@ -57,16 +55,14 @@ const repositoryLayer = (
 		}),
 	};
 };
-const run = (layer: Layer.Layer<PetRepository>) =>
-	Effect.runPromise(
-		(
-			AddFoodToAll.execute(
-				access,
-				input,
-				source,
-			) as Effect.Effect<AddFoodToAll.AddFoodToAllResult>
-		).pipe(Effect.provide(layer)),
-	);
+const run = (layer: Layer.Layer<PetRepository>) => {
+	const effect = AddFoodToAll.execute(
+		access,
+		input,
+		source,
+	) as unknown as Effect.Effect<AddFoodToAllResult, unknown, PetRepository>;
+	return Effect.runPromise(effect.pipe(Effect.provide(layer)));
+};
 
 describe('AddFoodToAll', () => {
 	it('returns no items and loads accessible pets once', async () => {
@@ -140,7 +136,7 @@ describe('AddFoodToAll', () => {
 	});
 
 	it('propagates unhandled failures', async () => {
-		addFoodExecute.mockReturnValue(Effect.fail(new Error('infrastructure')));
+		addFoodExecute.mockReturnValue(Effect.die('infrastructure'));
 		await expect(run(repositoryLayer([pet(20)]).layer)).rejects.toThrow(
 			'infrastructure',
 		);
