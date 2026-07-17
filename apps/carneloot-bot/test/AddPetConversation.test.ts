@@ -24,6 +24,7 @@ const botId = Schema.decodeUnknownSync(BotId)('carneloot');
 const telegramUserId = Schema.decodeUnknownSync(TelegramUserId)(2);
 const identity = { ownerId, botId, telegramUserId };
 const userLayer = Layer.succeed(UserRepository, {
+	findByUsername: () => Effect.succeed([]),
 	registerTelegramProfile: () => Effect.die('unused'),
 	findByTelegram: () =>
 		Effect.succeed({
@@ -65,6 +66,7 @@ describe('AddPetConversation', () => {
 		let inserts = 0;
 		const petLayer = Layer.succeed(PetRepository, {
 			findById: () => Effect.die('unused'),
+			lockById: () => Effect.die('unused'),
 			addOwned: (_owner, name) =>
 				Effect.sync(() => ({
 					id: '00000000-0000-4000-8000-000000000002' as never,
@@ -75,6 +77,7 @@ describe('AddPetConversation', () => {
 					...(inserts++, {}),
 				})),
 			listOwned: () => Effect.succeed([]),
+			listAccessible: () => Effect.succeed([]),
 		});
 		const program = Effect.gen(function* () {
 			const conversations = yield* Conversations;
@@ -130,11 +133,13 @@ describe('AddPetConversation', () => {
 		let inserts = 0;
 		const petLayer = Layer.succeed(PetRepository, {
 			findById: () => Effect.die('unused'),
+			lockById: () => Effect.die('unused'),
 			addOwned: () => {
 				inserts++;
 				return Effect.fail(new PetNameAlreadyExists({ message: 'duplicate' }));
 			},
 			listOwned: () => Effect.succeed([]),
+			listAccessible: () => Effect.succeed([]),
 		});
 		const scope = { botId: 'carneloot', chatId: 5, userId: 6 };
 		const program = Effect.gen(function* () {
@@ -173,11 +178,13 @@ describe('AddPetConversation', () => {
 		let inserts = 0;
 		const petLayer = Layer.succeed(PetRepository, {
 			findById: () => Effect.die('unused'),
+			lockById: () => Effect.die('unused'),
 			addOwned: () => {
 				inserts++;
 				return Effect.die('must not run');
 			},
 			listOwned: () => Effect.succeed([]),
+			listAccessible: () => Effect.succeed([]),
 		});
 		const scope = { botId: 'carneloot', chatId: 7, userId: 8 };
 		const program = Effect.gen(function* () {

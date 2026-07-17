@@ -362,8 +362,17 @@ const harness = (
 					createdAt: DateTime.makeUnsafe(0),
 					updatedAt: DateTime.makeUnsafe(0),
 				}),
+			lockById: () =>
+				Effect.succeed({
+					id: petId,
+					ownerId,
+					name: Schema.decodeUnknownSync(PetName)('Rex'),
+					createdAt: DateTime.makeUnsafe(0),
+					updatedAt: DateTime.makeUnsafe(0),
+				}),
 			addOwned: () => Effect.die('unused'),
 			listOwned: () => Effect.die('unused'),
+			listAccessible: () => Effect.die('unused'),
 		}),
 		Layer.succeed(Telegram, {
 			sendMessage: () =>

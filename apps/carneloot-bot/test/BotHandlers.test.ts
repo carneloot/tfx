@@ -32,6 +32,7 @@ const context = (message: unknown) =>
 		sendChatAction: () => Effect.succeed(true),
 	}) as unknown as MessageContextService;
 const repository = Layer.succeed(UserRepository, {
+	findByUsername: () => Effect.succeed([]),
 	registerTelegramProfile: (profile) =>
 		Effect.succeed({
 			user: {
@@ -72,6 +73,7 @@ describe('account handler', () => {
 	it('replies with exact unregistered guidance and typed rejection', async () => {
 		replies.length = 0;
 		const missing = Layer.succeed(UserRepository, {
+			findByUsername: () => Effect.succeed([]),
 			registerTelegramProfile: () => Effect.die('unused'),
 			findByTelegram: () =>
 				Effect.fail(new UserNotRegistered({ message: 'missing' })),

@@ -36,6 +36,7 @@ const profile = {
 let insertions = 0;
 const pets = Layer.succeed(PetRepository, {
 	findById: () => Effect.die('unused'),
+	lockById: () => Effect.die('unused'),
 	addOwned: (_ownerId, name) => {
 		insertions++;
 		return name === 'Rex'
@@ -49,9 +50,11 @@ const pets = Layer.succeed(PetRepository, {
 			: Effect.fail(new PetNameAlreadyExists({ message: 'duplicate' }));
 	},
 	listOwned: () => Effect.succeed([]),
+	listAccessible: () => Effect.succeed([]),
 });
 const users = (id = ownerId) =>
 	Layer.succeed(UserRepository, {
+		findByUsername: () => Effect.succeed([]),
 		registerTelegramProfile: () => Effect.die('unused'),
 		findByTelegram: () =>
 			Effect.succeed({
@@ -115,6 +118,7 @@ describe('pet application services', () => {
 			profile: sensitiveProfile,
 		};
 		const registration = Layer.succeed(UserRepository, {
+			findByUsername: () => Effect.succeed([]),
 			registerTelegramProfile: () => Effect.succeed(registered),
 			findByTelegram: () => Effect.die('unused'),
 		});
@@ -139,6 +143,7 @@ describe('pet application services', () => {
 	it('rejects removed or remapped identities without insertion', async () => {
 		insertions = 0;
 		const removed = Layer.succeed(UserRepository, {
+			findByUsername: () => Effect.succeed([]),
 			registerTelegramProfile: () => Effect.die('unused'),
 			findByTelegram: () =>
 				Effect.fail(new UserNotRegistered({ message: 'removed' })),
