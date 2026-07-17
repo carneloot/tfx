@@ -2,11 +2,11 @@ import * as Context from 'effect/Context';
 import type * as DateTime from 'effect/DateTime';
 import type * as Effect from 'effect/Effect';
 
-import type { PetCaregiver } from '../domain/caregivers/PetCaregiver.js';
 import type {
 	CaregiverInvitationNotPending,
 	CaregiverRelationshipExists,
 } from '../domain/caregivers/CaregiverError.js';
+import type { PetCaregiver } from '../domain/caregivers/PetCaregiver.js';
 import type { DomainPersistenceError } from '../domain/DomainError.js';
 import type { PetId, UserId } from '../domain/Ids.js';
 

@@ -28,7 +28,8 @@ const withTemporaryApp = <A, E>(
 		return yield* use(appDirectory);
 	}).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
 
-const run = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromise(effect);
+const run = <A, E>(effect: Effect.Effect<A, E, never>) =>
+	Effect.runPromise(effect);
 
 describe('migration artifact generator', () => {
 	it('renders quotes and newlines as exact TypeScript source', () => {
@@ -50,13 +51,26 @@ describe('migration artifact generator', () => {
 					const path = yield* Path.Path;
 					const migrations = path.join(appDirectory, 'migrations');
 					const output = path.join(appDirectory, 'src', 'postgres');
-					yield* fs.writeFileString(path.join(migrations, '0002_second.sql'), 'def');
-					yield* fs.writeFileString(path.join(migrations, 'ignore.txt'), 'ignored');
-					yield* fs.writeFileString(path.join(migrations, '0001_first.sql'), 'abc');
+					yield* fs.writeFileString(
+						path.join(migrations, '0002_second.sql'),
+						'def',
+					);
+					yield* fs.writeFileString(
+						path.join(migrations, 'ignore.txt'),
+						'ignored',
+					);
+					yield* fs.writeFileString(
+						path.join(migrations, '0001_first.sql'),
+						'abc',
+					);
 
 					yield* generateMigrationArtifacts({ appDirectory, check: false });
-					const first = yield* fs.readFileString(path.join(output, 'Migration0001Sql.ts'));
-					const second = yield* fs.readFileString(path.join(output, 'Migration0002Sql.ts'));
+					const first = yield* fs.readFileString(
+						path.join(output, 'Migration0001Sql.ts'),
+					);
+					const second = yield* fs.readFileString(
+						path.join(output, 'Migration0002Sql.ts'),
+					);
 					expect(first).toContain(
 						"\t'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';",
 					);
@@ -64,8 +78,12 @@ describe('migration artifact generator', () => {
 					expect(second).toContain("export const migration0002Sql =\n\t'def';");
 
 					yield* generateMigrationArtifacts({ appDirectory, check: false });
-					expect(yield* fs.readFileString(path.join(output, 'Migration0001Sql.ts'))).toBe(first);
-					expect(yield* fs.readFileString(path.join(output, 'Migration0002Sql.ts'))).toBe(second);
+					expect(
+						yield* fs.readFileString(path.join(output, 'Migration0001Sql.ts')),
+					).toBe(first);
+					expect(
+						yield* fs.readFileString(path.join(output, 'Migration0002Sql.ts')),
+					).toBe(second);
 				}),
 			),
 		);

@@ -4,11 +4,11 @@ import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
 
-import { PetCaregiver } from '../domain/caregivers/PetCaregiver.js';
 import {
 	CaregiverInvitationNotPending,
 	CaregiverRelationshipExists,
 } from '../domain/caregivers/CaregiverError.js';
+import { PetCaregiver } from '../domain/caregivers/PetCaregiver.js';
 import { DomainPersistenceError } from '../domain/DomainError.js';
 import type { PetId, UserId } from '../domain/Ids.js';
 import {
