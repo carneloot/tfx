@@ -514,11 +514,17 @@ export const executeFoodAdded = Effect.fn(
 			(event.status !== 'scheduled' && event.status !== 'dispatching')
 		)
 			return;
-		const payloadMatches =
-			event.kind === 'food-added' &&
-			event.botId === payload.botId &&
-			event.petId === payload.petId &&
-			event.foodEntryId === payload.foodEntryId;
+		if (
+			event.kind !== 'food-added' ||
+			event.botId !== payload.botId ||
+			event.petId !== payload.petId ||
+			event.foodEntryId !== payload.foodEntryId
+		)
+			return yield* Effect.fail(
+				new FoodAddedNotificationPermanentError({
+					message: 'Food notification payload does not match persisted event',
+				}),
+			);
 
 		const food = yield* PetFoodRepository;
 		const pets = yield* PetRepository;
@@ -533,7 +539,6 @@ export const executeFoodAdded = Effect.fn(
 			);
 		const timeZone = settings?.timeZone ?? undefined;
 		const contextValid =
-			payloadMatches &&
 			entry !== undefined &&
 			entry.petId === payload.petId &&
 			pet !== undefined &&
@@ -571,8 +576,25 @@ export const executeFoodAdded = Effect.fn(
 				code: 'food-context-missing',
 				message: 'Food notification context is missing or invalid',
 			});
-			yield* notifications.summarizeAndComplete(event.id, yield* DateTime.now);
-			return;
+			const summaryNow = yield* DateTime.now;
+			const summary = yield* notifications.summarizeAndComplete(
+				event.id,
+				summaryNow,
+			);
+			if (summary.completed) return;
+			const target =
+				summary.earliestRetryAt ??
+				summary.earliestSendingLeaseExpiry ??
+				DateTime.addDuration(summaryNow, Duration.seconds(1));
+			return yield* Effect.fail(
+				new FoodAddedNotificationRetryError({
+					message: 'Food notification context cleanup is incomplete',
+					retryAfter: Duration.max(
+						Duration.millis(1),
+						DateTime.distance(summaryNow, target),
+					),
+				}),
+			);
 		}
 		const actorName = [actor.profile.firstName, actor.profile.lastName]
 			.filter((part): part is string => part !== null && part.length > 0)
@@ -636,12 +658,19 @@ export const executeFoodAdded = Effect.fn(
 						return yield* loop;
 					}
 				}
-				if (claim.delivery.recipientChatId === null)
-					return yield* Effect.fail(
-						new FoodAddedNotificationPermanentError({
-							message: 'Claimed unreachable recipient',
-						}),
+				if (claim.delivery.recipientChatId === null) {
+					yield* notifications.finalizeFailed(
+						claim.token,
+						{
+							code: 'recipient-chat-missing',
+							message: 'Recipient private chat is missing',
+						},
+						false,
+						null,
+						yield* DateTime.now,
 					);
+					return yield* loop;
+				}
 				const sent = yield* Effect.result(
 					telegram.sendMessage({
 						chat_id: claim.delivery.recipientChatId,

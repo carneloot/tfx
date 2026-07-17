@@ -7,7 +7,9 @@ import { Telegram } from 'tfx/Telegram';
 import { describe, expect, it } from 'vitest';
 
 import * as AddFood from '../../src/application/AddFood.js';
+import * as DispatchNotificationDelivery from '../../src/application/DispatchNotificationDelivery.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../src/domain/Ids.js';
+import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import { FoodAmount } from '../../src/domain/pet-food/FoodAmount.js';
 import * as FoodAddedNotificationJobLive from '../../src/jobs/FoodAddedNotificationJobLive.js';
 import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
@@ -224,6 +226,115 @@ else
 					telegram_message_id: String(ownMessageIndex + 1),
 				},
 			]);
+		});
+
+		it('omits timestamp when food time was not explicit', async () => {
+			const program = Effect.gen(function* () {
+				sent.length = 0;
+				const fixture = yield* setup();
+				yield* add(fixture.ownerAccess, 77);
+				const jobs = yield* JobRuntime;
+				yield* jobs.runOne();
+			});
+			await Effect.runPromise(Effect.provide(program, liveLayer));
+			expect(sent).toEqual([
+				{
+					chat_id: 202,
+					text: 'Owner colocou 50 g de ração para Rex.',
+					disable_notification: true,
+				},
+			]);
+		});
+
+		it('does not send after caregiver access is revoked', async () => {
+			const program = Effect.gen(function* () {
+				sent.length = 0;
+				const fixture = yield* setup();
+				const added = yield* add(fixture.ownerAccess, 80);
+				yield* fixture.sql`UPDATE carneloot.pet_caregivers SET status='rejected' WHERE pet_id=${fixture.petId}::uuid AND caregiver_user_id=${fixture.caregiverId}::uuid`;
+				const jobs = yield* JobRuntime;
+				yield* jobs.runOne();
+				return yield* fixture.sql<{
+					status: string;
+					error_code: string | null;
+				}>`SELECT d.status,d.safe_error_json->>'code' AS error_code FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.food_entry_id=${added.entry.id}::uuid`;
+			});
+			const deliveries = await Effect.runPromise(
+				Effect.provide(program, liveLayer),
+			);
+			expect(sent).toEqual([]);
+			expect(deliveries).toEqual([
+				{ status: 'failed', error_code: 'caregiver-access-revoked' },
+			]);
+		});
+
+		it('rejects mismatched payload without mutating frozen deliveries', async () => {
+			const program = Effect.gen(function* () {
+				sent.length = 0;
+				const fixture = yield* setup();
+				const added = yield* add(fixture.caregiverAccess, 78);
+				const event = yield* fixture.sql<{
+					id: string;
+				}>`SELECT id FROM carneloot.notification_events WHERE food_entry_id=${added.entry.id}::uuid`;
+				const persistedEventId = Schema.decodeUnknownSync(EventId)(
+					event[0]?.id,
+				);
+				const result = yield* Effect.result(
+					DispatchNotificationDelivery.executeFoodAdded({
+						eventId: persistedEventId,
+						botId: Schema.decodeUnknownSync(BotId)('wrong-bot'),
+						petId: fixture.petId,
+						foodEntryId: added.entry.id,
+					}),
+				);
+				const deliveries = yield* fixture.sql<{
+					status: string;
+					attempt_count: number;
+				}>`SELECT status,attempt_count FROM carneloot.notification_deliveries WHERE event_id=${persistedEventId}::uuid`;
+				return { result, deliveries };
+			});
+			const result = await Effect.runPromise(
+				Effect.provide(program, liveLayer),
+			);
+			expect(result.result).toMatchObject({
+				_tag: 'Failure',
+				failure: { _tag: 'FoodAddedNotificationPermanentError' },
+			});
+			expect(result.deliveries).toEqual([
+				{ status: 'pending', attempt_count: 0 },
+			]);
+			expect(sent).toEqual([]);
+		});
+
+		it('retries missing-context cleanup while a sending lease remains active', async () => {
+			const program = Effect.gen(function* () {
+				const fixture = yield* setup();
+				const added = yield* add(fixture.caregiverAccess, 79);
+				const event = yield* fixture.sql<{
+					id: string;
+				}>`SELECT id FROM carneloot.notification_events WHERE food_entry_id=${added.entry.id}::uuid`;
+				const persistedEventId = Schema.decodeUnknownSync(EventId)(
+					event[0]?.id,
+				);
+				yield* fixture.sql`UPDATE carneloot.notification_deliveries SET status='sending',attempt_generation=1,attempt_count=1,sending_started_at=now(),sending_lease_expires_at=now()+interval '5 minutes' WHERE event_id=${persistedEventId}::uuid`;
+				yield* fixture.sql`DELETE FROM carneloot.telegram_identities WHERE bot_id=${fixture.botId} AND user_id=${fixture.caregiverId}::uuid`;
+				const result = yield* Effect.result(
+					DispatchNotificationDelivery.executeFoodAdded({
+						eventId: persistedEventId,
+						botId: fixture.botId,
+						petId: fixture.petId,
+						foodEntryId: added.entry.id,
+					}),
+				);
+				return result;
+			});
+			const result = await Effect.runPromise(
+				Effect.provide(program, liveLayer),
+			);
+			expect(result).toMatchObject({
+				_tag: 'Failure',
+				failure: { _tag: 'FoodAddedNotificationRetryError' },
+			});
 		});
 
 		it('permanently fails frozen delivery when actor context disappears', async () => {
