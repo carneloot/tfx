@@ -234,6 +234,7 @@ const harness = (): Harness => {
 		insert: () => Effect.die('unused'),
 		listEntries: unused,
 		lockEntry: unused,
+		lockAccessibleBySourceMessage: unused,
 		updateEntry: unused,
 		deleteEntry: unused,
 		status: () => Effect.die('unused'),

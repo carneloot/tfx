@@ -30,6 +30,10 @@ import {
 	migration0007Checksum,
 	migration0007Sql,
 } from '../src/postgres/Migration0007Sql.js';
+import {
+	migration0008Checksum,
+	migration0008Sql,
+} from '../src/postgres/Migration0008Sql.js';
 
 describe('application migration artifacts', () => {
 	it.each([
@@ -52,6 +56,7 @@ describe('application migration artifacts', () => {
 			migration0007Sql,
 			migration0007Checksum,
 		],
+		['0008_food_reply_operations.sql', migration0008Sql, migration0008Checksum],
 	] as const)(
 		'matches committed %s bytes and SHA-256',
 		(file, sql, checksum) => {
@@ -73,6 +78,18 @@ describe('application migration artifacts', () => {
 		);
 		expect(migration0007Sql).toContain(
 			"food_timestamp_explicit = false OR kind = 'food-added'",
+		);
+	});
+
+	it('defines durable reply replay and exact source-message lookup', () => {
+		expect(migration0008Sql).toContain(
+			'CONSTRAINT food_reply_operations_pk PRIMARY KEY (bot_id, update_id)',
+		);
+		expect(migration0008Sql).toContain(
+			'update_id >= 0 AND update_id <= 9007199254740991',
+		);
+		expect(migration0008Sql).toContain(
+			'(source_bot_id, source_message_chat_id, source_message_id)',
 		);
 	});
 

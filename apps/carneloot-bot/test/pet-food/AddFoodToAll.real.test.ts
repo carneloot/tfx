@@ -169,6 +169,7 @@ const fixture = (options: FixtureOptions) => {
 				}),
 			listEntries: unused,
 			lockEntry: unused,
+			lockAccessibleBySourceMessage: unused,
 			updateEntry: unused,
 			deleteEntry: unused,
 			status: unused,

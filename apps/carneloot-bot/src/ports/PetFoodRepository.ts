@@ -73,6 +73,12 @@ export interface PetFoodRepositoryService {
 		petId: PetId,
 		entryId: FoodEntryId,
 	) => Effect.Effect<PetFoodEntry | undefined, PetFoodRepositoryError>;
+	readonly lockAccessibleBySourceMessage: (
+		actorId: UserId,
+		botId: BotId,
+		chatId: TelegramChatId,
+		messageId: number,
+	) => Effect.Effect<ReadonlyArray<PetFoodEntry>, PetFoodRepositoryError>;
 	readonly findBySource: (
 		petId: PetId,
 		botId: BotId,

@@ -260,6 +260,10 @@ export const layer = Layer.effect(
 					),
 					(rows) => rows[0],
 				),
+			lockAccessibleBySourceMessage: (actorId, botId, chatId, messageId) =>
+				entries(
+					sql`SELECT e.* FROM carneloot.pet_food_entries e JOIN carneloot.pets p ON p.id=e.pet_id WHERE e.source_bot_id=${botId} AND e.source_message_chat_id=${chatId} AND e.source_message_id=${messageId} AND (p.owner_id=${actorId}::uuid OR EXISTS (SELECT 1 FROM carneloot.pet_caregivers c WHERE c.pet_id=p.id AND c.caregiver_user_id=${actorId}::uuid AND c.status='accepted')) ORDER BY e.pet_id,e.id FOR UPDATE OF e,p`,
+				),
 			findBySource: (petId, botId, updateId) =>
 				Effect.map(
 					entries(

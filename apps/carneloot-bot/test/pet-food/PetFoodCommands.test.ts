@@ -187,6 +187,7 @@ const repository = (
 	insert: unused,
 	listEntries: unused,
 	lockEntry: unused,
+	lockAccessibleBySourceMessage: unused,
 	updateEntry: unused,
 	deleteEntry: unused,
 	status: () => Effect.succeed(summary),
