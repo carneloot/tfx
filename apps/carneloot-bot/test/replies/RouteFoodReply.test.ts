@@ -32,7 +32,10 @@ const input: RouteFoodReply.RouteFoodReplyInput = {
 };
 
 const client = (stored: unknown, calls: string[]) => {
-	const sql = ((parts: TemplateStringsArray, ...values: ReadonlyArray<unknown>) => {
+	const sql = ((
+		parts: TemplateStringsArray,
+		...values: ReadonlyArray<unknown>
+	) => {
 		const statement = parts.join('?');
 		calls.push(`${statement}|${values.join('|')}`);
 		return Effect.succeed(
