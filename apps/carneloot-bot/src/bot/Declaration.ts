@@ -1,9 +1,12 @@
+import * as Schema from 'effect/Schema';
 import {
 	Bot,
 	BotGroup,
 	Command,
 	CommandInput,
 	MessageContext,
+	MessageHandler,
+	MessageInput,
 	Middleware,
 } from 'tfx';
 
@@ -155,9 +158,18 @@ export const petFood = BotGroup.make('petFood')
 	)
 	.add(addFoodToAll);
 
+export const replies = BotGroup.make('replies').addMessage(
+	MessageHandler.make('foodReply', {
+		input: MessageInput.replyText(Schema.String),
+		middleware: [RegisteredUser],
+		error: ApplicationError,
+	}),
+);
+
 export const Carneloot = Bot.make('carneloot')
 	.add(account)
 	.add(pets)
-	.add(petFood);
+	.add(petFood)
+	.add(replies);
 export const menuCommands = Bot.commandMenu(Carneloot);
 export const botId = Carneloot.name;

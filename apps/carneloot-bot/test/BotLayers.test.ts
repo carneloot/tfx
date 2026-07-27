@@ -6,6 +6,7 @@ import * as AccountHandlers from '../src/bot/AccountHandlers.js';
 import { built } from '../src/bot/AddPetConversation.js';
 import * as CaregiverHandlers from '../src/bot/CaregiverHandlers.js';
 import { Carneloot } from '../src/bot/Declaration.js';
+import * as FoodReplyHandler from '../src/bot/FoodReplyHandler.js';
 import * as PetFoodHandlers from '../src/bot/PetFoodHandlers.js';
 import * as PetHandlers from '../src/bot/PetHandlers.js';
 import * as RegisteredUser from '../src/bot/RegisteredUser.js';
@@ -42,9 +43,12 @@ describe('public bot Layer construction', () => {
 				.handle('deleteFood', () => PetFoodHandlers.startDeleteFood)
 				.handle('addFoodToAll', PetFoodHandlers.addFoodToAll),
 		);
+		const replies = BotBuilder.group(Carneloot, 'replies', (handlers) =>
+			handlers.handleMessage('foodReply', FoodReplyHandler.handle),
+		);
 		const middleware = Middleware.layer(RegisteredUser.live);
 		const integrated = Layer.provide(
-			Layer.mergeAll(account, pets, petFood),
+			Layer.mergeAll(account, pets, petFood, replies),
 			middleware,
 		);
 		expect(integrated).toBeDefined();
@@ -53,6 +57,7 @@ describe('public bot Layer construction', () => {
 			'account',
 			'pets',
 			'petFood',
+			'replies',
 		]);
 	});
 });

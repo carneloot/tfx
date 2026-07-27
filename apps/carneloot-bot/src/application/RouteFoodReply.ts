@@ -3,7 +3,7 @@ import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 
-import { InvalidDomainInput } from '../domain/DomainError.js';
+import { DomainPersistenceError } from '../domain/DomainError.js';
 import {
 	BotId,
 	PetId,
@@ -13,7 +13,6 @@ import {
 } from '../domain/Ids.js';
 import { FoodAmount } from '../domain/pet-food/FoodAmount.js';
 import { PetFoodEntry } from '../domain/pet-food/PetFood.js';
-import type { Pet } from '../domain/Pet.js';
 import { PetName } from '../domain/Pet.js';
 import { NotificationRepository } from '../ports/NotificationRepository.js';
 import * as AddFood from './AddFood.js';
@@ -92,11 +91,25 @@ const decodeStored = (value: unknown) =>
 const route = (input: RouteFoodReplyInput) =>
 	Effect.gen(function* () {
 		const notifications = yield* NotificationRepository;
-		const reply = yield* notifications.findSentByTelegramMessage(
-			input.botId,
-			input.chatId,
-			input.repliedMessageId,
-		);
+		const reply = yield* notifications
+			.findSentByTelegramMessage(
+				input.botId,
+				input.chatId,
+				input.repliedMessageId,
+			)
+			.pipe(
+				Effect.mapError(
+					(error) =>
+						new DomainPersistenceError({
+							reason:
+								error.reason === 'PersistenceFailure'
+									? 'PersistenceFailure'
+									: 'InvariantViolation',
+							message: error.message,
+							cause: error,
+						}),
+				),
+			);
 		if (
 			reply?.event.kind === 'feeding-reminder' &&
 			reply.delivery.recipientUserId === input.actorId &&
@@ -117,7 +130,11 @@ const route = (input: RouteFoodReplyInput) =>
 			const authorized = yield* authorize(access);
 			const added = yield* AddFood.execute(
 				access,
-				{ amountMg: amount.value, when: parsed.when, messageDate: input.messageDate },
+				{
+					amountMg: amount.value,
+					when: parsed.when,
+					messageDate: input.messageDate,
+				},
 				{
 					botId: input.botId,
 					updateId: input.updateId,
@@ -128,7 +145,7 @@ const route = (input: RouteFoodReplyInput) =>
 			return {
 				_tag: 'ReminderFoodAdded',
 				entry: added.entry,
-				pet: authorized.pet as Pet,
+				pet: authorized.pet,
 			} as const;
 		}
 
@@ -147,7 +164,8 @@ const route = (input: RouteFoodReplyInput) =>
 	}).pipe(
 		Effect.catchTags({
 			InvalidDomainInput: () => Effect.succeed(invalidResult()),
-			PetAccessDenied: () => Effect.succeed(invalidResult('Ração não acessível.')),
+			PetAccessDenied: () =>
+				Effect.succeed(invalidResult('Ração não acessível.')),
 			PetFoodSetupMissing: () =>
 				Effect.succeed(invalidResult('Configuração de ração incompleta.')),
 			DuplicateFoodEntry: () =>
@@ -164,13 +182,16 @@ export const execute = (input: RouteFoodReplyInput) =>
 			Effect.gen(function* () {
 				const lockKey = `food-reply:${input.botId}:${input.updateId}`;
 				yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
-				const rows = yield* sql<{ result_json: unknown }>`SELECT result_json FROM carneloot.food_reply_operations WHERE bot_id=${input.botId} AND update_id=${input.updateId}`;
-				if (rows[0] !== undefined) return yield* decodeStored(rows[0].result_json);
+				const rows = yield* sql<{
+					result_json: unknown;
+				}>`SELECT result_json FROM carneloot.food_reply_operations WHERE bot_id=${input.botId} AND update_id=${input.updateId}`;
+				if (rows[0] !== undefined)
+					return yield* decodeStored(rows[0].result_json);
 
 				const result = yield* route(input);
-				const encoded = yield* Schema.encodeEffect(FoodReplyResult)(result).pipe(
-					Effect.orDie,
-				);
+				const encoded = yield* Schema.encodeEffect(FoodReplyResult)(
+					result,
+				).pipe(Effect.orDie);
 				const now = yield* DateTime.now;
 				yield* sql`INSERT INTO carneloot.food_reply_operations (bot_id,update_id,kind,result_json,created_at) VALUES (${input.botId},${input.updateId},${result._tag},${sql.json(encoded)},${DateTime.toDateUtc(now)})`;
 				return result;

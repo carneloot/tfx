@@ -28,6 +28,12 @@ describe('message handlers', () => {
 		).toEqual({ text: 'hi', repliedMessageId: 42 });
 		expect(MessageInput.decode(reply, update({ text: 'hi' }))).toBeUndefined();
 		expect(
+			MessageInput.decode(
+				reply,
+				update({ text: 'hi', reply_to_message: { message_id: 1.5 } }),
+			),
+		).toBeUndefined();
+		expect(
 			MessageInput.decode(plain, {
 				update_id: 1,
 				edited_message: { text: 'hi' },

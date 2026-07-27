@@ -39,7 +39,8 @@ export const decode = <A, R>(
 	) as Effect.Effect<any, Schema.SchemaError, R>;
 	if (input._tag === 'Text') return decoded;
 	const repliedMessageId = message.reply_to_message?.message_id;
-	if (typeof repliedMessageId !== 'number') return undefined;
+	if (!Number.isSafeInteger(repliedMessageId) || repliedMessageId <= 0)
+		return undefined;
 	return Effect.map(decoded, (text) =>
 		Object.freeze({ text, repliedMessageId }),
 	) as Effect.Effect<A, Schema.SchemaError, R>;

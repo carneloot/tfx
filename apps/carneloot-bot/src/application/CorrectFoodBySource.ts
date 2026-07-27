@@ -55,6 +55,7 @@ export const execute = (input: CorrectFoodBySourceInput) =>
 				const pets = new Map<
 					string,
 					{
+						readonly petId: PetFoodEntry['petId'];
 						readonly ownerId: UserId;
 						readonly before:
 							| {
@@ -74,6 +75,7 @@ export const execute = (input: CorrectFoodBySourceInput) =>
 					});
 					const latest = yield* repository.latestEntry(entry.petId);
 					pets.set(entry.petId, {
+						petId: entry.petId,
 						ownerId: authorized.ownerId,
 						before:
 							latest === undefined
@@ -122,11 +124,11 @@ export const execute = (input: CorrectFoodBySourceInput) =>
 					updated.push(value);
 				}
 
-				for (const [petId, pet] of pets) {
+				for (const pet of pets.values()) {
 					yield* ReconcileFoodReminder.reconcile({
 						botId: input.botId,
 						ownerUserId: pet.ownerId,
-						petId: selected.find((entry) => entry.petId === petId)!.petId,
+						petId: pet.petId,
 						before: pet.before,
 					});
 				}
