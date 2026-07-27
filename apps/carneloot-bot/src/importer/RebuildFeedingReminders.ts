@@ -15,20 +15,21 @@ const Row = Schema.Struct({
 		Schema.DateTimeUtcFromString,
 	]),
 });
-export const rebuildFeedingReminders = Effect.gen(function* () {
-	const sql = yield* PgClient.PgClient;
-	const scheduler = yield* ReminderScheduler;
-	const rows = yield* sql<
-		Record<string, unknown>
-	>`SELECT i.bot_id,p.owner_id,f.pet_id,f.id food_entry_id,f.fed_at + (s.reminder_delay_ms * interval '1 millisecond') run_at FROM carneloot.pet_food_settings s JOIN carneloot.pets p ON p.id=s.pet_id JOIN carneloot.telegram_identities i ON i.user_id=p.owner_id JOIN LATERAL (SELECT id,pet_id,fed_at FROM carneloot.pet_food_entries WHERE pet_id=p.id ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1) f ON true WHERE s.reminder_delay_ms IS NOT NULL ORDER BY f.pet_id`;
-	for (const raw of rows) {
-		const row = yield* Schema.decodeUnknownEffect(Row)(raw);
-		yield* scheduler.replaceForLatest({
-			botId: row.bot_id,
-			ownerUserId: row.owner_id,
-			petId: row.pet_id,
-			foodEntryId: row.food_entry_id,
-			runAt: row.run_at,
-		});
-	}
-});
+export const rebuildFeedingReminders = (sourceFingerprint: string) =>
+	Effect.gen(function* () {
+		const sql = yield* PgClient.PgClient;
+		const scheduler = yield* ReminderScheduler;
+		const rows = yield* sql<
+			Record<string, unknown>
+		>`SELECT i.bot_id,p.owner_id,f.pet_id,f.id food_entry_id,f.fed_at + (s.reminder_delay_ms * interval '1 millisecond') run_at FROM carneloot.pet_food_settings s JOIN carneloot.legacy_import_ledger l ON l.source_fingerprint=${sourceFingerprint} AND l.target_table='pet_food_settings' AND l.target_key=s.pet_id::text JOIN carneloot.pets p ON p.id=s.pet_id JOIN carneloot.telegram_identities i ON i.user_id=p.owner_id JOIN LATERAL (SELECT id,pet_id,fed_at FROM carneloot.pet_food_entries WHERE pet_id=p.id ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1) f ON true WHERE s.reminder_delay_ms IS NOT NULL ORDER BY f.pet_id`;
+		for (const raw of rows) {
+			const row = yield* Schema.decodeUnknownEffect(Row)(raw);
+			yield* scheduler.replaceForLatest({
+				botId: row.bot_id,
+				ownerUserId: row.owner_id,
+				petId: row.pet_id,
+				foodEntryId: row.food_entry_id,
+				runAt: row.run_at,
+			});
+		}
+	});

@@ -35,10 +35,11 @@ const encoder = new TextEncoder();
 const num = (v: unknown) => (typeof v === 'bigint' ? Number(v) : Number(v));
 const date = (v: unknown) => new Date(num(v) * 1000).toISOString();
 const id = (r: LegacyRow) => String(r.id);
-const updateId = (digest: Uint8Array) => {
+export const updateIdFromDigest = (digest: Uint8Array) => {
+	// Keep exactly the first 53 bits. Bitwise operators would truncate to 32.
 	let n = 0;
-	for (const b of digest.slice(0, 7)) n = n * 256 + b;
-	return n & 0x1fffffffffffff;
+	for (const b of digest.slice(0, 6)) n = n * 256 + b;
+	return n * 32 + ((digest[6] ?? 0) >>> 3);
 };
 export const mapLegacySnapshot = (
 	snapshot: LegacySnapshot,
@@ -56,6 +57,7 @@ export const mapLegacySnapshot = (
 			'pet_food',
 			'api_keys',
 			'notifications',
+			'notification_history',
 		] as const)
 			for (const row of snapshot[table])
 				ids.set(
@@ -142,7 +144,7 @@ export const mapLegacySnapshot = (
 				amount_mg: amount,
 				fed_at: date(r.time),
 				source_bot_id: botId,
-				source_update_id: updateId(digest),
+				source_update_id: updateIdFromDigest(digest),
 				source_message_chat_id:
 					message === null ? null : num(actor?.telegram_id),
 				source_message_id: message,
@@ -150,6 +152,39 @@ export const mapLegacySnapshot = (
 				updated_at: importedAt.toISOString(),
 			});
 		}
+		const settings = new Map<string, Record<string, unknown>>();
+		for (const r of snapshot.configs) {
+			const match = /^pet:(.+)$/u.exec(String(r.context));
+			const petId = match ? ids.get(`pets:${match[1]}`) : undefined;
+			if (!petId) continue;
+			const current = settings.get(petId) ?? {};
+			const value = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+			if (r.key === 'dayStart' && value && typeof value === 'object') {
+				const v = value as Record<string, unknown>;
+				current.day_start = v.time;
+				current.timezone = v.timezone;
+			} else if (
+				r.key === 'notificationDelay' &&
+				value &&
+				typeof value === 'object'
+			) {
+				const v = value as Record<string, unknown>;
+				current.reminder_delay_ms =
+					((num(v.days ?? 0) * 24 + num(v.hours ?? 0)) * 60 +
+						num(v.minutes ?? 0)) *
+					60_000;
+			}
+			settings.set(petId, current);
+		}
+		for (const [petId, setting] of settings)
+			add('configs', `pet:${petId}`, 'pet_food_settings', petId, {
+				pet_id: petId,
+				day_start: setting.day_start ?? null,
+				timezone: setting.timezone ?? null,
+				reminder_delay_ms: setting.reminder_delay_ms ?? null,
+				created_at: importedAt.toISOString(),
+				updated_at: importedAt.toISOString(),
+			});
 		for (const r of snapshot.api_keys) {
 			const kid = ids.get(`api_keys:${id(r)}`)!;
 			add('api_keys', id(r), 'api_keys', kid, {
@@ -179,6 +214,67 @@ export const mapLegacySnapshot = (
 				created_at: importedAt.toISOString(),
 			});
 		}
+		for (const r of snapshot.notification_history) {
+			const hid = ids.get(`notification_history:${id(r)}`)!;
+			const user = snapshot.users.find((u) => id(u) === r.user_id);
+			const template = snapshot.notifications.find(
+				(n) => id(n) === r.notification_id,
+			);
+			const pet = snapshot.pets.find((p) => id(p) === r.pet_id);
+			const ownerId = template?.owner_id ?? pet?.owner_id;
+			const sentAt = date(r.sent_at);
+			add('notification_history', id(r), 'notification_events', hid, {
+				id: hid,
+				bot_id: botId,
+				kind: 'legacy-notification',
+				owner_user_id: ids.get(`users:${ownerId}`),
+				pet_id: r.pet_id === null ? null : ids.get(`pets:${r.pet_id}`),
+				food_entry_id: null,
+				scheduled_for: null,
+				status: 'completed',
+				dedupe_key: `legacy:${fingerprint}:${id(r)}`,
+				job_id: null,
+				created_at: sentAt,
+				updated_at: sentAt,
+				completed_at: sentAt,
+				cancelled_at: null,
+			});
+			add(
+				'notification_history',
+				`${id(r)}:delivery`,
+				'notification_deliveries',
+				hid,
+				{
+					id: hid,
+					event_id: hid,
+					recipient_user_id: ids.get(`users:${r.user_id}`),
+					recipient_chat_id:
+						user === undefined ? undefined : num(user.telegram_id),
+					recipient_role:
+						String(ownerId) === String(r.user_id)
+							? 'owner'
+							: template
+								? 'subscriber'
+								: 'caregiver',
+					channel: 'telegram',
+					status: 'sent',
+					attempt_generation: 0,
+					attempt_count: 1,
+					sending_started_at: sentAt,
+					sending_lease_expires_at: null,
+					retry_at: null,
+					retryable: false,
+					telegram_bot_id: botId,
+					telegram_message_id: num(r.message_id),
+					safe_error_json: null,
+					sent_at: sentAt,
+					failed_at: null,
+					unknown_at: null,
+					created_at: sentAt,
+					updated_at: sentAt,
+				},
+			);
+		}
 		for (const r of snapshot.sessions)
 			warnings.push({
 				code: 'conversation-state-not-migrated',
@@ -194,9 +290,19 @@ export const mapLegacySnapshot = (
 		});
 		return { fingerprint, rows, rounding, warnings };
 	});
+const canonicalize = (value: unknown): unknown =>
+	Array.isArray(value)
+		? value.map(canonicalize)
+		: value !== null && typeof value === 'object'
+			? Object.fromEntries(
+					Object.entries(value as Record<string, unknown>)
+						.sort(([a], [b]) => a.localeCompare(b))
+						.map(([key, child]) => [key, canonicalize(child)]),
+				)
+			: value;
 export const canonicalDigest = (value: unknown) =>
 	Effect.sync(() =>
 		createHash('sha256')
-			.update(JSON.stringify(value, Object.keys(value as object).sort()))
+			.update(JSON.stringify(canonicalize(value)))
 			.digest('hex'),
 	);

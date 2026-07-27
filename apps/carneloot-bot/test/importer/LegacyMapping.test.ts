@@ -2,7 +2,10 @@ import * as NodeCrypto from '@effect/platform-node/NodeCrypto';
 import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
 
-import { mapLegacySnapshot } from '../../src/importer/LegacyMapping.js';
+import {
+	mapLegacySnapshot,
+	updateIdFromDigest,
+} from '../../src/importer/LegacyMapping.js';
 import {
 	legacyTables,
 	type LegacySnapshot,
@@ -12,6 +15,14 @@ const empty = () =>
 		legacyTables.map((t) => [t, []]),
 	) as unknown as LegacySnapshot;
 describe('legacy mapping', () => {
+	it('uses all first 53 digest bits without 32-bit truncation', () => {
+		expect(
+			updateIdFromDigest(Uint8Array.from([255, 255, 255, 255, 255, 255, 248])),
+		).toBe(Number.MAX_SAFE_INTEGER);
+		expect(
+			updateIdFromDigest(Uint8Array.from([1, 2, 3, 4, 5, 6, 248])),
+		).toBeGreaterThan(0xffffffff);
+	});
 	it('preserves food timestamp and reports exact rounding', async () => {
 		const snapshot = empty() as any;
 		snapshot.users = [

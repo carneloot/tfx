@@ -22,6 +22,7 @@ export const verifyLegacy = (
 		),
 	);
 	const seen = new Map<string, string>();
+	const sourceUpdates = new Map<string, string>();
 	for (const row of mapped.rows) {
 		for (const [key, value] of Object.entries(row.value))
 			if (
@@ -36,6 +37,40 @@ export const verifyLegacy = (
 						`Missing referenced ${key}`,
 					),
 				);
+		if (row.targetTable === 'pet_food_entries') {
+			const collisionKey = `${String(row.value.source_bot_id)}:${String(row.value.source_update_id)}:${String(row.value.pet_id)}`;
+			const previous = sourceUpdates.get(collisionKey);
+			if (previous !== undefined)
+				blockers.push(
+					issue(
+						'source-update-collision',
+						row.sourceTable,
+						row.sourceKey,
+						`Conflicts with ${previous}`,
+					),
+				);
+			else sourceUpdates.set(collisionKey, row.sourceKey);
+		}
+		if (row.targetTable === 'pet_food_settings') {
+			const paired =
+				(row.value.day_start === null) === (row.value.timezone === null);
+			const delay = row.value.reminder_delay_ms;
+			if (
+				!paired ||
+				(delay !== null &&
+					(!Number.isSafeInteger(delay) ||
+						Number(delay) < 1 ||
+						Number(delay) > 2_592_000_000))
+			)
+				blockers.push(
+					issue(
+						'invalid-pet-food-settings',
+						row.sourceTable,
+						row.sourceKey,
+						'Settings pair or reminder delay is invalid',
+					),
+				);
+		}
 		const unique = `${row.targetTable}:${row.targetKey}`;
 		const old = seen.get(unique);
 		if (old)
@@ -49,6 +84,64 @@ export const verifyLegacy = (
 			);
 		else seen.set(unique, row.sourceKey);
 	}
+	const ids = (table: keyof LegacySnapshot) =>
+		new Set(snapshot[table].map((r) => String(r.id)));
+	const users = ids('users'),
+		pets = ids('pets'),
+		notifications = ids('notifications');
+	for (const row of snapshot.pets)
+		if (!users.has(String(row.owner_id)))
+			blockers.push(
+				issue('missing-reference', 'pets', String(row.id), 'Missing owner'),
+			);
+	for (const row of snapshot.pet_carers)
+		if (!pets.has(String(row.pet_id)) || !users.has(String(row.carer_id)))
+			blockers.push(
+				issue(
+					'missing-reference',
+					'pet_carers',
+					String(row.id),
+					'Missing pet or caregiver',
+				),
+			);
+	for (const row of snapshot.pet_food)
+		if (!pets.has(String(row.pet_id)) || !users.has(String(row.user_id)))
+			blockers.push(
+				issue(
+					'missing-reference',
+					'pet_food',
+					String(row.id),
+					'Missing pet or recorder',
+				),
+			);
+	for (const row of snapshot.users_to_notify)
+		if (
+			!notifications.has(String(row.notification_id)) ||
+			!users.has(String(row.user_id))
+		)
+			blockers.push(
+				issue(
+					'missing-reference',
+					'users_to_notify',
+					String(row.id),
+					'Missing template or subscriber',
+				),
+			);
+	for (const row of snapshot.notification_history)
+		if (
+			!users.has(String(row.user_id)) ||
+			(row.pet_id !== null && !pets.has(String(row.pet_id))) ||
+			(row.notification_id !== null &&
+				!notifications.has(String(row.notification_id)))
+		)
+			blockers.push(
+				issue(
+					'missing-reference',
+					'notification_history',
+					String(row.id),
+					'Missing history relation',
+				),
+			);
 	for (const row of snapshot.users) {
 		const telegram = Number(row.telegram_id);
 		if (!Number.isSafeInteger(telegram) || telegram <= 0)

@@ -9,6 +9,7 @@ import { layerFrom } from './importer/LegacyImportConfig.js';
 import { run } from './importer/LegacyImporter.js';
 import * as LegacySourceLive from './importer/LegacySourceLive.js';
 import * as LegacyTargetLive from './importer/LegacyTargetLive.js';
+import { migrate } from './postgres/AppMigrator.js';
 const program = Effect.gen(function* () {
 	const config = yield* Effect.try({
 		try: () => parseArgs(process.argv.slice(2)),
@@ -21,7 +22,13 @@ const program = Effect.gen(function* () {
 		Layer.provideMerge(PgClient.layer({ url: config.databaseUrl })),
 		Layer.provideMerge(layerFrom(config)),
 	);
-	const report = yield* Effect.provide(run, infrastructure);
+	const report = yield* Effect.provide(
+		Effect.gen(function* () {
+			if (!config.dryRun) yield* migrate;
+			return yield* run;
+		}),
+		infrastructure,
+	);
 	process.stdout.write(
 		`legacy import: ${report.blockers.length} blocker(s), ${report.warnings.length} warning(s)`,
 	);
