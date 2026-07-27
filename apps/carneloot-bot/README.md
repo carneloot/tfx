@@ -36,10 +36,10 @@ Startup applies checksummed tfx and Carneloot migrations under PostgreSQL adviso
 ## Run
 
 ```sh
-mise exec -- pnpm --filter carneloot-bot demo
+mise exec -- pnpm dev
 ```
 
-`demo` and `start` run the same validated production Bun graph through `fnox exec`. Missing or invalid environment fails before polling/network startup. `SIGINT` and `SIGTERM` interrupt the shared Effect scope; polling, dispatcher, and job worker finalizers are awaited.
+The root `dev` command runs the carneloot-bot `demo` script. `demo` and `start` run the same validated production Bun graph through `fnox exec`. Missing or invalid environment fails before polling/network startup. `SIGINT` and `SIGTERM` interrupt the shared Effect scope; polling, dispatcher, and job worker finalizers are awaited.
 
 ## Secret key operations
 
