@@ -1,0 +1,13 @@
+CREATE TABLE users(id TEXT PRIMARY KEY,telegram_id TEXT NOT NULL,username TEXT,first_name TEXT NOT NULL,last_name TEXT);
+CREATE TABLE pets(id TEXT PRIMARY KEY,name TEXT NOT NULL,owner_id TEXT NOT NULL);
+CREATE TABLE pet_carers(id TEXT PRIMARY KEY,pet_id TEXT NOT NULL,carer_id TEXT NOT NULL,status TEXT NOT NULL);
+CREATE TABLE pet_food(id TEXT PRIMARY KEY,pet_id TEXT NOT NULL,user_id TEXT NOT NULL,message_id INTEGER,quantity REAL NOT NULL,time INTEGER NOT NULL);
+CREATE TABLE configs(id TEXT PRIMARY KEY,context TEXT NOT NULL,key TEXT,value BLOB NOT NULL);
+CREATE TABLE api_keys(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,key TEXT NOT NULL,created_at INTEGER NOT NULL);
+CREATE TABLE notifications(id TEXT PRIMARY KEY,keyword TEXT NOT NULL,message TEXT NOT NULL,owner_id TEXT NOT NULL);
+CREATE TABLE users_to_notify(id TEXT PRIMARY KEY,notification_id TEXT NOT NULL,user_id TEXT NOT NULL);
+CREATE TABLE notification_history(id TEXT PRIMARY KEY,notification_id TEXT,pet_id TEXT,user_id TEXT NOT NULL,message_id INTEGER NOT NULL,sent_at INTEGER NOT NULL);
+CREATE TABLE sessions(id TEXT PRIMARY KEY,context TEXT NOT NULL,key TEXT NOT NULL,value BLOB NOT NULL);
+INSERT INTO users VALUES('u1','42','ada','Ada',NULL);
+INSERT INTO pets VALUES('p1','Fido','u1');
+INSERT INTO pet_food VALUES('f1','p1','u1',7,1.2345,1700000000);
