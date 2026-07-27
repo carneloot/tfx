@@ -1,30 +1,39 @@
 import * as Context from 'effect/Context';
 import type * as Effect from 'effect/Effect';
 
+import type * as MessageHandlerResult from '../../MessageHandlerResult.js';
 import type * as Middleware from '../../Middleware.js';
-
-export interface HandlerEntry<
-	Input = unknown,
-	Output = unknown,
-	HandlerError = never,
-	Requirements = never,
-	MiddlewareError = never,
-> {
+interface Base<I, O, E, R, ME> {
 	readonly groupId: string;
-	readonly commandId: string;
 	readonly middlewareIds: ReadonlyArray<string>;
-	readonly handler: (
-		input: Input,
-	) => Effect.Effect<Output, HandlerError, Requirements>;
-	/** Plan06 dispatch bridge: applies registered middleware before invoking raw handler. */
+	readonly handler: (input: I) => Effect.Effect<O, E, R>;
 	readonly invoke: (
 		registry: Middleware.MiddlewareRegistryService,
-		input: Input,
-	) => Effect.Effect<Output, HandlerError | MiddlewareError, Requirements>;
+		input: I,
+	) => Effect.Effect<O, E | ME, R>;
 }
-
-/** Runtime registry intentionally erases individual entry types after builder validation. */
-export type AnyHandlerEntry = HandlerEntry<any, any, any, any, any>;
+export interface CommandHandlerEntry<
+	I = unknown,
+	O = unknown,
+	E = never,
+	R = never,
+	ME = never,
+> extends Base<I, O, E, R, ME> {
+	readonly _tag: 'Command';
+	readonly commandId: string;
+}
+export interface MessageHandlerEntry<
+	I = unknown,
+	E = never,
+	R = never,
+	ME = never,
+> extends Base<I, MessageHandlerResult.MessageHandlerResult, E, R, ME> {
+	readonly _tag: 'Message';
+	readonly messageHandlerId: string;
+}
+export type AnyHandlerEntry =
+	| CommandHandlerEntry<any, any, any, any, any>
+	| MessageHandlerEntry<any, any, any, any>;
 export class HandlerRegistry extends Context.Service<
 	HandlerRegistry,
 	ReadonlyArray<AnyHandlerEntry>

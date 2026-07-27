@@ -8,145 +8,174 @@ import type * as CommandInput from './CommandInput.js';
 import {
 	HandlerRegistry,
 	type AnyHandlerEntry,
-	type HandlerEntry,
+	type CommandHandlerEntry,
+	type MessageHandlerEntry,
 } from './internal/bot/HandlerRegistry.js';
 import { MessageContext } from './MessageContext.js';
+import type * as MessageHandler from './MessageHandler.js';
+import type * as MessageHandlerResult from './MessageHandlerResult.js';
+import type * as MessageInput from './MessageInput.js';
 import type * as Middleware from './Middleware.js';
 import { UpdateContext } from './UpdateContext.js';
-
-type GroupsOf<B> = B extends Bot.Bot<any, infer Groups> ? Groups : never;
+type GroupsOf<B> = B extends Bot.Bot<any, infer G> ? G : never;
 type GroupAt<B, Id extends keyof GroupsOf<B>> =
-	GroupsOf<B>[Id] extends BotGroup.BotGroup<any, any> ? GroupsOf<B>[Id] : never;
-type CommandsOf<G> =
-	G extends BotGroup.BotGroup<any, infer Commands> ? Commands : never;
-type CommandAt<G, Id extends keyof CommandsOf<G>> =
-	CommandsOf<G>[Id] extends Command.Command<any, any, any, any>
-		? CommandsOf<G>[Id]
+	GroupsOf<B>[Id] extends BotGroup.BotGroup<any, any, any>
+		? GroupsOf<B>[Id]
 		: never;
-type Decoded<C> =
-	C extends Command.Command<any, infer Input, any, any>
-		? CommandInput.Decoded<Input>
+type CommandsOf<G> = G extends BotGroup.BotGroup<any, infer C, any> ? C : never;
+type MessagesOf<G> = G extends BotGroup.BotGroup<any, any, infer M> ? M : never;
+type CommandAt<G, I extends keyof CommandsOf<G>> =
+	CommandsOf<G>[I] extends Command.Command<any, any, any, any>
+		? CommandsOf<G>[I]
 		: never;
-type InputRequirements<C> =
-	C extends Command.Command<any, infer Input, any, any>
-		? CommandInput.Requirements<Input>
+type MessageAt<G, I extends keyof MessagesOf<G>> =
+	MessagesOf<G>[I] extends MessageHandler.MessageHandler<any, any, any, any>
+		? MessagesOf<G>[I]
 		: never;
-type DeclaredError<C> = Command.Error<C>;
-type MiddlewareProvided<C> =
-	C extends Command.Command<any, any, any, infer M>
+type CDecoded<C> =
+	C extends Command.Command<any, infer I, any, any>
+		? CommandInput.Decoded<I>
+		: never;
+type MDecoded<H> =
+	H extends MessageHandler.MessageHandler<any, infer I, any, any>
+		? MessageInput.Decoded<I>
+		: never;
+type CError<C> = Command.Error<C>;
+type MError<H> = MessageHandler.Error<H>;
+type Provided<X> =
+	X extends Command.Command<any, any, any, infer M>
 		? Middleware.ProvidedBy<M>
-		: never;
-type MiddlewareErrors<C> =
-	C extends Command.Command<any, any, any, infer M>
+		: X extends MessageHandler.MessageHandler<any, any, any, infer M>
+			? Middleware.ProvidedBy<M>
+			: never;
+type Mwares<X> =
+	X extends Command.Command<any, any, any, infer M>
+		? M
+		: X extends MessageHandler.MessageHandler<any, any, any, infer M>
+			? M
+			: never;
+type MWErrors<X> =
+	Mwares<X> extends infer M extends ReadonlyArray<Middleware.AnyMiddleware>
 		? Middleware.DeclaredErrors<M>
 		: never;
-type HandlerRequirements<C, R> = Exclude<
+type InputReq<X> =
+	X extends Command.Command<any, infer I, any, any>
+		? CommandInput.Requirements<I>
+		: X extends MessageHandler.MessageHandler<any, infer I, any, any>
+			? MessageInput.Requirements<I>
+			: never;
+type HandlerReq<X, R> = Exclude<
 	R,
-	UpdateContext | MessageContext | MiddlewareProvided<C>
+	UpdateContext | MessageContext | Provided<X>
 >;
+type AllDecl<G> =
+	| CommandsOf<G>[keyof CommandsOf<G>]
+	| MessagesOf<G>[keyof MessagesOf<G>];
 type GroupMiddlewareRequirement<G> = [
-	CommandsOf<G>[keyof CommandsOf<G>] extends infer C
-		? C extends Command.Command<any, any, any, infer M>
-			? M[number]
-			: never
-		: never,
+	AllDecl<G> extends infer X ? Mwares<X>[number] : never,
 ] extends [never]
 	? never
 	: Middleware.MiddlewareRegistry;
-
 export interface Handlers<
-	G extends BotGroup.BotGroup<any, any>,
-	Remaining extends keyof CommandsOf<G>,
+	G extends BotGroup.BotGroup<any, any, any>,
+	CR extends keyof CommandsOf<G>,
+	MR extends keyof MessagesOf<G>,
 	Requirements,
 	Entries extends ReadonlyArray<AnyHandlerEntry> = readonly [],
 > {
-	/** Phantom state tracks implementations still required. */
-	readonly _remaining: Remaining;
+	readonly _remaining: CR;
+	readonly _remainingMessages: MR;
 	readonly _requirements: Requirements;
-	/** @internal */
 	readonly _entries: Entries;
-	handle<
-		const Id extends Remaining,
-		A,
-		E extends DeclaredError<CommandAt<G, Id>>,
-		R,
-	>(
+	handle<const Id extends CR, A, E extends CError<CommandAt<G, Id>>, R>(
 		id: Id,
-		handler: (input: Decoded<CommandAt<G, Id>>) => Effect.Effect<A, E, R>,
+		handler: (input: CDecoded<CommandAt<G, Id>>) => Effect.Effect<A, E, R>,
 	): Handlers<
 		G,
-		Exclude<Remaining, Id>,
-		| Requirements
-		| HandlerRequirements<CommandAt<G, Id>, R>
-		| InputRequirements<CommandAt<G, Id>>,
+		Exclude<CR, Id>,
+		MR,
+		Requirements | HandlerReq<CommandAt<G, Id>, R> | InputReq<CommandAt<G, Id>>,
 		readonly [
 			...Entries,
-			HandlerEntry<
-				Decoded<CommandAt<G, Id>>,
+			CommandHandlerEntry<
+				CDecoded<CommandAt<G, Id>>,
 				A,
 				E,
 				R,
-				MiddlewareErrors<CommandAt<G, Id>>
+				MWErrors<CommandAt<G, Id>>
+			>,
+		]
+	>;
+	handleMessage<const Id extends MR, E extends MError<MessageAt<G, Id>>, R>(
+		id: Id,
+		handler: (
+			input: MDecoded<MessageAt<G, Id>>,
+		) => Effect.Effect<MessageHandlerResult.MessageHandlerResult, E, R>,
+	): Handlers<
+		G,
+		CR,
+		Exclude<MR, Id>,
+		Requirements | HandlerReq<MessageAt<G, Id>, R> | InputReq<MessageAt<G, Id>>,
+		readonly [
+			...Entries,
+			MessageHandlerEntry<
+				MDecoded<MessageAt<G, Id>>,
+				E,
+				R,
+				MWErrors<MessageAt<G, Id>>
 			>,
 		]
 	>;
 }
-
-const handlers = <
-	G extends BotGroup.BotGroup<any, any>,
-	Remaining extends keyof CommandsOf<G>,
-	R,
-	Entries extends ReadonlyArray<AnyHandlerEntry>,
->(
-	groupId: string,
-	commands: Readonly<Record<string, Command.Command<any, any, any, any>>>,
-	entries: Entries,
-): Handlers<G, Remaining, R, Entries> => ({
-	_remaining: undefined as never,
-	_requirements: undefined as never,
-	_entries: entries,
-	handle(id, handler) {
-		if (entries.some((entry) => entry.commandId === id))
-			throw new Error(
-				`Duplicate implementation '${String(id)}' in group '${groupId}'`,
-			);
-		const middlewareIds = Object.freeze(
-			commands[String(id)]!.middleware.map(
-				(item: Middleware.AnyMiddleware) => item.id,
-			),
-		);
-		return handlers(groupId, commands, [
-			...entries,
-			{
-				groupId,
-				commandId: String(id),
-				middlewareIds,
-				handler,
-				invoke: (
-					registry: Middleware.MiddlewareRegistryService,
-					input: Decoded<CommandAt<G, typeof id>>,
-				) =>
-					registry.run<any, any, any>(
-						middlewareIds,
-						handler(input),
-					) as Effect.Effect<
-						Effect.Success<ReturnType<typeof handler>>,
-						| Effect.Error<ReturnType<typeof handler>>
-						| MiddlewareErrors<CommandAt<G, typeof id>>,
-						Effect.Services<ReturnType<typeof handler>>
-					>,
-			},
-		] as unknown as readonly [...Entries, AnyHandlerEntry]);
-	},
-});
-
 export interface BuiltGroup<R = never> {
 	readonly groupId: string;
 	readonly entries: ReadonlyArray<AnyHandlerEntry>;
 	readonly _requirements: R;
 }
-
-/** Build handlers as a composable value; BotRouter combines every group's entries. */
+function makeHandlers(
+	groupId: string,
+	commands: any,
+	messages: any,
+	entries: ReadonlyArray<AnyHandlerEntry>,
+): any {
+	const addEntry = (
+		tag: 'Command' | 'Message',
+		id: string,
+		handler: any,
+		declaration: any,
+	) => {
+		if (
+			entries.some(
+				(e: any) =>
+					e._tag === tag &&
+					(tag === 'Command' ? e.commandId : e.messageHandlerId) === id,
+			)
+		)
+			throw new Error(`Duplicate implementation '${id}' in group '${groupId}'`);
+		const middlewareIds = Object.freeze(
+			declaration.middleware.map((x: any) => x.id),
+		);
+		const entry: any = {
+			_tag: tag,
+			groupId,
+			middlewareIds,
+			handler,
+			invoke: (registry: any, input: any) =>
+				registry.run(middlewareIds, handler(input)),
+			...(tag === 'Command' ? { commandId: id } : { messageHandlerId: id }),
+		};
+		return makeHandlers(groupId, commands, messages, [...entries, entry]);
+	};
+	return {
+		_remaining: undefined,
+		_remainingMessages: undefined,
+		_requirements: undefined,
+		_entries: entries,
+		handle: (id: string, h: any) => addEntry('Command', id, h, commands[id]),
+		handleMessage: (id: string, h: any) =>
+			addEntry('Message', id, h, messages[id]),
+	};
+}
 export const buildGroup = <
 	B extends Bot.Bot<any, any>,
 	Id extends keyof GroupsOf<B> & string,
@@ -155,20 +184,30 @@ export const buildGroup = <
 	bot: B,
 	id: Id,
 	implement: (
-		handlers: Handlers<GroupAt<B, Id>, keyof CommandsOf<GroupAt<B, Id>>, never>,
-	) => Handlers<GroupAt<B, Id>, never, R, ReadonlyArray<AnyHandlerEntry>>,
+		h: Handlers<
+			GroupAt<B, Id>,
+			keyof CommandsOf<GroupAt<B, Id>>,
+			keyof MessagesOf<GroupAt<B, Id>>,
+			never
+		>,
+	) => Handlers<
+		GroupAt<B, Id>,
+		never,
+		never,
+		R,
+		ReadonlyArray<AnyHandlerEntry>
+	>,
 ): BuiltGroup<R> => {
-	const declaration = bot.groups[id] as GroupAt<B, Id>;
+	const d: any = bot.groups[id];
 	const completed = implement(
-		handlers(String(declaration.id), declaration.commands, []),
+		makeHandlers(d.id, d.commands, d.messageHandlers, []),
 	);
 	return Object.freeze({
-		groupId: String(declaration.id),
+		groupId: d.id,
 		entries: Object.freeze([...completed._entries]),
 		_requirements: undefined as R,
 	});
 };
-
 export const group = <
 	B extends Bot.Bot<any, any>,
 	Id extends keyof GroupsOf<B> & string,
@@ -177,17 +216,25 @@ export const group = <
 	bot: B,
 	id: Id,
 	implement: (
-		handlers: Handlers<GroupAt<B, Id>, keyof CommandsOf<GroupAt<B, Id>>, never>,
-	) => Handlers<GroupAt<B, Id>, never, R, ReadonlyArray<AnyHandlerEntry>>,
+		h: Handlers<
+			GroupAt<B, Id>,
+			keyof CommandsOf<GroupAt<B, Id>>,
+			keyof MessagesOf<GroupAt<B, Id>>,
+			never
+		>,
+	) => Handlers<
+		GroupAt<B, Id>,
+		never,
+		never,
+		R,
+		ReadonlyArray<AnyHandlerEntry>
+	>,
 ): Layer.Layer<
 	HandlerRegistry,
 	never,
 	R | GroupMiddlewareRequirement<GroupAt<B, Id>>
-> => {
-	const built = buildGroup(bot, id, implement);
-	return Layer.succeed(HandlerRegistry, built.entries) as Layer.Layer<
+> =>
+	Layer.succeed(
 		HandlerRegistry,
-		never,
-		R | GroupMiddlewareRequirement<GroupAt<B, Id>>
-	>;
-};
+		buildGroup(bot, id, implement).entries,
+	) as never;
