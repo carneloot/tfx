@@ -8,7 +8,10 @@ import * as Conversations from './Conversations.js';
 import { ConversationStorage } from './ConversationStorage.js';
 import * as DispatchOutcome from './DispatchOutcome.js';
 import * as CommandParser from './internal/bot/CommandParser.js';
-import type { AnyHandlerEntry } from './internal/bot/HandlerRegistry.js';
+import type {
+	AnyHandlerEntry,
+	MessageHandlerEntry,
+} from './internal/bot/HandlerRegistry.js';
 import * as InternalRouter from './internal/runtime/Router.js';
 import type { Update } from './internal/telegram/generated/TelegramApi.types.js';
 import * as MessageContext from './MessageContext.js';
@@ -152,6 +155,25 @@ export const make = <
 		const storage = yield* ConversationStorage;
 		const conversations = yield* Conversations.Conversations;
 		const entries = options.groups.flatMap((group) => group.entries);
+		const messageEntries = (
+			Object.values(options.bot.groups) as ReadonlyArray<any>
+		)
+			.flatMap((group) =>
+				(Object.values(group.messageHandlers) as ReadonlyArray<any>).flatMap(
+					(declaration) => {
+						const entry = entries.find(
+							(item) =>
+								item._tag === 'Message' &&
+								item.groupId === group.id &&
+								item.messageHandlerId === declaration.id,
+						);
+						return entry === undefined ? [] : [entry];
+					},
+				),
+			)
+			.filter(
+				(entry): entry is MessageHandlerEntry => entry._tag === 'Message',
+			);
 		const declarations = new Map<
 			string,
 			{ readonly groupId: string; readonly command: any }
@@ -292,9 +314,6 @@ export const make = <
 			callback: () =>
 				Effect.succeed(DispatchOutcome.permanentInvalid('Unhandled callback')),
 			message: (update) => {
-				const messageEntries = entries.filter(
-					(entry) => entry._tag === 'Message',
-				);
 				const run = (
 					index: number,
 				): Effect.Effect<
