@@ -17,6 +17,7 @@ import * as PetInvitationsConversation from './bot/conversations/PetInvitationsC
 import * as RemoveCaregiverConversation from './bot/conversations/RemoveCaregiverConversation.js';
 import * as StopCaringConversation from './bot/conversations/StopCaringConversation.js';
 import { Carneloot } from './bot/Declaration.js';
+import * as FoodReplyHandler from './bot/FoodReplyHandler.js';
 import * as PetFoodHandlers from './bot/PetFoodHandlers.js';
 import * as PetHandlers from './bot/PetHandlers.js';
 
@@ -55,6 +56,11 @@ export const petFoodHandlers = BotBuilder.buildGroup(
 			.handle('correctFood', () => PetFoodHandlers.startCorrectFood)
 			.handle('deleteFood', () => PetFoodHandlers.startDeleteFood)
 			.handle('addFoodToAll', PetFoodHandlers.addFoodToAll),
+);
+export const replyHandlers = BotBuilder.buildGroup(
+	Carneloot,
+	'replies',
+	(handlers) => handlers.handleMessage('foodReply', FoodReplyHandler.handle),
 );
 export const conversations = Object.freeze([
 	AddPetConversation.built,
@@ -116,6 +122,8 @@ export const classifyError = (
 			return isRetryableError(error)
 				? DispatchOutcome.retryableFailure('reminder-scheduler-unavailable')
 				: DispatchOutcome.fatal('reminder-scheduler-invariant');
+		case 'FoodReplyLedgerError':
+			return DispatchOutcome.fatal('food-reply-ledger-invalid');
 		case 'FoodNotificationSchedulerError':
 			return isRetryableError(error)
 				? DispatchOutcome.retryableFailure(
@@ -134,7 +142,7 @@ export const classifyError = (
 export const make = (botUsername: string) =>
 	BotRouter.make({
 		bot: Carneloot,
-		groups: [accountHandlers, petHandlers, petFoodHandlers],
+		groups: [accountHandlers, petHandlers, petFoodHandlers, replyHandlers],
 		conversations,
 		botUsername,
 		cancel: () => CancelConversation.cancelCurrent,

@@ -8,10 +8,14 @@ import * as Conversations from './Conversations.js';
 import { ConversationStorage } from './ConversationStorage.js';
 import * as DispatchOutcome from './DispatchOutcome.js';
 import * as CommandParser from './internal/bot/CommandParser.js';
-import type { AnyHandlerEntry } from './internal/bot/HandlerRegistry.js';
+import type {
+	AnyHandlerEntry,
+	MessageHandlerEntry,
+} from './internal/bot/HandlerRegistry.js';
 import * as InternalRouter from './internal/runtime/Router.js';
 import type { Update } from './internal/telegram/generated/TelegramApi.types.js';
 import * as MessageContext from './MessageContext.js';
+import * as MessageInput from './MessageInput.js';
 import { MiddlewareRegistry } from './Middleware.js';
 import { isRetryableError, type TaggedError } from './TaggedError.js';
 import * as UpdateContext from './UpdateContext.js';
@@ -151,6 +155,25 @@ export const make = <
 		const storage = yield* ConversationStorage;
 		const conversations = yield* Conversations.Conversations;
 		const entries = options.groups.flatMap((group) => group.entries);
+		const messageEntries = (
+			Object.values(options.bot.groups) as ReadonlyArray<any>
+		)
+			.flatMap((group) =>
+				(Object.values(group.messageHandlers) as ReadonlyArray<any>).flatMap(
+					(declaration) => {
+						const entry = entries.find(
+							(item) =>
+								item._tag === 'Message' &&
+								item.groupId === group.id &&
+								item.messageHandlerId === declaration.id,
+						);
+						return entry === undefined ? [] : [entry];
+					},
+				),
+			)
+			.filter(
+				(entry): entry is MessageHandlerEntry => entry._tag === 'Message',
+			);
 		const declarations = new Map<
 			string,
 			{ readonly groupId: string; readonly command: any }
@@ -257,6 +280,7 @@ export const make = <
 					if (source === undefined) continue;
 					const entry: AnyHandlerEntry | undefined = entries.find(
 						(item) =>
+							item._tag === 'Command' &&
 							item.groupId === declaration.groupId &&
 							item.commandId === declaration.command.id,
 					);
@@ -289,6 +313,40 @@ export const make = <
 			},
 			callback: () =>
 				Effect.succeed(DispatchOutcome.permanentInvalid('Unhandled callback')),
+			message: (update) => {
+				const run = (
+					index: number,
+				): Effect.Effect<
+					DispatchOutcome.DispatchOutcome | undefined,
+					never
+				> => {
+					const entry = messageEntries[index];
+					if (entry === undefined) return Effect.succeed(undefined);
+					const group = (options.bot.groups as any)[entry.groupId];
+					const declaration = group?.messageHandlers[entry.messageHandlerId];
+					const decoded =
+						declaration === undefined
+							? undefined
+							: MessageInput.decode(declaration.input, update);
+					if (decoded === undefined) return run(index + 1);
+					return Effect.matchEffect(provideContexts(update, decoded), {
+						onFailure: () => run(index + 1),
+						onSuccess: (input) =>
+							Effect.matchEffect(
+								provideContexts(update, entry.invoke(middleware, input)),
+								{
+									onFailure: (error) => Effect.succeed(mapError(error)),
+									onSuccess: (result) =>
+										result._tag === 'Handled'
+											? Effect.succeed(DispatchOutcome.handled)
+											: run(index + 1),
+								},
+							),
+					});
+				};
+				return run(0);
+			},
+			fallback: () => Effect.succeed(DispatchOutcome.handled),
 		});
 		return Object.freeze({
 			route: (update: Update) =>

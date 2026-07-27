@@ -49,7 +49,10 @@
 		"./BotRuntime": "./src/BotRuntime.ts",
 		"./Polling": "./src/Polling.ts",
 		"./UpdateRoutingScope": "./src/UpdateRoutingScope.ts",
-		"./Partitioning": "./src/Partitioning.ts"
+		"./Partitioning": "./src/Partitioning.ts",
+		"./MessageHandler": "./src/MessageHandler.ts",
+		"./MessageInput": "./src/MessageInput.ts",
+		"./MessageHandlerResult": "./src/MessageHandlerResult.ts"
 	},
 	"publishConfig": {
 		"exports": {
@@ -93,7 +96,10 @@
 			"./BotRuntime": "./dist/BotRuntime.js",
 			"./Polling": "./dist/Polling.js",
 			"./UpdateRoutingScope": "./dist/UpdateRoutingScope.js",
-			"./Partitioning": "./dist/Partitioning.js"
+			"./Partitioning": "./dist/Partitioning.js",
+			"./MessageHandler": "./dist/MessageHandler.js",
+			"./MessageInput": "./dist/MessageInput.js",
+			"./MessageHandlerResult": "./dist/MessageHandlerResult.js"
 		},
 		"access": "public"
 	},

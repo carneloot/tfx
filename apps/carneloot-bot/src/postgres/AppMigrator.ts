@@ -10,6 +10,7 @@ import { migration0004Checksum, migration0004Sql } from './Migration0004Sql.js';
 import { migration0005Checksum, migration0005Sql } from './Migration0005Sql.js';
 import { migration0006Checksum, migration0006Sql } from './Migration0006Sql.js';
 import { migration0007Checksum, migration0007Sql } from './Migration0007Sql.js';
+import { migration0008Checksum, migration0008Sql } from './Migration0008Sql.js';
 
 const sqlMigration = (
 	version: number,
@@ -45,6 +46,12 @@ const migrations: ReadonlyArray<Migration> = Object.freeze([
 		'notification-recipient-freeze',
 		migration0007Checksum,
 		migration0007Sql,
+	),
+	sqlMigration(
+		8,
+		'food-reply-operations',
+		migration0008Checksum,
+		migration0008Sql,
 	),
 ]);
 

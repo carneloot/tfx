@@ -13,6 +13,9 @@ import {
 	Conversations,
 	MemoryConversationStorage,
 	MessageContext,
+	MessageHandler,
+	MessageHandlerResult,
+	MessageInput,
 	Middleware,
 	UpdateContext,
 	VersionedSchema,
@@ -104,7 +107,57 @@ const build = <
 		infrastructure,
 	) as Effect.Effect<BotRouter.Router, never, never>;
 
+const messageDeclaration = Bot.make('message-declared').add(
+	BotGroup.make('messages')
+		.addMessage(
+			MessageHandler.make('first', {
+				input: MessageInput.text(Schema.String),
+				error: Schema.Void,
+			}),
+		)
+		.addMessage(
+			MessageHandler.make('second', {
+				input: MessageInput.text(Schema.String),
+				error: Schema.Void,
+			}),
+		),
+);
+
 describe('public BotRouter', () => {
+	it('uses declaration order for unmatched message handlers', async () => {
+		const calls: Array<string> = [];
+		const messages = BotBuilder.buildGroup(
+			messageDeclaration,
+			'messages',
+			(handlers) =>
+				handlers
+					.handleMessage('first', () =>
+						Effect.sync(() => {
+							calls.push('first');
+							return MessageHandlerResult.unmatched;
+						}),
+					)
+					.handleMessage('second', () =>
+						Effect.sync(() => {
+							calls.push('second');
+							return MessageHandlerResult.handled;
+						}),
+					),
+		);
+		const router = await Effect.runPromise(
+			Effect.provide(
+				BotRouter.make({
+					bot: messageDeclaration,
+					groups: [messages],
+					botUsername: 'MyBot',
+				}),
+				infrastructure,
+			) as Effect.Effect<BotRouter.Router, never, never>,
+		);
+		await Effect.runPromise(router.route(commandUpdate(1, 'plain') as never));
+		expect(calls).toEqual(['first', 'second']);
+	});
+
 	it('classifies framework failures with retry opt-in and fatal defaults', () => {
 		expect(
 			BotRouter.classifyFrameworkError(

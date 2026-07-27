@@ -35,7 +35,7 @@ export interface RouterOptions {
 	) => Effect.Effect<DispatchOutcome.DispatchOutcome, never>;
 	readonly message?: (
 		update: Update,
-	) => Effect.Effect<DispatchOutcome.DispatchOutcome, never>;
+	) => Effect.Effect<DispatchOutcome.DispatchOutcome | undefined, never>;
 	readonly fallback?: (
 		update: Update,
 	) => Effect.Effect<DispatchOutcome.DispatchOutcome, never>;
@@ -94,9 +94,13 @@ export const make = (options: RouterOptions = {}): Router => ({
 							value.edited_business_message !== undefined ||
 							value.message_reaction !== undefined
 						)
-							return (
-								options.message?.(update) ??
-								Effect.succeed(DispatchOutcome.handled)
+							return Effect.flatMap(
+								options.message?.(update) ?? Effect.succeed(undefined),
+								(message) =>
+									message === undefined
+										? (options.fallback?.(update) ??
+											Effect.succeed(DispatchOutcome.handled))
+										: Effect.succeed(message),
 							);
 						return (
 							options.fallback?.(update) ??

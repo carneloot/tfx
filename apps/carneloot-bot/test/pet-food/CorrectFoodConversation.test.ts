@@ -134,6 +134,7 @@ const harness = (hasEntry = true) => {
 		listEntries: () => Effect.succeed([...entries]),
 		lockEntry: (_p: unknown, id: typeof entryId) =>
 			Effect.succeed(entries.find((x) => x.id === id)),
+		lockAccessibleBySourceMessage: () => Effect.die('unused'),
 		updateEntry: (
 			id: typeof entryId,
 			amountMg: PetFoodEntry['amountMg'],

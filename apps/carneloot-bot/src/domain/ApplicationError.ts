@@ -2,6 +2,7 @@ import * as Schema from 'effect/Schema';
 import { SqlError } from 'effect/unstable/sql/SqlError';
 import { TelegramError } from 'tfx/TelegramError';
 
+import { FoodReplyLedgerError } from '../application/RouteFoodReply.js';
 import { FoodNotificationSchedulerError } from '../ports/FoodNotificationScheduler.js';
 import { ReminderSchedulerError } from '../ports/ReminderScheduler.js';
 import {
@@ -51,6 +52,7 @@ export const ApplicationError = Schema.Union([
 	PetFoodError,
 	ReminderSchedulerError,
 	FoodNotificationSchedulerError,
+	FoodReplyLedgerError,
 	ConversationOperationError,
 	SqlError,
 	TelegramError,

@@ -31,9 +31,20 @@ const build = <
 					`Duplicate group id '${group.id}' while adding fragment '${group.id}' to bot '${name}'`,
 				);
 			const names = new Map<string, string>();
+			const messageIds = new Map<string, string>();
 			for (const current of [...Object.values(groups), group] as ReadonlyArray<
 				BotGroup.BotGroup<string, any>
 			>) {
+				for (const handler of Object.values(
+					current.messageHandlers,
+				) as ReadonlyArray<{ readonly id: string }>) {
+					const previous = messageIds.get(handler.id);
+					if (previous !== undefined)
+						throw new Error(
+							`Duplicate message handler id '${handler.id}' in fragments '${previous}' and '${current.id}'`,
+						);
+					messageIds.set(handler.id, current.id);
+				}
 				for (const command of Object.values(current.commands) as ReadonlyArray<
 					import('./Command.js').Command<string, any, any>
 				>) {

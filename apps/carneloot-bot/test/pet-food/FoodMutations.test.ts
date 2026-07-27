@@ -80,6 +80,7 @@ const run = async (
 		latestEntry: () => Effect.succeed(latest),
 		listEntries: unused,
 		lockEntry: unused,
+		lockAccessibleBySourceMessage: unused,
 		findBySource: unused,
 		findBusinessDuplicate: unused,
 		findBusinessDuplicateExcluding: unused,
@@ -173,6 +174,7 @@ describe('reminder reconciliation', () => {
 			latestEntry: () => Effect.succeed(undefined),
 			listEntries: unused,
 			lockEntry: unused,
+			lockAccessibleBySourceMessage: unused,
 			findBySource: unused,
 			findBusinessDuplicate: unused,
 			findBusinessDuplicateExcluding: unused,
@@ -246,6 +248,7 @@ describe('food mutation services', () => {
 			latestEntry: () => Effect.succeed(current),
 			listEntries: unused,
 			lockEntry: () => Effect.succeed(current),
+			lockAccessibleBySourceMessage: unused,
 			findBySource: unused,
 			findBusinessDuplicate: unused,
 			findBusinessDuplicateExcluding: () =>
