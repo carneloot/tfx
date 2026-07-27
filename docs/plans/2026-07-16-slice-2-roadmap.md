@@ -28,17 +28,17 @@
 
 ## Plans and dependency order
 
-| Order | Plan | Depends on | Verifiable outcome |
-|---:|---|---|---|
-| 1 | [`slice-2-01-caregiver-access-kernel`](./2026-07-16-slice-2-01-caregiver-access-kernel.md) | Slice 1 | Effect-based migration artifact generator plus persisted caregiver access kernel |
-| 2 | [`slice-2-02-caregiver-command-workflows`](./2026-07-16-slice-2-02-caregiver-command-workflows.md) | 1 | Pet deletion and five caregiver commands with durable conversations |
-| 3 | [`slice-2-03-shared-food-and-todos`](./2026-07-16-slice-2-03-shared-food-and-todos.md) | 1 | Shared pet listing/status/addition plus replay-safe `/colocar_racao_todos` and `/todos` |
-| 4 | [`slice-2-04-food-correction-deletion`](./2026-07-16-slice-2-04-food-correction-deletion.md) | 1, 3 | Correct/delete food workflows with atomic reminder repair |
-| 5 | [`slice-2-05-caregiver-notifications`](./2026-07-16-slice-2-05-caregiver-notifications.md) | 1, 3 | Frozen owner/caregiver reminder recipients and silent food-added deliveries |
-| 6 | [`slice-2-06-message-reply-routing`](./2026-07-16-slice-2-06-message-reply-routing.md) | 3–5 | Typed tfx message handlers plus durable, safe reminder/source reply mutations |
-| 7 | [`slice-2-07-legacy-importer`](./2026-07-16-slice-2-07-legacy-importer.md) | 1, 4, 5 | Dry-run-capable, deterministic, verified SQLite/libSQL-to-PostgreSQL importer |
-| 7.5 | [`slice-2-07-5-conversation-keyboards`](./2026-07-16-slice-2-07-5-conversation-keyboards.md) | 2–4 | Every finite conversation choice rendered through a typed reply keyboard with complete removal/cancellation proof |
-| 8 | [`slice-2-08-integration-release`](./2026-07-16-slice-2-08-integration-release.md) | 1–7.5 | Real-PostgreSQL end-to-end milestone proof under Node and Bun |
+| Order | Plan | Status | Depends on | Verifiable outcome |
+|---:|---|---|---|---|
+| 1 | [`slice-2-01-caregiver-access-kernel`](./2026-07-16-slice-2-01-caregiver-access-kernel.md) | Complete | Slice 1 | Effect-based migration artifact generator plus persisted caregiver access kernel |
+| 2 | [`slice-2-02-caregiver-command-workflows`](./2026-07-16-slice-2-02-caregiver-command-workflows.md) | Complete | 1 | Pet deletion and five caregiver commands with durable conversations |
+| 3 | [`slice-2-03-shared-food-and-todos`](./2026-07-16-slice-2-03-shared-food-and-todos.md) | Complete | 1 | Shared pet listing/status/addition plus replay-safe `/colocar_racao_todos` and `/todos` |
+| 4 | [`slice-2-04-food-correction-deletion`](./2026-07-16-slice-2-04-food-correction-deletion.md) | Complete | 1, 3 | Correct/delete food workflows with atomic reminder repair |
+| 5 | [`slice-2-05-caregiver-notifications`](./2026-07-16-slice-2-05-caregiver-notifications.md) | Complete | 1, 3 | Frozen owner/caregiver reminder recipients and silent food-added deliveries |
+| 6 | [`slice-2-06-message-reply-routing`](./2026-07-16-slice-2-06-message-reply-routing.md) | Pending | 3–5 | Typed tfx message handlers plus durable, safe reminder/source reply mutations |
+| 7 | [`slice-2-07-legacy-importer`](./2026-07-16-slice-2-07-legacy-importer.md) | Pending | 1, 4, 5 | Dry-run-capable, deterministic, verified SQLite/libSQL-to-PostgreSQL importer |
+| 7.5 | [`slice-2-07-5-conversation-keyboards`](./2026-07-16-slice-2-07-5-conversation-keyboards.md) | Pending | 2–4 | Every finite conversation choice rendered through a typed reply keyboard with complete removal/cancellation proof |
+| 8 | [`slice-2-08-integration-release`](./2026-07-16-slice-2-08-integration-release.md) | Pending | 1–7.5 | Real-PostgreSQL end-to-end milestone proof under Node and Bun |
 
 ```text
 01 ─┬→ 02

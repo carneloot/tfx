@@ -37,11 +37,11 @@
 
 ### Task 1: Define correction input and entry projections
 
-- [ ] **Step 1: Write failing correction parser tests**
+- [x] **Step 1: Write failing correction parser tests**
 
 Accept amount-only (`50`, `50g`, `50000mg`, `0.05kg`), time-only (`08:30`, `14/07 08:30`), and amount+time. Reject empty input, malformed amount/date/time, date without time, multiple amounts, and trailing text.
 
-- [ ] **Step 2: Implement pure correction parser**
+- [x] **Step 2: Implement pure correction parser**
 
 Expose:
 
@@ -57,7 +57,7 @@ export const parse: (
 
 Parser first recognizes supported time-only forms; otherwise splits first amount token and validates optional remainder through `FoodWhenInput`. At least one field is required. It does not interpret timezone.
 
-- [ ] **Step 3: Define current-day display projection**
+- [x] **Step 3: Define current-day display projection**
 
 `ListCurrentFoodEntries` returns:
 
@@ -71,12 +71,12 @@ export interface DisplayFoodEntry {
 
 Projection sorts `fedAt DESC, id`, formats in pet timezone, and loads actor display without exposing private Telegram fields.
 
-- [ ] **Step 4: Run pure tests**
+- [x] **Step 4: Run pure tests**
 
 Run: `pnpm --filter carneloot-bot test -- FoodCorrectionInput.test.ts`
 Expected: PASS for amount-only, time-only, combined, and malformed cases.
 
-- [ ] **Step 5: Commit input model**
+- [x] **Step 5: Commit input model**
 
 ```bash
 git add apps/carneloot-bot/src/domain/pet-food/FoodCorrectionInput.ts apps/carneloot-bot/src/application/ListCurrentFoodEntries.ts apps/carneloot-bot/test/pet-food/FoodCorrectionInput.test.ts
@@ -85,11 +85,11 @@ git commit -m "feat(carneloot): model food correction input"
 
 ### Task 2: Add lock-safe food repository operations
 
-- [ ] **Step 1: Write failing PostgreSQL repository tests**
+- [x] **Step 1: Write failing PostgreSQL repository tests**
 
 Cover current-day half-open range, deterministic order, lock/find by ID+pet, update preserving source/creator timestamps, delete returning prior row, duplicate exclusion of row being corrected, and concurrent update/delete serialization.
 
-- [ ] **Step 2: Extend repository contract**
+- [x] **Step 2: Extend repository contract**
 
 Add:
 
@@ -119,16 +119,16 @@ readonly deleteEntry: (
 ) => Effect.Effect<PetFoodEntry | undefined, PetFoodRepositoryError>
 ```
 
-- [ ] **Step 3: Implement parameterized SQL**
+- [x] **Step 3: Implement parameterized SQL**
 
 `lockEntry` uses pet+entry predicates and `FOR UPDATE`. `listEntries` uses `fed_at >= start AND fed_at < end`. Update changes only `amount_mg`, `fed_at`, and `updated_at`; source fields and `created_at` remain immutable.
 
-- [ ] **Step 4: Run repository tests**
+- [x] **Step 4: Run repository tests**
 
 Run: `pnpm --filter carneloot-bot test:integration -- FoodMutations.integration.test.ts -t "repository"`
 Expected: PASS with row locking and immutable provenance.
 
-- [ ] **Step 5: Commit repository methods**
+- [x] **Step 5: Commit repository methods**
 
 ```bash
 git add apps/carneloot-bot/src/ports/PetFoodRepository.ts apps/carneloot-bot/src/postgres/PetFoodRepositoryLive.ts apps/carneloot-bot/test/pet-food/FoodMutations.integration.test.ts
@@ -137,11 +137,11 @@ git commit -m "feat(carneloot): add food mutation persistence"
 
 ### Task 3: Centralize reminder reconciliation
 
-- [ ] **Step 1: Write failing reconciliation tests**
+- [x] **Step 1: Write failing reconciliation tests**
 
 Cover unchanged latest; latest timestamp changed; backdated row changed but remains non-latest; backdated row becomes latest; latest moves behind previous row; latest deletion exposes previous row; final deletion; reminders disabled; scheduler failure rollback.
 
-- [ ] **Step 2: Implement reconciliation contract**
+- [x] **Step 2: Implement reconciliation contract**
 
 ```ts
 export interface LatestSnapshot {
@@ -158,17 +158,17 @@ export interface ReconcileFoodReminderRequest {
 
 Export `reconcile(request: ReconcileFoodReminderRequest)`. Inside ambient transaction, reload latest after mutation and settings. If latest identity/time equals `before`, do nothing. If no latest or delay is null, call `cancelForPet`. Otherwise call `replaceForLatest` with `latest.fedAt + reminderDelay`. Stable conflict key replaces prior schedule.
 
-- [ ] **Step 3: Run reconciliation tests**
+- [x] **Step 3: Run reconciliation tests**
 
 Run: `pnpm --filter carneloot-bot test -- FoodMutations.test.ts -t "reminder reconciliation"`
 Expected: PASS for all latest/non-latest transitions.
 
-- [ ] **Step 4: Run durable scheduler integration**
+- [x] **Step 4: Run durable scheduler integration**
 
 Run: `pnpm --filter carneloot-bot test:integration -- FeedingReminderScheduling.integration.test.ts FoodMutations.integration.test.ts -t "reminder"`
 Expected: one active reminder per pet, prior job cancelled, rollback on scheduler failure.
 
-- [ ] **Step 5: Commit reconciliation**
+- [x] **Step 5: Commit reconciliation**
 
 ```bash
 git add apps/carneloot-bot/src/application/ReconcileFoodReminder.ts apps/carneloot-bot/test/pet-food/FoodMutations.test.ts apps/carneloot-bot/test/notifications/FeedingReminderScheduling.integration.test.ts
@@ -177,11 +177,11 @@ git commit -m "fix(carneloot): reconcile reminders after food mutation"
 
 ### Task 4: Implement correction and deletion services
 
-- [ ] **Step 1: Write failing application tests**
+- [x] **Step 1: Write failing application tests**
 
 Cover owner/caregiver success, pending/rejected denial, missing/deleted entry, current-day enforcement, amount-only/time-only correction, duplicate corrected timestamp, access revocation, and scheduler failure rollback.
 
-- [ ] **Step 2: Implement `CorrectFood.execute`**
+- [x] **Step 2: Implement `CorrectFood.execute`**
 
 Within one transaction:
 
@@ -196,11 +196,11 @@ Within one transaction:
 9. reconcile reminder;
 10. return updated row and timezone.
 
-- [ ] **Step 3: Implement `DeleteFood.execute`**
+- [x] **Step 3: Implement `DeleteFood.execute`**
 
 Use same authorization/day/lock sequence, delete selected entry, reconcile from remaining latest entry, and return deleted row. Missing entry produces non-leaking `FoodEntryNotFound`.
 
-- [ ] **Step 4: Run application and SQL tests**
+- [x] **Step 4: Run application and SQL tests**
 
 Run: `pnpm --filter carneloot-bot test -- FoodMutations.test.ts`
 Expected: PASS.
@@ -208,7 +208,7 @@ Expected: PASS.
 Run: `pnpm --filter carneloot-bot test:integration -- FoodMutations.integration.test.ts`
 Expected: PASS with transaction rollback and durable reminder replacement.
 
-- [ ] **Step 5: Commit services**
+- [x] **Step 5: Commit services**
 
 ```bash
 git add apps/carneloot-bot/src/application apps/carneloot-bot/src/domain/pet-food/PetFoodError.ts apps/carneloot-bot/test/pet-food/FoodMutations*.test.ts
@@ -217,11 +217,11 @@ git commit -m "feat(carneloot): correct and delete food safely"
 
 ### Task 5: Add command declarations and conversations
 
-- [ ] **Step 1: Add failing exhaustive-builder fixture**
+- [x] **Step 1: Add failing exhaustive-builder fixture**
 
 Declare IDs before bindings and run `BotLayers.test.ts`; expect missing implementations.
 
-- [ ] **Step 2: Declare commands**
+- [x] **Step 2: Declare commands**
 
 ```text
 correctFood → corrigir_racao → Corrigir um registro de ração
@@ -230,24 +230,24 @@ deleteFood  → deletar_racao  → Deletar um registro de ração
 
 Both use `RegisteredUser`, no command arguments, and `ApplicationError`.
 
-- [ ] **Step 3: Implement correction conversation**
+- [x] **Step 3: Implement correction conversation**
 
 ID `correct-pet-food`, version `1`, steps `pet`, `entry`, `correction`. Accessible-pet choice rechecks access. Entry options show amount, localized timestamp, and actor; add `Cancelar`. Empty day replies `Não há registros de ração hoje para este pet.`. Correction handler passes current `MessageContext.message.date` as parsing anchor. Success: `Ração alterada com sucesso!`.
 
-- [ ] **Step 4: Implement deletion conversation**
+- [x] **Step 4: Implement deletion conversation**
 
 ID `delete-pet-food`, version `1`, steps `pet`, `entry`. Use same entry projection and `Cancelar`. Success: `Ração deletada com sucesso!`.
 
-- [ ] **Step 5: Bind router and errors**
+- [x] **Step 5: Bind router and errors**
 
 Add handlers, built conversations, `FoodEntryNotFound`/correction input classification, command-menu expectations, and package type tests. Mutations occur inside storage-controlled transition transaction; success output stays in `afterCommit`.
 
-- [ ] **Step 6: Run command tests**
+- [x] **Step 6: Run command tests**
 
 Run: `pnpm --filter carneloot-bot test -- PetFoodCommands.test.ts BotLayers.test.ts Router.test.ts NodeSmoke.test.ts`
 Expected: PASS for empty/cancel/invalid/restart/output-failure flows.
 
-- [ ] **Step 7: Commit commands**
+- [x] **Step 7: Commit commands**
 
 ```bash
 git add apps/carneloot-bot/src/bot apps/carneloot-bot/src/Router.ts apps/carneloot-bot/test
@@ -256,15 +256,15 @@ git commit -m "feat(carneloot): add food correction and deletion commands"
 
 ### Task 6: Prove correction/deletion end to end
 
-- [ ] **Step 1: Add correction/deletion update scenario**
+- [x] **Step 1: Add correction/deletion update scenario**
 
 With real PostgreSQL: create previous/latest/backdated entries; correct latest time; move latest behind previous; delete resulting latest; delete final entry. Assert exact active reminder target/run time after each update.
 
-- [ ] **Step 2: Add duplicate/revocation/replay scenario**
+- [x] **Step 2: Add duplicate/revocation/replay scenario**
 
 Reject corrected business duplicate, revoke caregiver between entry rendering and input, and redeliver final update. Assert no unauthorized write and one mutation on replay.
 
-- [ ] **Step 3: Run E2E and package gates**
+- [x] **Step 3: Run E2E and package gates**
 
 Run: `pnpm --filter carneloot-bot test:integration -- FoodMutationCommands.e2e.integration.test.ts FoodMutations.integration.test.ts`
 Expected: PASS.
@@ -272,7 +272,7 @@ Expected: PASS.
 Run: `pnpm format && pnpm lint && pnpm --filter carneloot-bot check && pnpm --filter carneloot-bot test`
 Expected: PASS.
 
-- [ ] **Step 4: Commit proof**
+- [x] **Step 4: Commit proof**
 
 ```bash
 git add apps/carneloot-bot/test/pet-food/FoodMutationCommands.e2e.integration.test.ts apps/carneloot-bot/src/DomainLive.ts
