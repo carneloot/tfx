@@ -34,6 +34,10 @@ import {
 	migration0008Checksum,
 	migration0008Sql,
 } from '../src/postgres/Migration0008Sql.js';
+import {
+	migration0009Checksum,
+	migration0009Sql,
+} from '../src/postgres/Migration0009Sql.js';
 
 describe('application migration artifacts', () => {
 	it.each([
@@ -57,6 +61,7 @@ describe('application migration artifacts', () => {
 			migration0007Checksum,
 		],
 		['0008_food_reply_operations.sql', migration0008Sql, migration0008Checksum],
+		['0009_import_targets.sql', migration0009Sql, migration0009Checksum],
 	] as const)(
 		'matches committed %s bytes and SHA-256',
 		(file, sql, checksum) => {
@@ -90,6 +95,22 @@ describe('application migration artifacts', () => {
 		);
 		expect(migration0008Sql).toContain(
 			'(source_bot_id, source_message_chat_id, source_message_id)',
+		);
+	});
+
+	it('defines dormant legacy import targets with exact integrity constraints', () => {
+		expect(migration0009Sql).toContain(
+			"CONSTRAINT api_keys_sha256_check CHECK (key_hash ~ '^[0-9a-f]{64}$')",
+		);
+		expect(migration0009Sql).toContain(
+			'CONSTRAINT notification_templates_owner_keyword_key UNIQUE (owner_user_id, keyword)',
+		);
+		expect(migration0009Sql).toContain('PRIMARY KEY (template_id, user_id)');
+		expect(migration0009Sql).toContain(
+			'PRIMARY KEY (source_fingerprint, source_table, source_key, target_table)',
+		);
+		expect(migration0009Sql).toContain(
+			"CONSTRAINT legacy_import_ledger_digest_check CHECK (row_digest ~ '^[0-9a-f]{64}$')",
 		);
 	});
 
