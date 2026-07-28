@@ -1,9 +1,11 @@
 import * as Effect from 'effect/Effect';
-import { rename, writeFile } from 'node:fs/promises';
-import { dirname, basename, join } from 'node:path';
+import * as FileSystem from 'effect/FileSystem';
+import * as Path from 'effect/Path';
+import * as Random from 'effect/Random';
 
 import { LegacyImportError } from './LegacyImportError.js';
 import type { RoundingNotice } from './LegacyMapping.js';
+
 export interface ImportIssue {
 	readonly code: string;
 	readonly table: string;
@@ -43,21 +45,38 @@ export const normalizeReport = (
 	warnings: sorted(report.warnings),
 	blockers: sorted(report.blockers),
 });
-export const writeReportAtomic = (path: string, report: LegacyImportReport) =>
-	Effect.tryPromise({
-		try: async () => {
-			const temp = join(dirname(path), `.${basename(path)}.${process.pid}.tmp`);
-			await writeFile(
-				temp,
+
+export const writeReportAtomic = (
+	destination: string,
+	report: LegacyImportReport,
+) =>
+	Effect.gen(function* () {
+		const fileSystem = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const nonce = yield* Random.nextInt;
+		const temporary = path.join(
+			path.dirname(destination),
+			`.${path.basename(destination)}.${nonce}.tmp`,
+		);
+		const write = fileSystem
+			.writeFileString(
+				temporary,
 				`${JSON.stringify(normalizeReport(report), null, 2)}\n`,
 				{ mode: 0o600 },
-			);
-			await rename(temp, path);
-		},
-		catch: (cause) =>
-			new LegacyImportError({
-				reason: 'InvalidConfiguration',
-				message: 'Unable to write import report',
-				cause,
-			}),
-	});
+			)
+			.pipe(Effect.andThen(fileSystem.rename(temporary, destination)));
+		yield* write.pipe(
+			Effect.ensuring(
+				fileSystem.remove(temporary, { force: true }).pipe(Effect.ignore),
+			),
+		);
+	}).pipe(
+		Effect.mapError(
+			(cause) =>
+				new LegacyImportError({
+					reason: 'InvalidConfiguration',
+					message: 'Unable to write import report',
+					cause,
+				}),
+		),
+	);

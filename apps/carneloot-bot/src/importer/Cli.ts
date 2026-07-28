@@ -15,6 +15,16 @@ const optionalSecret = (flag: string, environment: string) =>
 		Flag.withFallbackConfig(Config.option(Config.redacted(environment))),
 	);
 
+const requiredSecret = (
+	flag: string,
+	environment: string,
+	description: string,
+) =>
+	Param.redacted(Param.flagKind, flag).pipe(
+		Flag.withDescription(`${description} Falls back to ${environment}.`),
+		Flag.withFallbackConfig(Config.redacted(environment)),
+	);
+
 export const flags = {
 	sourceUrl: required(
 		'source-url',
@@ -35,7 +45,11 @@ export const flags = {
 		'BOT_ID',
 		'Carneloot bot ID used to reconstruct Telegram identities and food replay keys.',
 	),
-	databaseUrl: optionalSecret('database-url', 'DATABASE_URL'),
+	databaseUrl: requiredSecret(
+		'database-url',
+		'DATABASE_URL',
+		'Target PostgreSQL connection URL.',
+	),
 	dryRun: Flag.boolean('dry-run').pipe(Flag.withDefault(false)),
 	reportPath: Flag.optional(Flag.string('report')),
 };
@@ -52,9 +66,7 @@ export const toConfig = (value: Flags): LegacyImportConfigService => {
 	const sourceAuthToken = Option.isOption(value.sourceAuthToken)
 		? Option.getOrUndefined(value.sourceAuthToken)
 		: value.sourceAuthToken;
-	const databaseUrl = Option.isOption(value.databaseUrl)
-		? Option.getOrUndefined(value.databaseUrl)
-		: value.databaseUrl;
+	const databaseUrl = value.databaseUrl;
 	const reportPath =
 		value.reportPath._tag === 'Some' ? value.reportPath.value : undefined;
 	return {
@@ -62,7 +74,7 @@ export const toConfig = (value: Flags): LegacyImportConfigService => {
 		...(sourceAuthToken ? { sourceAuthToken } : {}),
 		sourceId: value.sourceId,
 		botId: value.botId,
-		...(databaseUrl ? { databaseUrl } : {}),
+		databaseUrl,
 		dryRun: value.dryRun,
 		...(reportPath ? { reportPath } : {}),
 	};

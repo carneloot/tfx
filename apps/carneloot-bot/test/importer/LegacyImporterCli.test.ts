@@ -4,6 +4,7 @@ import { Command } from 'effect/unstable/cli';
 import { describe, expect, it } from 'vitest';
 
 import { flags, toConfig } from '../../src/importer/Cli.js';
+import { blockerSummary } from '../../src/importer/Command.js';
 import type { LegacyImportConfigService } from '../../src/importer/LegacyImportConfig.js';
 
 const run = (args: ReadonlyArray<string>) =>
@@ -42,6 +43,31 @@ describe('legacy importer CLI', () => {
 		expect(result.reportPath).toBe('out.json');
 		expect(String(result.databaseUrl)).not.toContain('secret');
 		expect(Redacted.value(result.sourceAuthToken)).toBe('token');
+	});
+
+	it('renders actionable, sorted blocker details', () => {
+		const message = blockerSummary(
+			[
+				{
+					code: 'missing-reference',
+					table: 'pets',
+					sourceKey: '2',
+					message: 'Missing owner',
+				},
+				{
+					code: 'unsafe-telegram-id',
+					table: 'users',
+					sourceKey: '1',
+					message: 'Telegram ID must be a positive safe integer',
+				},
+			],
+			'report.json',
+		);
+		expect(message).toContain(
+			'Legacy import blocked by 2 verification issue(s)',
+		);
+		expect(message).toContain('pets/2 [missing-reference]: Missing owner');
+		expect(message).toContain('Full report: report.json');
 	});
 
 	it('rejects unknown and missing flags', async () => {

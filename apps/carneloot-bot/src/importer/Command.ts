@@ -8,8 +8,37 @@ import { flags, toConfig } from './Cli.js';
 import { LegacyImportConfig, layerFrom } from './LegacyImportConfig.js';
 import { run } from './LegacyImporter.js';
 import { LegacyImportError } from './LegacyImportError.js';
+import type { ImportIssue } from './LegacyReport.js';
 import * as LegacySourceLive from './LegacySourceLive.js';
 import * as LegacyTargetLive from './LegacyTargetLive.js';
+
+export const blockerSummary = (
+	blockers: ReadonlyArray<ImportIssue>,
+	reportPath: string | undefined,
+) => {
+	const visible = [...blockers].sort((left, right) =>
+		`${left.table}\0${left.sourceKey}\0${left.code}`.localeCompare(
+			`${right.table}\0${right.sourceKey}\0${right.code}`,
+		),
+	);
+	const limit = 20;
+	const details = visible
+		.slice(0, limit)
+		.map(
+			(blocker) =>
+				`- ${blocker.table}/${blocker.sourceKey} [${blocker.code}]: ${blocker.message}`,
+		)
+		.join('\n');
+	const remaining = visible.length - limit;
+	return [
+		`Legacy import blocked by ${visible.length} verification issue(s):`,
+		details,
+		...(remaining > 0 ? [`... ${remaining} more issue(s) omitted`] : []),
+		reportPath
+			? `Full report: ${reportPath}`
+			: 'Pass --report <path> to write the complete sanitized report.',
+	].join('\n');
+};
 
 const infrastructure = Layer.unwrap(
 	Effect.map(LegacyImportConfig, (config) =>
@@ -34,7 +63,7 @@ const importLegacy = Effect.gen(function* () {
 		return yield* Effect.fail(
 			new LegacyImportError({
 				reason: 'Blocked',
-				message: 'Legacy import verification found blockers',
+				message: blockerSummary(report.blockers, config.reportPath),
 			}),
 		);
 }).pipe(Effect.provide(infrastructure));

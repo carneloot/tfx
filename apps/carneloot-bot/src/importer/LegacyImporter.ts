@@ -28,9 +28,9 @@ export const run = Effect.gen(function* () {
 		decoded.issues,
 		config.dryRun ? 'dry-run' : 'import',
 	);
-	if (!config.dryRun && report.blockers.length === 0) {
+	if (report.blockers.length === 0) {
 		const target = yield* LegacyTarget;
-		const promoted = yield* target.promote(mapped);
+		const promoted = yield* target.promote(mapped, { dryRun: config.dryRun });
 		const counts = Object.fromEntries(
 			Object.entries(report.counts).map(([table, count]) => [
 				table,
