@@ -11,11 +11,34 @@ import { LegacyTarget, type PromotionResult } from './LegacyTarget.js';
 class DryRunRollback extends Data.TaggedError('DryRunRollback')<{}> {}
 
 const failure = (cause: unknown) =>
+	cause instanceof LegacyImportError
+		? cause
+		: new LegacyImportError({
+				reason: 'TargetUnavailable',
+				message: 'Legacy target promotion failed',
+				cause,
+			});
+
+const ledgerMismatch = (
+	row: {
+		readonly sourceTable: string;
+		readonly sourceKey: string;
+		readonly targetTable: string;
+		readonly targetKey: string;
+	},
+	ledger: { readonly target_table: string; readonly target_key: string },
+) =>
 	new LegacyImportError({
-		reason: 'TargetUnavailable',
-		message: 'Legacy target promotion failed',
-		cause,
+		reason: 'Blocked',
+		message: [
+			`Legacy ledger collision for ${row.sourceTable}/${row.sourceKey}.`,
+			`Existing ledger target: ${ledger.target_table}/${ledger.target_key}.`,
+			`Current mapped target: ${row.targetTable}/${row.targetKey}.`,
+			'One legacy source row maps to multiple target records, but legacy_import_ledger currently keys only source rows.',
+			'Change the ledger primary key to include target_table, then rerun against a fresh target.',
+		].join(' '),
 	});
+
 export const layer = Layer.effect(
 	LegacyTarget,
 	Effect.map(PgClient.PgClient, (sql) =>
@@ -45,11 +68,7 @@ export const layer = Layer.effect(
 											ledger[0].target_table !== row.targetTable ||
 											ledger[0].target_key !== row.targetKey
 										)
-											return yield* Effect.fail(
-												failure(
-													'Import ledger does not match canonical mapping',
-												),
-											);
+											return yield* Effect.fail(ledgerMismatch(row, ledger[0]));
 										existing[row.sourceTable] =
 											(existing[row.sourceTable] ?? 0) + 1;
 										continue;

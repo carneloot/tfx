@@ -1,10 +1,17 @@
 import * as Crypto from 'effect/Crypto';
 import * as Effect from 'effect/Effect';
+import * as Schema from 'effect/Schema';
 /* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/consistent-type-assertions */
 import { createHash } from 'node:crypto';
 
 import { legacyId } from './LegacyId.js';
-import type { LegacyRow, LegacySnapshot } from './LegacySchemas.js';
+import {
+	decodeLegacyConfigValue,
+	LegacyNotificationDelay,
+	LegacyPetDayStart,
+	type LegacyRow,
+	type LegacySnapshot,
+} from './LegacySchemas.js';
 
 export interface MappedRow {
 	readonly sourceTable: string;
@@ -158,21 +165,18 @@ export const mapLegacySnapshot = (
 			const petId = match ? ids.get(`pets:${match[1]}`) : undefined;
 			if (!petId) continue;
 			const current = settings.get(petId) ?? {};
-			const value = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
-			if (r.key === 'dayStart' && value && typeof value === 'object') {
-				const v = value as Record<string, unknown>;
-				current.day_start = v.time;
-				current.timezone = v.timezone;
-			} else if (
-				r.key === 'notificationDelay' &&
-				value &&
-				typeof value === 'object'
-			) {
-				const v = value as Record<string, unknown>;
+			const value = decodeLegacyConfigValue(r.value);
+			if (r.key === 'dayStart') {
+				const dayStart = Schema.decodeUnknownSync(LegacyPetDayStart)(value);
+				current.day_start = `${String(dayStart.hour).padStart(2, '0')}:00`;
+				current.timezone = dayStart.timezone;
+			} else if (r.key === 'notificationDelay') {
+				const delay = Schema.decodeUnknownSync(LegacyNotificationDelay)(value);
 				current.reminder_delay_ms =
-					((num(v.days ?? 0) * 24 + num(v.hours ?? 0)) * 60 +
-						num(v.minutes ?? 0)) *
-					60_000;
+					((num(delay.days ?? 0) * 24 + num(delay.hours ?? 0)) * 60 +
+						num(delay.minutes ?? 0)) *
+						60_000 +
+					num(delay.seconds ?? 0) * 1000;
 			}
 			settings.set(petId, current);
 		}

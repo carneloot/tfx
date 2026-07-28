@@ -44,22 +44,27 @@ export const layer = Layer.effect(
 		if (Number(pragma.rows[0]?.query_only ?? 0) !== 1)
 			return yield* Effect.fail(sourceError('query_only was not enabled'));
 		return LegacySource.of({
-			readSnapshot: Effect.tryPromise({
-				try: async () => {
-					const entries: Array<[string, LegacyRow[]]> = [];
-					for (const table of legacyTables) {
-						const result = await client.execute(
-							`SELECT * FROM ${table} ORDER BY id`,
-						);
-						entries.push([
-							table,
-							result.rows.map((row) => ({ ...row }) as LegacyRow),
-						]);
-					}
-					return Object.fromEntries(entries) as unknown as LegacySnapshot;
-				},
-				catch: sourceError,
-			}),
+			readSnapshot: Effect.forEach(
+				legacyTables,
+				(table) =>
+					Effect.tryPromise({
+						try: async () => {
+							const result = await client.execute(
+								`SELECT * FROM ${table} ORDER BY id`,
+							);
+							return [
+								table,
+								result.rows.map((row) => ({ ...row }) as LegacyRow),
+							] as const;
+						},
+						catch: sourceError,
+					}),
+				{ concurrency: 'unbounded' },
+			).pipe(
+				Effect.map(
+					(entries) => Object.fromEntries(entries) as unknown as LegacySnapshot,
+				),
+			),
 		});
 	}),
 );

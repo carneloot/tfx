@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
+import * as Schema from 'effect/Schema';
 export const legacyTables = [
 	'users',
 	'pets',
@@ -15,6 +16,39 @@ export type LegacyTable = (typeof legacyTables)[number];
 export type LegacyRow = Readonly<Record<string, unknown>>;
 export type LegacySnapshot = {
 	readonly [K in LegacyTable]: ReadonlyArray<LegacyRow>;
+};
+
+export const LegacyPetDayStart = Schema.Struct({
+	hour: Schema.Number.pipe(
+		Schema.check(
+			Schema.isInt(),
+			Schema.isGreaterThan(0),
+			Schema.isLessThanOrEqualTo(12),
+		),
+	),
+	timezone: Schema.NonEmptyString,
+});
+export const LegacyNotificationDelay = Schema.Struct({
+	days: Schema.optionalKey(Schema.Number),
+	hours: Schema.optionalKey(Schema.Number),
+	minutes: Schema.optionalKey(Schema.Number),
+	seconds: Schema.optionalKey(Schema.Number),
+});
+
+const decoder = new TextDecoder();
+export const decodeLegacyConfigValue = (value: unknown): unknown => {
+	if (typeof value === 'string') return JSON.parse(value);
+	if (value instanceof ArrayBuffer) return JSON.parse(decoder.decode(value));
+	if (ArrayBuffer.isView(value))
+		return JSON.parse(
+			decoder.decode(
+				value.buffer.slice(
+					value.byteOffset,
+					value.byteOffset + value.byteLength,
+				),
+			),
+		);
+	return value;
 };
 
 export interface DecodeIssue {
@@ -75,7 +109,7 @@ export const decodeLegacyRow = (
 			text(row, 'context');
 			text(row, 'key', true);
 			try {
-				if (typeof row.value === 'string') JSON.parse(row.value);
+				decodeLegacyConfigValue(row.value);
 			} catch {
 				throw new Error('value: invalid JSON');
 			}
