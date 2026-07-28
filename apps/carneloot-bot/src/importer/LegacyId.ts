@@ -1,4 +1,4 @@
-import { Crypto, Effect, Schema } from 'effect';
+import { Crypto, Effect, Encoding, Schema } from 'effect';
 
 import { Uuid } from '../domain/Uuid.js';
 
@@ -7,16 +7,13 @@ export const LegacyIdNamespace = '7d4f55c8-2f1d-5b6c-9a3e-8b4f1e7c2d90';
 
 const encoder = new TextEncoder();
 
-const bytesToHex = (bytes: Uint8Array): string =>
-	Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-
 const namespaceBytes = Uint8Array.from([
 	0x7d, 0x4f, 0x55, 0xc8, 0x2f, 0x1d, 0x5b, 0x6c, 0x9a, 0x3e, 0x8b, 0x4f, 0x1e,
 	0x7c, 0x2d, 0x90,
 ]);
 
 const formatUuid = (bytes: Uint8Array): string => {
-	const hex = bytesToHex(bytes);
+	const hex = Encoding.encodeHex(bytes);
 	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
@@ -28,7 +25,7 @@ export const sourceFingerprint = (sourceId: string) =>
 			'SHA-256',
 			encoder.encode(`legacy-source-v1\0${sourceId}`),
 		);
-		return `sha256:${bytesToHex(digest)}`;
+		return `sha256:${Encoding.encodeHex(digest)}`;
 	});
 
 /** RFC 4122 UUIDv5 derived solely from source identity, table, and legacy key. */
