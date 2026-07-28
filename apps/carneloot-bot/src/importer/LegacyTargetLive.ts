@@ -61,7 +61,7 @@ export const layer = Layer.effect(
 										row_digest: string;
 										target_table: string;
 										target_key: string;
-									}>`SELECT row_digest,target_table,target_key FROM carneloot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint} AND source_table=${row.sourceTable} AND source_key=${row.sourceKey} FOR UPDATE`;
+									}>`SELECT row_digest,target_table,target_key FROM carneloot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint} AND source_table=${row.sourceTable} AND source_key=${row.sourceKey} AND target_table=${row.targetTable} FOR UPDATE`;
 									if (ledger[0]) {
 										if (
 											ledger[0].row_digest !== digest ||

@@ -107,7 +107,7 @@ describe('application migration artifacts', () => {
 		);
 		expect(migration0009Sql).toContain('PRIMARY KEY (template_id, user_id)');
 		expect(migration0009Sql).toContain(
-			'PRIMARY KEY (source_fingerprint, source_table, source_key)',
+			'PRIMARY KEY (source_fingerprint, source_table, source_key, target_table)',
 		);
 		expect(migration0009Sql).toContain(
 			"CONSTRAINT legacy_import_ledger_digest_check CHECK (row_digest ~ '^[0-9a-f]{64}$')",

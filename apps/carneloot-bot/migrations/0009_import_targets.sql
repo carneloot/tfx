@@ -34,7 +34,7 @@ CREATE TABLE carneloot.legacy_import_ledger (
   target_key text NOT NULL,
   row_digest text NOT NULL,
   imported_at timestamptz NOT NULL,
-  PRIMARY KEY (source_fingerprint, source_table, source_key),
+  PRIMARY KEY (source_fingerprint, source_table, source_key, target_table),
   CONSTRAINT legacy_import_ledger_fingerprint_nonempty CHECK (octet_length(source_fingerprint) BETWEEN 1 AND 128),
   CONSTRAINT legacy_import_ledger_digest_check CHECK (row_digest ~ '^[0-9a-f]{64}$')
 );
