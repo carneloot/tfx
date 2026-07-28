@@ -34,8 +34,8 @@ const ledgerMismatch = (
 			`Legacy ledger collision for ${row.sourceTable}/${row.sourceKey}.`,
 			`Existing ledger target: ${ledger.target_table}/${ledger.target_key}.`,
 			`Current mapped target: ${row.targetTable}/${row.targetKey}.`,
-			'One legacy source row maps to multiple target records, but legacy_import_ledger currently keys only source rows.',
-			'Change the ledger primary key to include target_table, then rerun against a fresh target.',
+			'The stored deterministic mapping differs from the current source row or importer mapping.',
+			'Reset the target import data or use a new source ID before rerunning.'
 		].join(' '),
 	});
 
