@@ -65,12 +65,18 @@ const importLegacy = Effect.gen(function* () {
 				message: blockerSummary(report.blockers, config.reportPath),
 			}),
 		);
-}).pipe(Effect.provide(infrastructure));
+}).pipe(
+	Effect.withSpan('legacy-import.import'),
+	Effect.provide(infrastructure),
+);
 
 export const commandMigrate = Command.make('migrate', migrationFlags).pipe(
 	Command.withDescription('Create or update legacy import target tables.'),
 	Command.withHandler((parsed) =>
-		migrate.pipe(Effect.provide(PgClient.layer({ url: parsed.databaseUrl }))),
+		migrate.pipe(
+			Effect.withSpan('legacy-import.migrate'),
+			Effect.provide(PgClient.layer({ url: parsed.databaseUrl })),
+		),
 	),
 );
 

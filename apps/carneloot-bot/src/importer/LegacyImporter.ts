@@ -14,25 +14,37 @@ export const run = Effect.gen(function* () {
 	const startedAt = yield* DateTime.now;
 	const config = yield* LegacyImportConfig;
 	const source = yield* LegacySource;
-	const raw = yield* source.readSnapshot;
-	const decoded = decodeSnapshot(raw);
+	const raw = yield* source.readSnapshot.pipe(
+		Effect.withSpan('legacy-import.read-source'),
+	);
+	const decoded = yield* Effect.sync(() => decodeSnapshot(raw)).pipe(
+		Effect.withSpan('legacy-import.decode-source'),
+	);
 	const fingerprint = yield* sourceFingerprint(config.sourceId);
 	const mapped = yield* mapLegacySnapshot(
 		decoded.snapshot,
 		fingerprint,
 		config.botId,
 		DateTime.toDateUtc(startedAt),
-	);
-	let report: LegacyImportReport = verifyLegacy(
-		decoded.snapshot,
-		mapped,
-		decoded.issues,
-		config.dryRun ? 'dry-run' : 'import',
-		startedAt,
-	);
+	).pipe(Effect.withSpan('legacy-import.map-source'));
+	let report: LegacyImportReport = yield* Effect.sync(() =>
+		verifyLegacy(
+			decoded.snapshot,
+			mapped,
+			decoded.issues,
+			config.dryRun ? 'dry-run' : 'import',
+			startedAt,
+		),
+	).pipe(Effect.withSpan('legacy-import.verify'));
 	if (report.blockers.length === 0) {
 		const target = yield* LegacyTarget;
-		const promoted = yield* target.promote(mapped, { dryRun: config.dryRun });
+		const promoted = yield* target
+			.promote(mapped, { dryRun: config.dryRun })
+			.pipe(
+				Effect.withSpan('legacy-import.promote', {
+					attributes: { dryRun: config.dryRun, mappedRows: mapped.rows.length },
+				}),
+			);
 		const counts = Object.fromEntries(
 			Object.entries(report.counts).map(([table, count]) => [
 				table,
@@ -53,6 +65,9 @@ export const run = Effect.gen(function* () {
 		durationMs: Duration.toMillis(duration),
 		duration: Duration.format(duration),
 	};
-	if (config.reportPath) yield* writeReportAtomic(config.reportPath, report);
+	if (config.reportPath)
+		yield* writeReportAtomic(config.reportPath, report).pipe(
+			Effect.withSpan('legacy-import.write-report'),
+		);
 	return report;
 });
