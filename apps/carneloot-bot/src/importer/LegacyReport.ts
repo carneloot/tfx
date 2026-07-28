@@ -14,6 +14,10 @@ export interface ImportIssue {
 }
 export interface LegacyImportReport {
 	readonly mode: 'dry-run' | 'import';
+	readonly startedAt: string;
+	readonly completedAt: string;
+	readonly durationMs: number;
+	readonly duration: string;
 	readonly sourceFingerprint: string;
 	readonly counts: Readonly<
 		Record<

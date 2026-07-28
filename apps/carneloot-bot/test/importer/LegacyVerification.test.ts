@@ -1,3 +1,4 @@
+import * as DateTime from 'effect/DateTime';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -52,6 +53,7 @@ describe('legacy source schema', () => {
 			},
 			[],
 			'dry-run',
+			DateTime.makeUnsafe('2026-07-16T00:00:00.000Z'),
 		);
 		expect(report.blockers).toContainEqual(
 			expect.objectContaining({ code: 'source-update-collision' }),

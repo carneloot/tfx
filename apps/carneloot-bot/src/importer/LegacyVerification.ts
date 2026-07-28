@@ -1,3 +1,5 @@
+import * as DateTime from 'effect/DateTime';
+
 import type { MappedLegacy } from './LegacyMapping.js';
 import type { ImportIssue, LegacyImportReport } from './LegacyReport.js';
 import type { DecodeIssue, LegacySnapshot } from './LegacySchemas.js';
@@ -12,6 +14,7 @@ export const verifyLegacy = (
 	mapped: MappedLegacy,
 	decodeIssues: ReadonlyArray<DecodeIssue>,
 	mode: 'dry-run' | 'import',
+	startedAt: DateTime.Utc,
 ): LegacyImportReport => {
 	const blockers: ImportIssue[] = decodeIssues.map((i) =>
 		issue(
@@ -191,6 +194,10 @@ export const verifyLegacy = (
 	}
 	return {
 		mode,
+		startedAt: DateTime.formatIso(startedAt),
+		completedAt: DateTime.formatIso(startedAt),
+		durationMs: 0,
+		duration: '0ms',
 		sourceFingerprint: mapped.fingerprint,
 		counts,
 		rounding: mapped.rounding,
