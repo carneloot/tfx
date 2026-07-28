@@ -15,7 +15,7 @@ const optionalSecret = (flag: string, environment: string) =>
 		Flag.withFallbackConfig(Config.option(Config.redacted(environment))),
 	);
 
-const requiredSecret = (
+export const requiredSecret = (
 	flag: string,
 	environment: string,
 	description: string,
@@ -24,6 +24,14 @@ const requiredSecret = (
 		Flag.withDescription(`${description} Falls back to ${environment}.`),
 		Flag.withFallbackConfig(Config.redacted(environment)),
 	);
+
+export const migrationFlags = {
+	databaseUrl: requiredSecret(
+		'database-url',
+		'DATABASE_URL',
+		'Target PostgreSQL connection URL.',
+	),
+};
 
 export const flags = {
 	sourceUrl: required(
@@ -45,11 +53,7 @@ export const flags = {
 		'BOT_ID',
 		'Carneloot bot ID used to reconstruct Telegram identities and food replay keys.',
 	),
-	databaseUrl: requiredSecret(
-		'database-url',
-		'DATABASE_URL',
-		'Target PostgreSQL connection URL.',
-	),
+	databaseUrl: migrationFlags.databaseUrl,
 	dryRun: Flag.boolean('dry-run').pipe(Flag.withDefault(false)),
 	reportPath: Flag.optional(Flag.string('report')),
 };

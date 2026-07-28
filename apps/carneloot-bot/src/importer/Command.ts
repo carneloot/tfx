@@ -4,7 +4,7 @@ import * as Layer from 'effect/Layer';
 import { Command } from 'effect/unstable/cli';
 
 import { migrate } from '../postgres/AppMigrator.js';
-import { flags, toConfig } from './Cli.js';
+import { flags, migrationFlags, toConfig } from './Cli.js';
 import { LegacyImportConfig, layerFrom } from './LegacyImportConfig.js';
 import { run } from './LegacyImporter.js';
 import { LegacyImportError } from './LegacyImportError.js';
@@ -50,7 +50,6 @@ const infrastructure = Layer.unwrap(
 
 const importLegacy = Effect.gen(function* () {
 	const config = yield* LegacyImportConfig;
-	if (!config.dryRun) yield* migrate;
 	const report = yield* run;
 	yield* Effect.logInfo('carneloot.legacy_import.completed').pipe(
 		Effect.annotateLogs({
@@ -68,11 +67,23 @@ const importLegacy = Effect.gen(function* () {
 		);
 }).pipe(Effect.provide(infrastructure));
 
-export const command = Command.make('import:legacy', flags).pipe(
+export const commandMigrate = Command.make('migrate', migrationFlags).pipe(
+	Command.withDescription('Create or update legacy import target tables.'),
+	Command.withHandler((parsed) =>
+		migrate.pipe(Effect.provide(PgClient.layer({ url: parsed.databaseUrl }))),
+	),
+);
+
+export const commandImport = Command.make('import', flags).pipe(
 	Command.withDescription(
-		'Import legacy Carneloot SQLite/libSQL data into PostgreSQL.',
+		'Validate and import legacy Carneloot SQLite/libSQL data into PostgreSQL.',
 	),
 	Command.withHandler((parsed) =>
 		importLegacy.pipe(Effect.provide(layerFrom(toConfig(parsed)))),
 	),
+);
+
+export const command = Command.make('import:legacy').pipe(
+	Command.withDescription('Manage Carneloot legacy data imports.'),
+	Command.withSubcommands([commandMigrate, commandImport]),
 );
