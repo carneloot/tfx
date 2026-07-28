@@ -1,6 +1,6 @@
 import * as Config from 'effect/Config';
-import * as Redacted from 'effect/Redacted';
-import { Flag } from 'effect/unstable/cli';
+import * as Option from 'effect/Option';
+import { Flag, Param } from 'effect/unstable/cli';
 
 import type { LegacyImportConfigService } from './LegacyImportConfig.js';
 
@@ -10,9 +10,9 @@ const required = (flag: string, environment: string, description: string) =>
 		Flag.withFallbackConfig(Config.string(environment)),
 	);
 
-const optional = (flag: string, environment: string) =>
-	Flag.optional(Flag.string(flag)).pipe(
-		Flag.withFallbackConfig(Config.option(Config.string(environment))),
+const optionalSecret = (flag: string, environment: string) =>
+	Flag.optional(Param.redacted(Param.flagKind, flag)).pipe(
+		Flag.withFallbackConfig(Config.option(Config.redacted(environment))),
 	);
 
 export const flags = {
@@ -21,7 +21,10 @@ export const flags = {
 		'LEGACY_DATABASE_URL',
 		'Legacy SQLite file URL or libSQL endpoint.',
 	),
-	sourceAuthToken: optional('source-auth-token', 'LEGACY_DATABASE_AUTH_TOKEN'),
+	sourceAuthToken: optionalSecret(
+		'source-auth-token',
+		'LEGACY_DATABASE_AUTH_TOKEN',
+	),
 	sourceId: required(
 		'source-id',
 		'LEGACY_SOURCE_ID',
@@ -32,11 +35,7 @@ export const flags = {
 		'BOT_ID',
 		'Carneloot bot ID used to reconstruct Telegram identities and food replay keys.',
 	),
-	databaseUrl: required(
-		'database-url',
-		'DATABASE_URL',
-		'Target PostgreSQL connection URL.',
-	),
+	databaseUrl: optionalSecret('database-url', 'DATABASE_URL'),
 	dryRun: Flag.boolean('dry-run').pipe(Flag.withDefault(false)),
 	reportPath: Flag.optional(Flag.string('report')),
 };
@@ -50,22 +49,20 @@ type Flags = {
 };
 
 export const toConfig = (value: Flags): LegacyImportConfigService => {
-	const sourceAuthToken =
-		typeof value.sourceAuthToken === 'string'
-			? value.sourceAuthToken
-			: value.sourceAuthToken._tag === 'Some'
-				? value.sourceAuthToken.value
-				: undefined;
+	const sourceAuthToken = Option.isOption(value.sourceAuthToken)
+		? Option.getOrUndefined(value.sourceAuthToken)
+		: value.sourceAuthToken;
+	const databaseUrl = Option.isOption(value.databaseUrl)
+		? Option.getOrUndefined(value.databaseUrl)
+		: value.databaseUrl;
 	const reportPath =
 		value.reportPath._tag === 'Some' ? value.reportPath.value : undefined;
 	return {
 		sourceUrl: value.sourceUrl,
-		...(sourceAuthToken
-			? { sourceAuthToken: Redacted.make(sourceAuthToken) }
-			: {}),
+		...(sourceAuthToken ? { sourceAuthToken } : {}),
 		sourceId: value.sourceId,
 		botId: value.botId,
-		databaseUrl: Redacted.make(value.databaseUrl),
+		...(databaseUrl ? { databaseUrl } : {}),
 		dryRun: value.dryRun,
 		...(reportPath ? { reportPath } : {}),
 	};
