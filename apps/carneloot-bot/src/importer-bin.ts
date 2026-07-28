@@ -1,48 +1,12 @@
-/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import * as BunRuntime from '@effect/platform-bun/BunRuntime';
-import * as PgClient from '@effect/sql-pg/PgClient';
 import * as Effect from 'effect/Effect';
-import * as Layer from 'effect/Layer';
+import { Command } from 'effect/unstable/cli';
 
-import { parseArgs, CliError } from './importer/Cli.js';
-import { layerFrom } from './importer/LegacyImportConfig.js';
-import { run } from './importer/LegacyImporter.js';
-import * as LegacySourceLive from './importer/LegacySourceLive.js';
-import * as LegacyTargetLive from './importer/LegacyTargetLive.js';
-import { migrate } from './postgres/AppMigrator.js';
-const program = Effect.gen(function* () {
-	const config = yield* Effect.try({
-		try: () => parseArgs(process.argv.slice(2)),
-		catch: (e) => e as CliError,
-	});
-	const infrastructure = Layer.merge(
-		LegacySourceLive.layer,
-		LegacyTargetLive.layer,
-	).pipe(
-		Layer.provideMerge(PgClient.layer({ url: config.databaseUrl })),
-		Layer.provideMerge(layerFrom(config)),
-	);
-	const report = yield* Effect.provide(
-		Effect.gen(function* () {
-			if (!config.dryRun) yield* migrate;
-			return yield* run;
-		}),
-		infrastructure,
-	);
-	process.stdout.write(
-		`legacy import: ${report.blockers.length} blocker(s), ${report.warnings.length} warning(s)`,
-	);
-	if (report.blockers.length) process.exitCode = 1;
-}).pipe(
-	Effect.catchIf(
-		(e): e is CliError => e instanceof CliError,
-		(e) =>
-			Effect.sync(() => {
-				(e.exitCode === 0 ? process.stdout : process.stderr).write(
-					`${e.message}\n`,
-				);
-				process.exitCode = e.exitCode;
-			}),
-	),
+import packageJson from '../package.json' with { type: 'json' };
+import { command } from './importer/Command.js';
+import * as Platform from './importer/Platform.js';
+
+Command.run(command, { version: packageJson.version }).pipe(
+	Effect.provide(Platform.layer),
+	BunRuntime.runMain,
 );
-BunRuntime.runMain(program as Effect.Effect<void, unknown, never>);
