@@ -51,52 +51,48 @@ export const make = (options: RouterOptions = {}): Router => ({
 			return (
 				options.lifecycle?.(update) ?? Effect.succeed(DispatchOutcome.handled)
 			);
-		return Effect.flatMap(
-			options.beforeConversation?.(update) ?? Effect.succeed(undefined),
-			(beforeConversation) => {
-				if (beforeConversation !== undefined)
-					return Effect.succeed(beforeConversation);
-				return Effect.flatMap(
-					options.conversation?.(update) ?? Effect.succeed(undefined),
-					(conversation) => {
-						if (conversation !== undefined) return Effect.succeed(conversation);
-						return Effect.flatMap(
-							options.command?.(update) ?? Effect.succeed(undefined),
-							(command) => {
-								if (command !== undefined) return Effect.succeed(command);
-								if (value.callback_query !== undefined)
-									return (
-										options.callback?.(update) ??
-										Effect.succeed(
-											DispatchOutcome.permanentInvalid('Unhandled callback'),
-										)
-									);
-								if (
-									value.message !== undefined ||
-									value.edited_message !== undefined ||
-									value.channel_post !== undefined ||
-									value.edited_channel_post !== undefined ||
-									value.business_message !== undefined ||
-									value.edited_business_message !== undefined ||
-									value.message_reaction !== undefined
-								)
-									return Effect.flatMap(
-										options.message?.(update) ?? Effect.succeed(undefined),
-										(message) =>
-											message === undefined
-												? (options.fallback?.(update) ??
-													Effect.succeed(DispatchOutcome.handled))
-												: Effect.succeed(message),
-									);
-								return (
-									options.fallback?.(update) ??
-									Effect.succeed(DispatchOutcome.handled)
-								);
-							},
-						);
-					},
+		const beforeConversation =
+			options.beforeConversation?.(update) ?? Effect.succeed(undefined);
+		return Effect.gen(function* () {
+			const beforeConversationResult = yield* beforeConversation;
+			if (beforeConversationResult !== undefined)
+				return beforeConversationResult;
+
+			const conversation = yield* (
+				options.conversation?.(update) ?? Effect.succeed(undefined)
+			);
+			if (conversation !== undefined) return conversation;
+
+			const command = yield* (
+				options.command?.(update) ?? Effect.succeed(undefined)
+			);
+			if (command !== undefined) return command;
+
+			if (value.callback_query !== undefined) {
+				const callback =
+					options.callback?.(update) ??
+					Effect.succeed(DispatchOutcome.permanentInvalid('Unhandled callback'));
+				return yield* callback;
+			}
+
+			if (
+				value.message !== undefined ||
+				value.edited_message !== undefined ||
+				value.channel_post !== undefined ||
+				value.edited_channel_post !== undefined ||
+				value.business_message !== undefined ||
+				value.edited_business_message !== undefined ||
+				value.message_reaction !== undefined
+			) {
+				const message = yield* (
+					options.message?.(update) ?? Effect.succeed(undefined)
 				);
-			},
-		);
+				if (message !== undefined) return message;
+			}
+
+			const fallback =
+				options.fallback?.(update) ?? Effect.succeed(DispatchOutcome.handled);
+			return yield* fallback;
+		});
 	},
 });
