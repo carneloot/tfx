@@ -64,7 +64,11 @@ describe('legacy importer CLI', () => {
 				>,
 			),
 		).rejects.toMatchObject({
-			message: 'Target PostgreSQL connection URL is required',
+			errors: [
+				expect.objectContaining({
+					message: 'Missing required flag: --database-url',
+				}),
+			],
 		});
 	});
 

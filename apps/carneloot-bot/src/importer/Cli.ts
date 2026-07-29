@@ -1,5 +1,6 @@
 import * as Config from 'effect/Config';
 import * as Option from 'effect/Option';
+import type * as Redacted from 'effect/Redacted';
 import { Flag, Param } from 'effect/unstable/cli';
 
 import type { LegacyImportConfigService } from './LegacyImportConfig.js';
@@ -53,7 +54,11 @@ export const flags = {
 		'BOT_ID',
 		'Carneloot bot ID used to reconstruct Telegram identities and food replay keys.',
 	),
-	databaseUrl: optionalSecret('database-url', 'DATABASE_URL'),
+	databaseUrl: requiredSecret(
+		'database-url',
+		'DATABASE_URL',
+		'Target PostgreSQL connection URL.',
+	),
 	dryRun: Flag.boolean('dry-run').pipe(Flag.withDefault(false)),
 	reportPath: Flag.optional(Flag.string('report')),
 };
@@ -70,9 +75,7 @@ export const toConfig = (value: Flags): LegacyImportConfigService => {
 	const sourceAuthToken = Option.isOption(value.sourceAuthToken)
 		? Option.getOrUndefined(value.sourceAuthToken)
 		: value.sourceAuthToken;
-	const databaseUrl = Option.isOption(value.databaseUrl)
-		? Option.getOrUndefined(value.databaseUrl)
-		: value.databaseUrl;
+	const databaseUrl = value.databaseUrl as Redacted.Redacted<string>;
 	const reportPath =
 		value.reportPath._tag === 'Some' ? value.reportPath.value : undefined;
 	return {
