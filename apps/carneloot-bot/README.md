@@ -5,6 +5,7 @@ Private Bun application for owned-pet registration, food tracking, and durable f
 ## Setup
 
 ```sh
+export MISE_ENV=development
 mise install
 mise exec -- pnpm install --frozen-lockfile
 export FNOX_AGE_KEY_FILE="$HOME/.config/fnox/age.txt"

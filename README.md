@@ -15,6 +15,7 @@ Runtime integrations use Effect platform Layers directly. `tfx` does not wrap No
 mise pins Node 24.18.0, Bun 1.3.14, and pnpm 10.17.1. pnpm is the sole package manager; Bun is an application runtime and validation runtime. TypeScript project references provide the build graph, so no Turbo layer is needed.
 
 ```sh
+export MISE_ENV=development
 mise install
 mise exec -- pnpm install --frozen-lockfile
 mise exec -- pnpm build
