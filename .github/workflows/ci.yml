@@ -25,6 +25,7 @@ jobs:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/tfx
     steps:
       - uses: actions/checkout@v4
+      - run: git submodule update --init .repos/telegram-api
       - uses: jdx/mise-action@v4.2.3
         with:
           install: true
@@ -55,6 +56,7 @@ jobs:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/tfx
     steps:
       - uses: actions/checkout@v4
+      - run: git submodule update --init .repos/telegram-api
       - uses: jdx/mise-action@v4.2.3
         with:
           install: true
