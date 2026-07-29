@@ -1,6 +1,5 @@
 import * as Config from 'effect/Config';
 import * as Option from 'effect/Option';
-import type * as Redacted from 'effect/Redacted';
 import { Flag, Param } from 'effect/unstable/cli';
 
 import type { LegacyImportConfigService } from './LegacyImportConfig.js';
@@ -75,7 +74,7 @@ export const toConfig = (value: Flags): LegacyImportConfigService => {
 	const sourceAuthToken = Option.isOption(value.sourceAuthToken)
 		? Option.getOrUndefined(value.sourceAuthToken)
 		: value.sourceAuthToken;
-	const databaseUrl = value.databaseUrl as Redacted.Redacted<string>;
+	const databaseUrl = value.databaseUrl;
 	const reportPath =
 		value.reportPath._tag === 'Some' ? value.reportPath.value : undefined;
 	return {

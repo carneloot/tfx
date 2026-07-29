@@ -246,7 +246,8 @@ export const verifyLegacy = (
 			exclude('configs', sourceKey);
 			continue;
 		}
-		if (!pets.has(match[1]!)) {
+		const petId = match[1];
+		if (petId === undefined || !pets.has(petId)) {
 			exclude('configs', sourceKey);
 			warnings.push(
 				issue(
