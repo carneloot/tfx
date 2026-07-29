@@ -153,12 +153,18 @@ else
 								first_name: 'Caregiver',
 								username: 'shared_caregiver',
 							};
+							const rejectedCaregiver: Sender = {
+								id: 6203,
+								first_name: 'Rejected',
+								username: 'rejected_caregiver',
+							};
 							let id = 1;
 							const send = (text: string, who = owner) =>
 								dispatchWith(context, update(id++, text, who));
 							for (const [text, who] of [
 								['/cadastrar', owner],
 								['/cadastrar', caregiver],
+								['/cadastrar', rejectedCaregiver],
 								['/adicionar_pet', owner],
 								['Rex', owner],
 								['/adicionar_pet', owner],
@@ -188,6 +194,17 @@ else
 								for (const text of ['/convites_pet', `${pet} (Owner)`, 'Sim'])
 									yield* send(text, caregiver);
 							}
+							for (const text of [
+								'/adicionar_cuidador',
+								'Rex',
+								'@rejected_caregiver',
+							])
+								yield* send(text);
+							for (const text of ['/convites_pet', 'Rex (Owner)', 'Não'])
+								yield* send(text, rejectedCaregiver);
+							expect(
+								yield* sql`SELECT status FROM carneloot.pet_caregivers WHERE caregiver_user_id=(SELECT user_id FROM carneloot.telegram_identities WHERE telegram_user_id=${rejectedCaregiver.id})`,
+							).toEqual([{ status: 'rejected' }]);
 							const todosId = id++;
 							const todosUpdate = update(
 								todosId,
@@ -258,6 +275,25 @@ else
 							).toHaveLength(2);
 							expect(sent).toHaveLength(sentBeforeReplay);
 							expect(reactions).toHaveLength(1);
+							const entriesBeforeRejectedMutation = yield* sql`
+								SELECT id FROM carneloot.pet_food_entries
+							`;
+							yield* send('/todos 50g 08:30', rejectedCaregiver);
+							expect(sent.at(-1)).toEqual({
+								chatId: rejectedCaregiver.id,
+								text: 'Você não possui nenhum pet.',
+							});
+							yield* send('/parar_de_cuidar_pet', rejectedCaregiver);
+							expect(sent.at(-1)).toEqual({
+								chatId: rejectedCaregiver.id,
+								text: 'Você não está cuidando de nenhum pet.',
+							});
+							expect(
+								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
+							).toEqual(entriesBeforeRejectedMutation);
+							expect(
+								yield* sql`SELECT conversation_id FROM tfx_shared_food_e2e.case_conversations WHERE user_id=${rejectedCaregiver.id}`,
+							).toHaveLength(0);
 						}),
 					),
 					postgres,
