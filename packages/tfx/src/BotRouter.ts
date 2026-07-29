@@ -250,27 +250,26 @@ export const make = <
 				if (scope === undefined || options.conversations === undefined)
 					return Effect.succeed(undefined);
 				return Effect.matchEffect(
-					Effect.flatMap(storage.load(scope), (row) => {
-						if (row === undefined) return Effect.succeed(undefined);
+					Effect.gen(function* () {
+						const row = yield* storage.load(scope);
+						if (row === undefined) return undefined;
 						const built = options.conversations!.find(
 							(item) => item.declaration.id === row.conversationId,
 						);
 						if (built === undefined)
-							return Effect.fail(
+							return yield* Effect.fail(
 								new UnknownPersistedConversationError({
 									conversationId: row.conversationId,
 								}),
 							);
-						return Effect.map(
-							provideContexts(
-								update,
-								conversations.resume(built, rawConversationInput(update), {
-									scope,
-									updateId: update.update_id,
-								}),
-							),
-							() => DispatchOutcome.handled,
+						yield* provideContexts(
+							update,
+							conversations.resume(built, rawConversationInput(update), {
+								scope,
+								updateId: update.update_id,
+							}),
 						);
+						return DispatchOutcome.handled;
 					}),
 					{
 						onSuccess: (outcome) => Effect.succeed(outcome),
@@ -339,19 +338,23 @@ export const make = <
 							? undefined
 							: MessageInput.decode(declaration.input, update);
 					if (decoded === undefined) return run(index + 1);
-					return Effect.matchEffect(provideContexts(update, decoded), {
-						onFailure: () => run(index + 1),
-						onSuccess: (input) =>
-							Effect.matchEffect(
-								provideContexts(update, entry.invoke(middleware, input)),
-								{
-									onFailure: (error) => Effect.succeed(mapError(error)),
-									onSuccess: (result) =>
-										result._tag === 'Handled'
-											? Effect.succeed(DispatchOutcome.handled)
-											: run(index + 1),
-								},
+					return Effect.gen(function* () {
+						const decodedResult = yield* Effect.result(
+							provideContexts(update, decoded),
+						);
+						if (decodedResult._tag === 'Failure') return yield* run(index + 1);
+
+						const handlerResult = yield* Effect.result(
+							provideContexts(
+								update,
+								entry.invoke(middleware, decodedResult.success),
 							),
+						);
+						if (handlerResult._tag === 'Failure')
+							return mapError(handlerResult.failure);
+						if (handlerResult.success._tag === 'Handled')
+							return DispatchOutcome.handled;
+						return yield* run(index + 1);
 					});
 				};
 				return run(0);
