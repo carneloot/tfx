@@ -57,7 +57,10 @@ export const run = Effect.gen(function* () {
 			]),
 		);
 		report = { ...report, counts };
-		reminderFailure = yield* rebuildFeedingReminders(mapped.fingerprint).pipe(
+		reminderFailure = yield* rebuildFeedingReminders(
+			mapped.fingerprint,
+			config.botId,
+		).pipe(
 			Effect.as(undefined),
 			Effect.catch((cause) =>
 				Effect.succeed(
