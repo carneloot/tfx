@@ -109,62 +109,58 @@ export const layer = Layer.effect(
 			}
 		};
 
-		const findTargetRow = (
-			row: MappedRow,
+		const jsonbArrayKey = (...values: ReadonlyArray<unknown>) =>
+			`[${values.map((value) => JSON.stringify(value)).join(', ')}]`;
+		const targetRowKey = (
+			targetTable: TargetTable,
+			value: Record<string, any>,
+		) => {
+			switch (targetTable) {
+				case 'telegram_identities':
+					return jsonbArrayKey(value.bot_id, value.telegram_user_id);
+				case 'pet_caregivers':
+					return jsonbArrayKey(value.pet_id, value.caregiver_user_id);
+				case 'notification_subscriptions':
+					return jsonbArrayKey(value.template_id, value.user_id);
+				case 'pet_food_settings':
+					return jsonbArrayKey(value.pet_id);
+				default:
+					return jsonbArrayKey(value.id);
+			}
+		};
+		const findTargetRows = (
+			targetTable: TargetTable,
+			rows: ReadonlyArray<MappedRow>,
 		): Effect.Effect<
 			ReadonlyArray<{ readonly row: Record<string, unknown> }>,
 			SqlError
 		> => {
-			const value = row.value as Record<string, any>;
-			switch (row.targetTable) {
+			const keys = rows.map((row) =>
+				targetRowKey(targetTable, row.value as Record<string, any>),
+			);
+			switch (targetTable) {
 				case 'users':
-					return sql<{
-						readonly row: Record<string, unknown>;
-					}>`SELECT to_jsonb(t) row FROM carneloot.users t WHERE id=${value.id} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carneloot.users t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'telegram_identities':
-					return sql<{
-						readonly row: Record<string, unknown>;
-					}>`SELECT to_jsonb(t) row FROM carneloot.telegram_identities t WHERE bot_id=${value.bot_id} AND telegram_user_id=${value.telegram_user_id} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carneloot.telegram_identities t WHERE jsonb_build_array(t.bot_id,t.telegram_user_id)::text IN ${sql.in(keys)} FOR UPDATE`;
 				case 'pets':
-					return sql<{
-						readonly row: Record<string, unknown>;
-					}>`SELECT to_jsonb(t) row FROM carneloot.pets t WHERE id=${value.id} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carneloot.pets t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'pet_caregivers':
-					return sql<{
-						readonly row: Record<string, unknown>;
-					}>`SELECT to_jsonb(t) row FROM carneloot.pet_caregivers t WHERE pet_id=${value.pet_id} AND caregiver_user_id=${value.caregiver_user_id} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carneloot.pet_caregivers t WHERE jsonb_build_array(t.pet_id,t.caregiver_user_id)::text IN ${sql.in(keys)} FOR UPDATE`;
 				case 'pet_food_settings':
-					return sql<{
-						readonly row: Record<string, unknown>;
-					}>`SELECT to_jsonb(t) row FROM carneloot.pet_food_settings t WHERE pet_id=${value.pet_id} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carneloot.pet_food_settings t WHERE pet_id IN ${sql.in(rows.map((row) => (row.value as any).pet_id))} FOR UPDATE`;
 				case 'pet_food_entries':
-					return sql<{
-						readonly row: Record<string, unknown>;
-					}>`SELECT to_jsonb(t) row FROM carneloot.pet_food_entries t WHERE id=${value.id} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carneloot.pet_food_entries t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'api_keys':
-					return sql<{
-						readonly row: Record<string, unknown>;
-					}>`SELECT to_jsonb(t) row FROM carneloot.api_keys t WHERE id=${value.id} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carneloot.api_keys t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'notification_templates':
-					return sql<{
-						readonly row: Record<string, unknown>;
-					}>`SELECT to_jsonb(t) row FROM carneloot.notification_templates t WHERE id=${value.id} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carneloot.notification_templates t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'notification_subscriptions':
-					return sql<{
-						readonly row: Record<string, unknown>;
-					}>`SELECT to_jsonb(t) row FROM carneloot.notification_subscriptions t WHERE template_id=${value.template_id} AND user_id=${value.user_id} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carneloot.notification_subscriptions t WHERE jsonb_build_array(t.template_id,t.user_id)::text IN ${sql.in(keys)} FOR UPDATE`;
 				case 'notification_events':
-					return sql<{
-						readonly row: Record<string, unknown>;
-					}>`SELECT to_jsonb(t) row FROM carneloot.notification_events t WHERE id=${value.id} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carneloot.notification_events t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'notification_deliveries':
-					return sql<{
-						readonly row: Record<string, unknown>;
-					}>`SELECT to_jsonb(t) row FROM carneloot.notification_deliveries t WHERE id=${value.id} FOR UPDATE`;
-				default:
-					return Effect.die(
-						new Error(`Unsupported target table: ${row.targetTable}`),
-					);
+					return sql`SELECT to_jsonb(t) row FROM carneloot.notification_deliveries t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 			}
 		};
 		const targetDigest = (row: MappedRow, target: Record<string, unknown>) =>
@@ -218,6 +214,17 @@ export const layer = Layer.effect(
 													(ledger) => [ledger.source_key, ledger] as const,
 												),
 											]);
+											const targetByKey = new Map(
+												(yield* findTargetRows(targetTable, sourceBatch)).map(
+													(target) => [
+														targetRowKey(
+															targetTable,
+															target.row as Record<string, any>,
+														),
+														target.row,
+													],
+												),
+											);
 
 											for (const item of prepared) {
 												const ledger = ledgerBySourceKey.get(
@@ -232,8 +239,12 @@ export const layer = Layer.effect(
 													return yield* Effect.fail(
 														ledgerMismatch(item.row, ledger),
 													);
-												const targets = yield* findTargetRow(item.row);
-												const target = targets[0]?.row;
+												const target = targetByKey.get(
+													targetRowKey(
+														targetTable,
+														item.row.value as Record<string, any>,
+													),
+												);
 												if (ledger) {
 													if (
 														target === undefined ||
