@@ -2,7 +2,45 @@ name: CI
 
 on:
   push:
+    paths:
+      - '.github/workflows/**'
+      - '.changeset/**'
+      - 'apps/**'
+      - 'packages/**'
+      - 'scripts/**'
+      - '.repos/**'
+      - '.envrc'
+      - '.gitignore'
+      - '.gitmodules'
+      - '.oxfmtrc.json'
+      - '.oxlintrc.json'
+      - 'mise.toml'
+      - 'mise.development.toml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig*.json'
+      - 'vitest*.ts'
   pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.changeset/**'
+      - 'apps/**'
+      - 'packages/**'
+      - 'scripts/**'
+      - '.repos/**'
+      - '.envrc'
+      - '.gitignore'
+      - '.gitmodules'
+      - '.oxfmtrc.json'
+      - '.oxlintrc.json'
+      - 'mise.toml'
+      - 'mise.development.toml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig*.json'
+      - 'vitest*.ts'
 
 jobs:
   node:
