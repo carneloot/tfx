@@ -413,7 +413,8 @@ else
 							).toHaveLength(1);
 
 							// Foreign mention falls through to active conversation input.
-							const petsBeforeForeignMention = yield* sql`SELECT id FROM carneloot.pets`;
+							const petsBeforeForeignMention =
+								yield* sql`SELECT id FROM carneloot.pets`;
 							yield* f.dispatch(messageUpdate(1000, '/adicionar_pet', sender));
 							expect(
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,

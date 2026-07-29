@@ -97,7 +97,10 @@ const build = <
 >(
 	groups: G,
 	options: Partial<
-		Omit<BotRouter.Options<typeof bot, G, C, BeforeConversation>, 'beforeConversation'>
+		Omit<
+			BotRouter.Options<typeof bot, G, C, BeforeConversation>,
+			'beforeConversation'
+		>
 	> & {
 		readonly beforeConversation?: BeforeConversation;
 	} = {},
@@ -263,7 +266,8 @@ describe('public BotRouter', () => {
 
 	it('runs beforeConversation with contexts, short-circuits commands, and maps hook errors safely', async () => {
 		let commandCalls = 0;
-		const seen: Array<{ readonly updateId: number; readonly text: string }> = [];
+		const seen: Array<{ readonly updateId: number; readonly text: string }> =
+			[];
 		const handlers = BotBuilder.buildGroup(bot, 'account', (value) =>
 			value.handle('start', () =>
 				Effect.sync(() => {
