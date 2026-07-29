@@ -4,12 +4,14 @@ import * as Effect from 'effect/Effect';
 
 import { sourceFingerprint } from './LegacyId.js';
 import { LegacyImportConfig } from './LegacyImportConfig.js';
+import { LegacyImportError } from './LegacyImportError.js';
 import { mapLegacySnapshot } from './LegacyMapping.js';
 import { writeReportAtomic, type LegacyImportReport } from './LegacyReport.js';
 import { decodeSnapshot } from './LegacySchemas.js';
 import { LegacySource } from './LegacySource.js';
 import { LegacyTarget } from './LegacyTarget.js';
 import { verifyLegacy } from './LegacyVerification.js';
+import { rebuildFeedingReminders } from './RebuildFeedingReminders.js';
 export const run = Effect.gen(function* () {
 	const startedAt = yield* DateTime.now;
 	const config = yield* LegacyImportConfig;
@@ -36,15 +38,14 @@ export const run = Effect.gen(function* () {
 			startedAt,
 		),
 	).pipe(Effect.withSpan('legacy-import.verify'));
-	if (report.blockers.length === 0) {
+	let reminderFailure: LegacyImportError | undefined;
+	if (report.blockers.length === 0 && !config.dryRun) {
 		const target = yield* LegacyTarget;
-		const promoted = yield* target
-			.promote(mapped, { dryRun: config.dryRun })
-			.pipe(
-				Effect.withSpan('legacy-import.promote', {
-					attributes: { dryRun: config.dryRun, mappedRows: mapped.rows.length },
-				}),
-			);
+		const promoted = yield* target.promote(mapped, { dryRun: false }).pipe(
+			Effect.withSpan('legacy-import.promote', {
+				attributes: { dryRun: false, mappedRows: mapped.rows.length },
+			}),
+		);
 		const counts = Object.fromEntries(
 			Object.entries(report.counts).map(([table, count]) => [
 				table,
@@ -56,6 +57,23 @@ export const run = Effect.gen(function* () {
 			]),
 		);
 		report = { ...report, counts };
+		reminderFailure = yield* rebuildFeedingReminders(mapped.fingerprint).pipe(
+			Effect.as(undefined),
+			Effect.catch((cause) =>
+				Effect.succeed(
+					new LegacyImportError({
+						reason: 'ReminderRebuildFailed',
+						message:
+							'Legacy import completed but feeding reminder rebuild failed',
+						cause,
+					}),
+				),
+			),
+		);
+		report = {
+			...report,
+			reminderRebuild: reminderFailure === undefined ? 'completed' : 'failed',
+		};
 	}
 	const completedAt = yield* DateTime.now;
 	const duration = DateTime.distance(startedAt, completedAt);
@@ -69,5 +87,6 @@ export const run = Effect.gen(function* () {
 		yield* writeReportAtomic(config.reportPath, report).pipe(
 			Effect.withSpan('legacy-import.write-report'),
 		);
+	if (reminderFailure) return yield* Effect.fail(reminderFailure);
 	return report;
 });

@@ -4,6 +4,7 @@ import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Ref from 'effect/Ref';
+import type { SqlError } from 'effect/unstable/sql/SqlError';
 
 import { LegacyImportError } from './LegacyImportError.js';
 import { canonicalDigest, type MappedRow } from './LegacyMapping.js';
@@ -48,6 +49,12 @@ const failure = (cause: unknown) =>
 				cause,
 			});
 
+const targetMismatch = (row: MappedRow) =>
+	new LegacyImportError({
+		reason: 'Blocked',
+		message: `Target row for ${row.sourceTable}/${row.sourceKey} is missing or differs from deterministic import data.`,
+	});
+
 const ledgerMismatch = (
 	row: {
 		readonly sourceTable: string;
@@ -64,7 +71,7 @@ const ledgerMismatch = (
 			`Existing ledger target: ${ledger.target_table}/${ledger.target_key}.`,
 			`Current mapped target: ${row.targetTable}/${row.targetKey}.`,
 			'The stored deterministic mapping differs from the current source row or importer mapping.',
-			'Reset the target import data or use a new source ID before rerunning.'
+			'Reset the target import data or use a new source ID before rerunning.',
 		].join(' '),
 	});
 
@@ -101,6 +108,71 @@ export const layer = Layer.effect(
 					return sql`INSERT INTO carneloot.notification_deliveries ${sql.insert(values)}`;
 			}
 		};
+
+		const findTargetRow = (
+			row: MappedRow,
+		): Effect.Effect<
+			ReadonlyArray<{ readonly row: Record<string, unknown> }>,
+			SqlError
+		> => {
+			const value = row.value as Record<string, any>;
+			switch (row.targetTable) {
+				case 'users':
+					return sql<{
+						readonly row: Record<string, unknown>;
+					}>`SELECT to_jsonb(t) row FROM carneloot.users t WHERE id=${value.id} FOR UPDATE`;
+				case 'telegram_identities':
+					return sql<{
+						readonly row: Record<string, unknown>;
+					}>`SELECT to_jsonb(t) row FROM carneloot.telegram_identities t WHERE bot_id=${value.bot_id} AND telegram_user_id=${value.telegram_user_id} FOR UPDATE`;
+				case 'pets':
+					return sql<{
+						readonly row: Record<string, unknown>;
+					}>`SELECT to_jsonb(t) row FROM carneloot.pets t WHERE id=${value.id} FOR UPDATE`;
+				case 'pet_caregivers':
+					return sql<{
+						readonly row: Record<string, unknown>;
+					}>`SELECT to_jsonb(t) row FROM carneloot.pet_caregivers t WHERE pet_id=${value.pet_id} AND caregiver_user_id=${value.caregiver_user_id} FOR UPDATE`;
+				case 'pet_food_settings':
+					return sql<{
+						readonly row: Record<string, unknown>;
+					}>`SELECT to_jsonb(t) row FROM carneloot.pet_food_settings t WHERE pet_id=${value.pet_id} FOR UPDATE`;
+				case 'pet_food_entries':
+					return sql<{
+						readonly row: Record<string, unknown>;
+					}>`SELECT to_jsonb(t) row FROM carneloot.pet_food_entries t WHERE id=${value.id} FOR UPDATE`;
+				case 'api_keys':
+					return sql<{
+						readonly row: Record<string, unknown>;
+					}>`SELECT to_jsonb(t) row FROM carneloot.api_keys t WHERE id=${value.id} FOR UPDATE`;
+				case 'notification_templates':
+					return sql<{
+						readonly row: Record<string, unknown>;
+					}>`SELECT to_jsonb(t) row FROM carneloot.notification_templates t WHERE id=${value.id} FOR UPDATE`;
+				case 'notification_subscriptions':
+					return sql<{
+						readonly row: Record<string, unknown>;
+					}>`SELECT to_jsonb(t) row FROM carneloot.notification_subscriptions t WHERE template_id=${value.template_id} AND user_id=${value.user_id} FOR UPDATE`;
+				case 'notification_events':
+					return sql<{
+						readonly row: Record<string, unknown>;
+					}>`SELECT to_jsonb(t) row FROM carneloot.notification_events t WHERE id=${value.id} FOR UPDATE`;
+				case 'notification_deliveries':
+					return sql<{
+						readonly row: Record<string, unknown>;
+					}>`SELECT to_jsonb(t) row FROM carneloot.notification_deliveries t WHERE id=${value.id} FOR UPDATE`;
+				default:
+					return Effect.die(
+						new Error(`Unsupported target table: ${row.targetTable}`),
+					);
+			}
+		};
+		const targetDigest = (row: MappedRow, target: Record<string, unknown>) =>
+			canonicalDigest(
+				Object.fromEntries(
+					Object.keys(row.value).map((key) => [key, target[key]]),
+				),
+			);
 
 		return LegacyTarget.of({
 			promote: (mapped, options) =>
@@ -151,15 +223,24 @@ export const layer = Layer.effect(
 												const ledger = ledgerBySourceKey.get(
 													item.row.sourceKey,
 												);
+												if (
+													ledger &&
+													(ledger.row_digest !== item.digest ||
+														ledger.target_table !== item.row.targetTable ||
+														ledger.target_key !== item.row.targetKey)
+												)
+													return yield* Effect.fail(
+														ledgerMismatch(item.row, ledger),
+													);
+												const targets = yield* findTargetRow(item.row);
+												const target = targets[0]?.row;
 												if (ledger) {
 													if (
-														ledger.row_digest !== item.digest ||
-														ledger.target_table !== item.row.targetTable ||
-														ledger.target_key !== item.row.targetKey
+														target === undefined ||
+														(yield* targetDigest(item.row, target)) !==
+															item.digest
 													)
-														return yield* Effect.fail(
-															ledgerMismatch(item.row, ledger),
-														);
+														return yield* Effect.fail(targetMismatch(item.row));
 													existing[item.row.sourceTable] =
 														(existing[item.row.sourceTable] ?? 0) + 1;
 													continue;
@@ -172,6 +253,16 @@ export const layer = Layer.effect(
 												};
 												ledgerBySourceKey.set(item.row.sourceKey, newLedger);
 												pendingLedgers.set(item.row.sourceKey, newLedger);
+												if (target !== undefined) {
+													if (
+														(yield* targetDigest(item.row, target)) !==
+														item.digest
+													)
+														return yield* Effect.fail(targetMismatch(item.row));
+													existing[item.row.sourceTable] =
+														(existing[item.row.sourceTable] ?? 0) + 1;
+													continue;
+												}
 												newRows.push(item);
 												inserted[item.row.sourceTable] =
 													(inserted[item.row.sourceTable] ?? 0) + 1;

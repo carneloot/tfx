@@ -1,9 +1,14 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as TfxPostgres from '@tfx/postgres/TfxPostgres';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import { Command } from 'effect/unstable/cli';
+import * as JobRuntimeLive from 'tfx/JobRuntime';
 
 import { migrate } from '../postgres/AppMigrator.js';
+import * as NotificationRepositoryLive from '../postgres/NotificationRepositoryLive.js';
+import * as PetFoodRepositoryLive from '../postgres/PetFoodRepositoryLive.js';
+import * as ReminderSchedulerLive from '../postgres/ReminderSchedulerLive.js';
 import { flags, migrationFlags, toConfig } from './Cli.js';
 import { LegacyImportConfig, layerFrom } from './LegacyImportConfig.js';
 import { run } from './LegacyImporter.js';
@@ -41,11 +46,26 @@ export const blockerSummary = (
 };
 
 const infrastructure = Layer.unwrap(
-	Effect.map(LegacyImportConfig, (config) =>
-		Layer.merge(LegacySourceLive.layer, LegacyTargetLive.layer).pipe(
-			Layer.provideMerge(PgClient.layer({ url: config.databaseUrl })),
-		),
-	),
+	Effect.map(LegacyImportConfig, (config) => {
+		const persistence = TfxPostgres.layer({
+			schema: 'tfx',
+			tablePrefix: 'carneloot_',
+			botId: config.botId,
+		});
+		const jobs = Layer.provideMerge(JobRuntimeLive.layer(), persistence);
+		const repositories = Layer.merge(
+			PetFoodRepositoryLive.layer,
+			NotificationRepositoryLive.layer,
+		);
+		const reminders = Layer.provideMerge(
+			ReminderSchedulerLive.layer,
+			Layer.merge(Layer.merge(persistence, repositories), jobs),
+		);
+		return Layer.merge(
+			Layer.merge(LegacySourceLive.layer, LegacyTargetLive.layer),
+			reminders,
+		).pipe(Layer.provideMerge(PgClient.layer({ url: config.databaseUrl })));
+	}),
 );
 
 const importLegacy = Effect.gen(function* () {
