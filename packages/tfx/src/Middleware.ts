@@ -178,13 +178,14 @@ const build = <Available, Infrastructure, Error>(
 		const execute = (index: number): Effect.Effect<any, any, any> => {
 			if (index === applications.length) return effect;
 			const application = applications[index]!;
-			return Effect.flatMap(application.effect, (service) =>
-				Effect.provideService(
+			return Effect.gen(function* () {
+				const service = yield* application.effect;
+				return yield* Effect.provideService(
 					execute(index + 1),
 					application.declaration.provides,
 					service,
-				),
-			);
+				);
+			});
 		};
 		return execute(0);
 	},
@@ -242,20 +243,18 @@ const registry = (
 			const execute = (index: number): Effect.Effect<any, any, any> => {
 				if (index === selected.length) return effect;
 				const application = selected[index]!;
-				return Effect.flatMap(Effect.context<any>(), (current) =>
-					Effect.flatMap(
-						Effect.provide(
-							application.effect,
-							Context.merge(infrastructure, current),
-						),
-						(service) =>
-							Effect.provideService(
-								execute(index + 1),
-								application.declaration.provides,
-								service,
-							),
-					),
-				);
+				return Effect.gen(function* () {
+					const current = yield* Effect.context<any>();
+					const service = yield* Effect.provide(
+						application.effect,
+						Context.merge(infrastructure, current),
+					);
+					return yield* Effect.provideService(
+						execute(index + 1),
+						application.declaration.provides,
+						service,
+					);
+				});
 			};
 			return execute(0);
 		});
