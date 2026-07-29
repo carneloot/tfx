@@ -1,18 +1,17 @@
 import * as NodeCrypto from '@effect/platform-node/NodeCrypto';
 import * as NodeServices from '@effect/platform-node/NodeServices';
-import * as PgClient from '@effect/sql-pg/PgClient';
-import { Effect, Layer, Redacted, Ref } from 'effect';
+import { Effect, Layer, Ref } from 'effect';
+import * as DateTime from 'effect/DateTime';
 import { describe, expect, it } from 'vitest';
 
 import { LegacyImportConfig } from '../../src/importer/LegacyImportConfig.js';
-import { run } from '../../src/importer/LegacyImporter.js';
+import { runDry } from '../../src/importer/LegacyImporter.js';
 import {
 	legacyTables,
 	type LegacySnapshot,
 } from '../../src/importer/LegacySchemas.js';
 import { LegacySource } from '../../src/importer/LegacySource.js';
-import { LegacyTarget } from '../../src/importer/LegacyTarget.js';
-import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
+import { verifyLegacy } from '../../src/importer/LegacyVerification.js';
 
 const emptySnapshot = () =>
 	Object.fromEntries(
@@ -20,36 +19,26 @@ const emptySnapshot = () =>
 	) as unknown as LegacySnapshot;
 
 describe('legacy importer', () => {
-	it('does not promote target during dry run', async () => {
-		const promoted = await Effect.runPromise(
+	it('dry run requires no target service', async () => {
+		const reads = await Effect.runPromise(
 			Effect.gen(function* () {
 				const calls = yield* Ref.make(0);
-				const target = Layer.succeed(LegacyTarget, {
-					promote: () =>
-						Ref.update(calls, (count) => count + 1).pipe(Effect.die),
-				});
 				const source = Layer.succeed(LegacySource, {
-					readSnapshot: Effect.succeed(emptySnapshot()),
+					readSnapshot: Ref.update(calls, (count) => count + 1).pipe(
+						Effect.as(emptySnapshot()),
+					),
 				});
 				const config = Layer.succeed(LegacyImportConfig, {
 					sourceUrl: 'file:fixture.db',
 					sourceId: 'fixture',
 					botId: 'carneloot',
-					databaseUrl: Redacted.make('postgres://test'),
 					dryRun: true,
 				});
-				const scheduler = Layer.succeed(ReminderScheduler, {
-					replaceForLatest: () => Effect.void,
-					cancelForPet: () => Effect.void,
-				});
-				yield* run.pipe(
+				yield* runDry.pipe(
 					Effect.provide(
 						Layer.mergeAll(
-							target,
 							source,
 							config,
-							scheduler,
-							Layer.succeed(PgClient.PgClient, undefined as never),
 							NodeCrypto.layer,
 							NodeServices.layer,
 						),
@@ -58,6 +47,39 @@ describe('legacy importer', () => {
 				return yield* Ref.get(calls);
 			}),
 		);
-		expect(promoted).toBe(0);
+		expect(reads).toBe(1);
+	});
+
+	it('excludes known pet config for non-imported pet with warning', async () => {
+		const report = await Effect.runPromise(
+			Effect.gen(function* () {
+				const startedAt = yield* DateTime.now;
+				return verifyLegacy(
+					{
+						...emptySnapshot(),
+						configs: [
+							{
+								id: 'config-1',
+								context: 'pet:deleted-pet',
+								key: 'dayStart',
+								value: '{"hour":8,"timezone":"UTC"}',
+							},
+						],
+					},
+					{ fingerprint: 'fixture', rows: [], rounding: [], warnings: [] },
+					[],
+					'dry-run',
+					startedAt,
+				);
+			}),
+		);
+		expect(report.blockers).toEqual([]);
+		expect(report.warnings).toContainEqual({
+			code: 'non-imported-pet-config-excluded',
+			table: 'configs',
+			sourceKey: 'config-1',
+			message: 'Pet-food configuration for non-imported pet is excluded',
+		});
+		expect(report.counts.configs).toMatchObject({ accepted: 0, skipped: 1 });
 	});
 });

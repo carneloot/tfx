@@ -8,7 +8,7 @@ export interface LegacyImportConfigService {
 	readonly sourceUrl: string;
 	readonly sourceAuthToken?: Redacted.Redacted<string>;
 	readonly sourceId: string;
-	readonly databaseUrl: Redacted.Redacted<string>;
+	readonly databaseUrl?: Redacted.Redacted<string>;
 	readonly botId: string;
 	readonly dryRun: boolean;
 	readonly reportPath?: string;

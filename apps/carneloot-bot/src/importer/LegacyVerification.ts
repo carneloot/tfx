@@ -31,6 +31,7 @@ export const verifyLegacy = (
 			`Invalid value at ${i.path}`,
 		),
 	);
+	const warnings: ImportIssue[] = [];
 	const seen = new Map<string, string>();
 	const sourceUpdates = new Map<string, string>();
 	const petNames = new Map<string, string>();
@@ -247,8 +248,13 @@ export const verifyLegacy = (
 		}
 		if (!pets.has(match[1]!)) {
 			exclude('configs', sourceKey);
-			blockers.push(
-				issue('missing-reference', 'configs', sourceKey, 'Missing pet'),
+			warnings.push(
+				issue(
+					'non-imported-pet-config-excluded',
+					'configs',
+					sourceKey,
+					'Pet-food configuration for non-imported pet is excluded',
+				),
 			);
 			continue;
 		}
@@ -303,7 +309,7 @@ export const verifyLegacy = (
 		sourceFingerprint: mapped.fingerprint,
 		counts,
 		rounding: mapped.rounding,
-		warnings: mapped.warnings,
+		warnings: [...mapped.warnings, ...warnings],
 		blockers,
 		reminderRebuild: 'not-run',
 	};

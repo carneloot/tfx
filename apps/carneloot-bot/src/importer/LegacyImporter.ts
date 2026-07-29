@@ -12,7 +12,8 @@ import { LegacySource } from './LegacySource.js';
 import { LegacyTarget } from './LegacyTarget.js';
 import { verifyLegacy } from './LegacyVerification.js';
 import { rebuildFeedingReminders } from './RebuildFeedingReminders.js';
-export const run = Effect.gen(function* () {
+
+const prepare = Effect.gen(function* () {
 	const startedAt = yield* DateTime.now;
 	const config = yield* LegacyImportConfig;
 	const source = yield* LegacySource;
@@ -29,7 +30,7 @@ export const run = Effect.gen(function* () {
 		config.botId,
 		DateTime.toDateUtc(startedAt),
 	).pipe(Effect.withSpan('legacy-import.map-source'));
-	let report: LegacyImportReport = yield* Effect.sync(() =>
+	const report = yield* Effect.sync(() =>
 		verifyLegacy(
 			decoded.snapshot,
 			mapped,
@@ -38,8 +39,39 @@ export const run = Effect.gen(function* () {
 			startedAt,
 		),
 	).pipe(Effect.withSpan('legacy-import.verify'));
+	return { config, startedAt, mapped, report };
+});
+
+const complete = (
+	config: { readonly reportPath?: string },
+	startedAt: DateTime.Utc,
+	report: LegacyImportReport,
+) =>
+	Effect.gen(function* () {
+		const completedAt = yield* DateTime.now;
+		const completed = {
+			...report,
+			completedAt: DateTime.formatIso(completedAt),
+			durationMs: Duration.toMillis(DateTime.distance(startedAt, completedAt)),
+			duration: Duration.format(DateTime.distance(startedAt, completedAt)),
+		};
+		if (config.reportPath)
+			yield* writeReportAtomic(config.reportPath, completed).pipe(
+				Effect.withSpan('legacy-import.write-report'),
+			);
+		return completed;
+	});
+
+export const runDry = Effect.gen(function* () {
+	const { config, startedAt, report } = yield* prepare;
+	return yield* complete(config, startedAt, report);
+});
+
+export const runImport = Effect.gen(function* () {
+	const { config, startedAt, mapped, report: initialReport } = yield* prepare;
+	let report = initialReport;
 	let reminderFailure: LegacyImportError | undefined;
-	if (report.blockers.length === 0 && !config.dryRun) {
+	if (report.blockers.length === 0) {
 		const target = yield* LegacyTarget;
 		const promoted = yield* target.promote(mapped, { dryRun: false }).pipe(
 			Effect.withSpan('legacy-import.promote', {
@@ -78,18 +110,7 @@ export const run = Effect.gen(function* () {
 			reminderRebuild: reminderFailure === undefined ? 'completed' : 'failed',
 		};
 	}
-	const completedAt = yield* DateTime.now;
-	const duration = DateTime.distance(startedAt, completedAt);
-	report = {
-		...report,
-		completedAt: DateTime.formatIso(completedAt),
-		durationMs: Duration.toMillis(duration),
-		duration: Duration.format(duration),
-	};
-	if (config.reportPath)
-		yield* writeReportAtomic(config.reportPath, report).pipe(
-			Effect.withSpan('legacy-import.write-report'),
-		);
+	const completed = yield* complete(config, startedAt, report);
 	if (reminderFailure) return yield* Effect.fail(reminderFailure);
-	return report;
+	return completed;
 });

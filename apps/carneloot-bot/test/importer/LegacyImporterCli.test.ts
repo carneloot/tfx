@@ -46,6 +46,21 @@ describe('legacy importer CLI', () => {
 		expect(Redacted.value(result.sourceAuthToken)).toBe('token');
 	});
 
+	it('allows dry run without target database URL', async () => {
+		const result = await Effect.runPromise(
+			run([
+				'--source-url',
+				'file:test.db',
+				'--source-id',
+				'fixture',
+				'--bot-id',
+				'carneloot',
+				'--dry-run',
+			]),
+		);
+		expect(result?.databaseUrl).toBeUndefined();
+	});
+
 	it('renders one-line sanitized count summary', () => {
 		expect(
 			countSummary({
