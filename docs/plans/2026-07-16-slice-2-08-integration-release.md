@@ -2,6 +2,8 @@
 
 **Goal:** Wire every Slice 2 Layer, prove complete shared pet-food milestone under Node/Bun with real PostgreSQL, and prepare reviewable tfx package release metadata.
 
+**Status:** Complete
+
 **Architecture:** One production composition supplies repositories, caregiver/food notification schedulers, both job implementations, conversations, registered message handlers, polling, and durable PostgreSQL adapters. End-to-end fixtures drive decoded Telegram updates through real router/storage while recording Telegram requests.
 
 **Tech Stack:** Effect Layers/Scopes, tfx polling/runtime, PostgreSQL 17, Vitest, Node 24.18.0, Bun 1.3.14, GitHub Actions, Changesets.
