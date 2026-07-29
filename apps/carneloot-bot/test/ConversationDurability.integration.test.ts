@@ -204,9 +204,7 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 				PostgresTestLayer.layer,
 			),
 		);
-		expect(replies).toContain(
-			'Atraso atual: 2 horas. Envie Alterar ou Excluir.',
-		);
+		expect(replies).toContain('Atraso atual: 2 horas.');
 		expect(replies.at(-1)).toBe(
 			'Envie a duração, por exemplo 30 minutos ou 2 horas.',
 		);

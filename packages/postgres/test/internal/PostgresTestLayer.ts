@@ -1,8 +1,11 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
+import * as Context from 'effect/Context';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Redacted from 'effect/Redacted';
+
+import { resetIntegrationDatabase } from './ResetIntegrationDatabase.js';
 const containerLayer = Layer.unwrap(
 	Effect.map(
 		Effect.acquireRelease(
@@ -15,7 +18,16 @@ const containerLayer = Layer.unwrap(
 			PgClient.layer({ url: Redacted.make(container.getConnectionUri()) }),
 	),
 );
-export const layer =
+export const layer = (
 	process.env.TEST_DATABASE_URL === undefined
 		? containerLayer
-		: PgClient.layer({ url: Redacted.make(process.env.TEST_DATABASE_URL) });
+		: PgClient.layer({ url: Redacted.make(process.env.TEST_DATABASE_URL) })
+).pipe(
+	Layer.tap((context) =>
+		Effect.provideService(
+			resetIntegrationDatabase,
+			PgClient.PgClient,
+			Context.get(context, PgClient.PgClient),
+		),
+	),
+);
