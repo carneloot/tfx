@@ -127,8 +127,6 @@ const transcript = Object.freeze([
 const program = Effect.scoped(
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
-		yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
-		yield* sql.unsafe('DROP SCHEMA IF EXISTS tfx_demo_test CASCADE');
 		const pg = Layer.succeed(PgClient.PgClient, sql);
 		const infrastructure = Layer.merge(pg, telegram);
 		const graph = Layer.provide(
@@ -242,11 +240,10 @@ const program = Effect.scoped(
 			deliveryOutcome: delivery.status,
 			deliveryMode: 'at-least-once',
 			durableDeduplication: true,
-			caregiverSharedFood: true,
 			jobDeclarations,
 		});
 		const expected =
-			'users=1 pets=1 food_entries=1 reminder_events=1 reminder_status=completed delivery_outcome=sent delivery_mode=at-least-once durable_deduplication=true caregiver_shared_food=true jobs=feeding-reminder,food-added-notification';
+			'users=1 pets=1 food_entries=1 reminder_events=1 reminder_status=completed delivery_outcome=sent delivery_mode=at-least-once durable_deduplication=true jobs=feeding-reminder,food-added-notification';
 		if (summary !== expected)
 			return yield* Effect.fail(
 				new DemoTestError({

@@ -10,12 +10,12 @@ mise exec -- pnpm install --frozen-lockfile
 docker compose -f apps/carneloot-bot/compose.yaml up -d --wait
 cp apps/carneloot-bot/.env.example apps/carneloot-bot/.env
 export FNOX_AGE_KEY_FILE="$HOME/.config/fnox/age.txt"
-# Export DATABASE_URL through approved environment loader.
+# Set TEST_DATABASE_URL through approved environment loader to an empty disposable database.
 mise exec -- pnpm --filter carneloot-bot demo:test
 mise exec -- pnpm --filter carneloot-bot demo
 ```
 
-Start one polling replica only. Stop it before schema recovery, importer cutover, rollback, or replacement deployment.
+`demo:test` never drops schemas. Reuse requires another fresh disposable database, or opt into Testcontainers with `RUN_TESTCONTAINERS=true`. Start one polling replica only. Stop it before schema recovery, importer cutover, rollback, or replacement deployment.
 
 ## Two-user Telegram transcript
 
@@ -39,7 +39,7 @@ Use approved read-only local tooling to verify one owner, accepted caregiver rel
 
 Reminder run uses normal clock: configure reminder delay, wait through delay, then verify owner and accepted caregiver delivery. Delivery is at-least-once: `sent` is definitive; `unknown` means do not blindly resend. Food-added notifications exclude actor and recheck recipient access before sending.
 
-For deterministic local proof, `demo:test` advances scheduled job row after transcript and prints only sanitized counts, delivery mode, durable deduplication, shared-food capability, and declared jobs.
+For deterministic local proof, `demo:test` advances scheduled job row after its single-owner transcript and prints only sanitized counts, delivery mode, durable deduplication, and declared jobs. It does not claim shared-food capability; complete two-user transcript above to verify caregiver access and food mutation.
 
 ## Legacy importer fixture
 

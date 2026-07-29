@@ -85,11 +85,13 @@ Reply to a feeding reminder to record food for its pet. Reply to source food mes
 ```sh
 mise exec -- pnpm test:unit
 mise exec -- pnpm test:integration
-TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/carneloot \
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/carneloot_demo \
   mise exec -- pnpm --filter carneloot-bot demo:test
 # Or opt into Testcontainers:
 RUN_TESTCONTAINERS=true mise exec -- pnpm --filter carneloot-bot demo:test
 ```
+
+`demo:test` never drops schemas. When using `TEST_DATABASE_URL`, use an empty disposable database; rerun it with Testcontainers or another fresh database. It validates owner food/reminder flow, not caregiver shared-food flow; use runbook's two-user transcript for that capability.
 
 Real PostgreSQL suites skip locally only when neither database option exists and cannot skip in CI. Fake Telegram is used by E2E/demo validation; no Telegram network call occurs.
 
