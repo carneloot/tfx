@@ -127,8 +127,8 @@ export const make = (
 			void,
 			TelegramError | FatalPollingDispatchError
 		> = Effect.suspend(() =>
-			Effect.flatMap(
-				Effect.suspend(() =>
+			Effect.gen(function* () {
+				const updates = yield* Effect.suspend(() =>
 					telegram.getUpdates({
 						...(offset === undefined ? {} : { offset }),
 						limit: options.limit ?? 100,
@@ -149,66 +149,52 @@ export const make = (
 							: Effect.void,
 					),
 					Effect.retry(pollRetrySchedule),
-				),
-				(updates: ReadonlyArray<Update>) => {
-					first = false;
-					const receivedLog =
-						updates.length === 0
-							? Effect.void
-							: Effect.logInfo('tfx.polling.batch_received').pipe(
-									Effect.annotateLogs({ received: updates.length }),
+				);
+				first = false;
+				const receivedLog =
+					updates.length === 0
+						? Effect.void
+						: Effect.logInfo('tfx.polling.batch_received').pipe(
+								Effect.annotateLogs({ received: updates.length }),
+							);
+				yield* receivedLog;
+				const settled = yield* Effect.forEach(
+					updates,
+					(update) =>
+						Effect.gen(function* () {
+							const outcome = yield* Effect.suspend(() => deliver(update)).pipe(
+								Effect.repeat(dispatchRetrySchedule(update.update_id)),
+							);
+							if (outcome._tag === 'Fatal') {
+								yield* Effect.logError('tfx.polling.dispatch_fatal').pipe(
+									Effect.annotateLogs({ updateId: update.update_id }),
 								);
-					return Effect.andThen(
-						receivedLog,
-						Effect.flatMap(
-							Effect.forEach(
-								updates,
-								(update) =>
-									Effect.suspend(() => deliver(update)).pipe(
-										Effect.repeat(dispatchRetrySchedule(update.update_id)),
-										Effect.flatMap((outcome) =>
-											outcome._tag === 'Fatal'
-												? Effect.andThen(
-														Effect.logError('tfx.polling.dispatch_fatal').pipe(
-															Effect.annotateLogs({
-																updateId: update.update_id,
-															}),
-														),
-														Effect.fail(
-															new FatalPollingDispatchError({
-																updateId: update.update_id,
-															}),
-														),
-													)
-												: Effect.succeed({ update, outcome }),
-										),
-									),
-								{ concurrency: 'unbounded' },
-							),
-							(settled) => {
-								const ordered = [...settled].sort(
-									(a, b) => a.update.update_id - b.update.update_id,
+								return yield* Effect.fail(
+									new FatalPollingDispatchError({ updateId: update.update_id }),
 								);
+							}
+							return { update, outcome };
+						}),
+					{ concurrency: 'unbounded' },
+				);
+				const ordered = [...settled].sort(
+					(a, b) => a.update.update_id - b.update.update_id,
+				);
 								let acknowledged = 0;
 								for (const item of ordered) {
 									if (!DispatchOutcome.isAcknowledgeable(item.outcome)) break;
 									offset = item.update.update_id + 1;
 									acknowledged++;
 								}
-								return updates.length === 0
-									? Effect.void
-									: Effect.logInfo('tfx.polling.batch_acknowledged').pipe(
-											Effect.annotateLogs({
-												received: updates.length,
-												acknowledged,
-												...(offset === undefined ? {} : { nextOffset: offset }),
-											}),
-										);
-							},
-						),
+					if (updates.length === 0) return;
+					yield* Effect.logInfo('tfx.polling.batch_acknowledged').pipe(
+						Effect.annotateLogs({
+							received: updates.length,
+							acknowledged,
+							...(offset === undefined ? {} : { nextOffset: offset }),
+						}),
 					);
-				},
-			),
+				}),
 		);
 		return yield* pollOnce.pipe(
 			Effect.repeat(Schedule.forever),
