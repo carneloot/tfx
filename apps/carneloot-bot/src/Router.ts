@@ -1,3 +1,4 @@
+import * as Effect from 'effect/Effect';
 import { BotBuilder, BotRouter, DispatchOutcome } from 'tfx';
 import { isRetryableError, type TaggedError } from 'tfx/TaggedError';
 
@@ -139,12 +140,42 @@ export const classifyError = (
 				: DispatchOutcome.fatal('unclassified-application-error');
 	}
 };
-export const make = (botUsername: string) =>
-	BotRouter.make({
+export const isCancelCommand = (text: string, botUsername: string): boolean => {
+	const match = /^\/cancelar(?:@([^\s]+))?(?:\s|$)/u.exec(text);
+	if (match === null) return false;
+	return (
+		match[1] === undefined ||
+		match[1].toLocaleLowerCase('en-US') ===
+			botUsername.replace(/^@/u, '').toLocaleLowerCase('en-US')
+	);
+};
+export const make = (botUsername: string) => {
+	const groups = [
+		accountHandlers,
+		petHandlers,
+		petFoodHandlers,
+		replyHandlers,
+	] as const;
+	const beforeConversation = (
+		update: Parameters<BotRouter.BeforeConversationEffect>[0],
+	) => {
+		const text = (update as { readonly message?: { readonly text?: unknown } })
+			.message?.text;
+		return typeof text === 'string' && isCancelCommand(text, botUsername)
+			? Effect.as(CancelConversation.cancelCurrent, DispatchOutcome.handled)
+			: Effect.succeed(undefined);
+	};
+	return BotRouter.make<
+		typeof Carneloot,
+		typeof groups,
+		typeof conversations,
+		typeof beforeConversation
+	>({
 		bot: Carneloot,
-		groups: [accountHandlers, petHandlers, petFoodHandlers, replyHandlers],
+		groups,
 		conversations,
 		botUsername,
-		cancel: () => CancelConversation.cancelCurrent,
+		beforeConversation,
 		mapError: classifyError,
 	});
+};

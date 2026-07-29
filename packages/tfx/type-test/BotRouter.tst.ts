@@ -38,10 +38,10 @@ class ConversationDependency extends Context.Service<
 	ConversationDependency,
 	{ readonly value: string }
 >()('type-test/ConversationDependency') {}
-class CancelDependency extends Context.Service<
-	CancelDependency,
-	{ readonly cancel: true }
->()('type-test/CancelDependency') {}
+class BeforeConversationDependency extends Context.Service<
+	BeforeConversationDependency,
+	{ readonly beforeConversation: true }
+>()('type-test/BeforeConversationDependency') {}
 const declaration = Conversation.make('typed-conversation', {
 	version: 1,
 	startup: Schema.Void,
@@ -66,13 +66,13 @@ const typed = BotRouter.make({
 	groups: [one, two],
 	conversations: [built],
 	botUsername: 'typed_bot',
-	cancel: () => Effect.asVoid(CancelDependency),
+	beforeConversation: () => Effect.as(BeforeConversationDependency, undefined),
 });
 const requirementsProof: Effect.Effect<
 	BotRouter.Router,
 	never,
 	| ConversationDependency
-	| CancelDependency
+	| BeforeConversationDependency
 	| Conversations.Conversations
 	| ConversationStorage.ConversationStorage
 	| Middleware.MiddlewareRegistry

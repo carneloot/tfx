@@ -21,7 +21,7 @@ import {
 } from '../src/domain/DomainError.js';
 import { FoodEntryNotFound } from '../src/domain/pet-food/PetFoodError.js';
 import { ReminderSchedulerError } from '../src/ports/ReminderScheduler.js';
-import { classifyError } from '../src/Router.js';
+import { classifyError, isCancelCommand } from '../src/Router.js';
 
 describe('Carneloot router error classification', () => {
 	it('retries only persistence errors that explicitly opt in', () => {
@@ -166,5 +166,18 @@ describe('Carneloot router error classification', () => {
 			_tag: 'RetryableFailure',
 			error: 'retryable-application-error',
 		});
+	});
+});
+
+describe('isCancelCommand', () => {
+	it.each([
+		['/cancelar', true],
+		['/cancelar agora', true],
+		['/cancelar@CARNELOOT_BOT', true],
+		['/cancelar@other_bot', false],
+		['/cancelarx', false],
+		['cancelar', false],
+	])('matches %s as %s', (text, expected) => {
+		expect(isCancelCommand(text, 'carneloot_bot')).toBe(expected);
 	});
 });

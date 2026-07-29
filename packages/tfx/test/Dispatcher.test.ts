@@ -177,7 +177,7 @@ describe('Dispatcher', () => {
 		expect(await Effect.runPromise(Deferred.isDone(finalized))).toBe(true);
 	});
 
-	it('routes lifecycle, cancel, conversation, command, callback, message, fallback in priority order', async () => {
+	it('routes lifecycle, beforeConversation, conversation, command, callback, message, fallback in priority order', async () => {
 		const calls: Array<string> = [];
 		const handler =
 			(
@@ -193,7 +193,11 @@ describe('Dispatcher', () => {
 				});
 		const router = Router.make({
 			lifecycle: handler('lifecycle') as never,
-			cancel: handler('cancel') as never,
+			beforeConversation: () =>
+				Effect.sync(() => {
+					calls.push('beforeConversation');
+					return undefined;
+				}),
 			conversation: () =>
 				Effect.sync(() => {
 					calls.push('conversation');
@@ -212,7 +216,9 @@ describe('Dispatcher', () => {
 			router.route(update({ update_id: 1, my_chat_member: {} })),
 		);
 		await Effect.runPromise(
-			router.route(update({ update_id: 2, message: { text: '/cancelar' } })),
+			router.route(
+				update({ update_id: 2, message: { text: 'ordinary input' } }),
+			),
 		);
 		await Effect.runPromise(
 			router.route(update({ update_id: 3, callback_query: {} })),
@@ -223,13 +229,19 @@ describe('Dispatcher', () => {
 		await Effect.runPromise(router.route(update({ update_id: 5, poll: {} })));
 		expect(calls).toEqual([
 			'lifecycle',
-			'cancel',
-			'conversation',
-			'command',
-			'callback',
+			'beforeConversation',
 			'conversation',
 			'command',
 			'message',
+			'beforeConversation',
+			'conversation',
+			'command',
+			'callback',
+			'beforeConversation',
+			'conversation',
+			'command',
+			'message',
+			'beforeConversation',
 			'conversation',
 			'command',
 			'fallback',

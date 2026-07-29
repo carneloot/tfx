@@ -410,12 +410,15 @@ Transitions use compare-and-swap revision updates. Version changes require decla
 Within one update partition:
 
 1. system and lifecycle handlers;
-2. global `/cancelar`;
+2. application `beforeConversation` hook;
 3. active conversation;
 4. command matching;
 5. callback-query matching;
 6. message and reply handlers;
 7. fallback handling.
+
+Carneloot registers its `/cancelar` control through `beforeConversation`; TFX
+owns no command-name-specific routing.
 
 Invalid conversation input does not advance state.
 

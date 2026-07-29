@@ -299,7 +299,9 @@ else
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(1);
 							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(0);
-							yield* f.dispatch(messageUpdate(105, '/cancelar', sender));
+							yield* f.dispatch(
+								messageUpdate(105, '/cancelar@carneloot_bot', sender),
+							);
 							expect(f.sentText()).toEqual([
 								'Por favor cadastre-se primeiro utilizando /cadastrar',
 								'Não foi possível identificar o usuário.',
@@ -409,6 +411,23 @@ else
 							expect(
 								yield* sql`SELECT e.id FROM carneloot.notification_events e JOIN carneloot.pet_food_entries f ON f.id=e.food_entry_id WHERE e.status='scheduled' AND f.amount_mg=50000`,
 							).toHaveLength(1);
+
+							// Foreign mention falls through to active conversation input.
+							const petsBeforeForeignMention = yield* sql`SELECT id FROM carneloot.pets`;
+							yield* f.dispatch(messageUpdate(1000, '/adicionar_pet', sender));
+							expect(
+								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
+							).toHaveLength(1);
+							const outputCount = f.sentText().length;
+							yield* f.dispatch(
+								messageUpdate(1001, '/cancelar@other_bot', sender),
+							);
+							expect(f.sentText().slice(outputCount)).not.toContain(
+								'Conversa cancelada.',
+							);
+							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(
+								petsBeforeForeignMention.length + 1,
+							);
 						}),
 					),
 					postgres,

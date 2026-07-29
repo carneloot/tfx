@@ -92,10 +92,15 @@ const build = <
 	C extends ReadonlyArray<
 		Conversations.BuiltConversation & { readonly _requirements?: unknown }
 	> = readonly [],
-	Cancel extends BotRouter.CancelEffect | undefined = undefined,
+	BeforeConversation extends BotRouter.BeforeConversationEffect | undefined =
+		undefined,
 >(
 	groups: G,
-	options: Partial<BotRouter.Options<typeof bot, G, C, Cancel>> = {},
+	options: Partial<
+		Omit<BotRouter.Options<typeof bot, G, C, BeforeConversation>, 'beforeConversation'>
+	> & {
+		readonly beforeConversation?: BeforeConversation;
+	} = {},
 ) =>
 	Effect.provide(
 		BotRouter.make({
@@ -256,16 +261,66 @@ describe('public BotRouter', () => {
 		).toEqual({ _tag: 'PermanentInvalid', reason: 'Invalid command input' });
 	});
 
-	it('routes cancelar before commands and maps handler errors safely', async () => {
-		let cancelled = 0;
+	it('runs beforeConversation with contexts, short-circuits commands, and maps hook errors safely', async () => {
+		let commandCalls = 0;
+		const seen: Array<{ readonly updateId: number; readonly text: string }> = [];
 		const handlers = BotBuilder.buildGroup(bot, 'account', (value) =>
 			value.handle('start', () =>
-				Effect.fail(new TestHandlerError({ message: 'token=secret' })),
+				Effect.sync(() => {
+					commandCalls++;
+				}),
 			),
 		);
 		const router = await Effect.runPromise(
 			build([handlers], {
-				cancel: () => Effect.sync(() => cancelled++),
+				beforeConversation: () =>
+					Effect.gen(function* () {
+						const update = yield* UpdateContext.UpdateContext;
+						const message = yield* MessageContext.MessageContext;
+						seen.push({
+							updateId: update.updateId,
+							text: message.message.text!,
+						});
+						return { _tag: 'Handled' } as const;
+					}),
+			}),
+		);
+		expect(
+			await Effect.runPromise(
+				router.route(commandUpdate(1, '/start') as never),
+			),
+		).toEqual({ _tag: 'Handled' });
+		expect(seen).toEqual([{ updateId: 1, text: '/start' }]);
+		expect(commandCalls).toBe(0);
+		expect(
+			await Effect.runPromise(
+				router.route({
+					update_id: 2,
+					callback_query: {
+						id: 'cb',
+						from: { id: 1, is_bot: false, first_name: 'A' },
+						chat_instance: 'x',
+						data: 'x',
+					},
+				} as never),
+			),
+		).toMatchObject({ _tag: 'PermanentInvalid' });
+		expect(seen).toEqual([{ updateId: 1, text: '/start' }]);
+
+		const fallingThroughRouter = await Effect.runPromise(
+			build([handlers], {
+				beforeConversation: () => Effect.succeed(undefined),
+			}),
+		);
+		await Effect.runPromise(
+			fallingThroughRouter.route(commandUpdate(2, '/start') as never),
+		);
+		expect(commandCalls).toBe(1);
+
+		const failingRouter = await Effect.runPromise(
+			build([handlers], {
+				beforeConversation: () =>
+					Effect.fail(new TestHandlerError({ message: 'token=secret' })),
 				mapError: () => ({
 					_tag: 'RetryableFailure',
 					error: 'safe-domain-error',
@@ -274,25 +329,7 @@ describe('public BotRouter', () => {
 		);
 		expect(
 			await Effect.runPromise(
-				router.route(commandUpdate(1, '/cancelar') as never),
-			),
-		).toEqual({ _tag: 'Handled' });
-		expect(cancelled).toBe(1);
-		expect(
-			await Effect.runPromise(
-				router.route(commandUpdate(2, '/cancelar@MYBOT') as never),
-			),
-		).toEqual({ _tag: 'Handled' });
-		expect(cancelled).toBe(2);
-		expect(
-			await Effect.runPromise(
-				router.route(commandUpdate(3, '/cancelar@OtherBot') as never),
-			),
-		).toEqual({ _tag: 'Handled' });
-		expect(cancelled).toBe(2);
-		expect(
-			await Effect.runPromise(
-				router.route(commandUpdate(4, '/start') as never),
+				failingRouter.route(commandUpdate(3, '/start') as never),
 			),
 		).toEqual({ _tag: 'RetryableFailure', error: 'safe-domain-error' });
 	});
@@ -342,7 +379,7 @@ describe('public BotRouter', () => {
 		});
 	});
 
-	it('starts, resumes, and cancels conversations through public services', async () => {
+	it('short-circuits active conversations only for defined beforeConversation outcomes', async () => {
 		resumed = 0;
 		const handlers = BotBuilder.buildGroup(bot, 'account', (value) =>
 			value.handle('start', () =>
@@ -361,41 +398,35 @@ describe('public BotRouter', () => {
 				}),
 			),
 		);
+		const groups = [handlers] as const;
 		const router = await Effect.runPromise(
-			build([handlers], {
+			build<
+				typeof groups,
+				readonly [typeof builtConversation],
+				BotRouter.BeforeConversationEffect
+			>(groups, {
 				conversations: [builtConversation],
-				cancel: () =>
-					Effect.gen(function* () {
-						const update = yield* UpdateContext.UpdateContext;
-						const conversations = yield* Conversations.Conversations;
-						yield* conversations.cancelCurrent({
-							botId: 'declared',
-							chatId: update.chatId!,
-							userId: update.userId!,
-						});
-					}),
-			}) as Effect.Effect<BotRouter.Router, never, never>,
+				beforeConversation: (update) =>
+					Effect.succeed(
+						update.update_id === 21 ? { _tag: 'Handled' } : undefined,
+					),
+			}),
 		);
-		expect(
-			await Effect.runPromise(
-				router.route(commandUpdate(20, '/start') as never),
-			),
-		).toEqual({ _tag: 'Handled' });
-		expect(
-			await Effect.runPromise(
-				router.route({
-					...commandUpdate(21, '4'),
-					message: { ...commandUpdate(21, '4').message, entities: [] },
-				} as never),
-			),
-		).toEqual({ _tag: 'Handled' });
+		await Effect.runPromise(router.route(commandUpdate(20, '/start') as never));
+		await Effect.runPromise(
+			router.route({
+				...commandUpdate(21, '4'),
+				message: { ...commandUpdate(21, '4').message, entities: [] },
+			} as never),
+		);
+		expect(resumed).toBe(0);
+		await Effect.runPromise(
+			router.route({
+				...commandUpdate(22, '4'),
+				message: { ...commandUpdate(22, '4').message, entities: [] },
+			} as never),
+		);
 		expect(resumed).toBe(4);
-		await Effect.runPromise(router.route(commandUpdate(22, '/start') as never));
-		expect(
-			await Effect.runPromise(
-				router.route(commandUpdate(23, '/cancelar') as never),
-			),
-		).toEqual({ _tag: 'Handled' });
 	});
 
 	it('permanently rejects unhandled callbacks', async () => {

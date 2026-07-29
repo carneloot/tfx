@@ -31,25 +31,33 @@ type RequirementsOfGroups<G extends ReadonlyArray<BotBuilder.BuiltGroup<any>>> =
 type BuiltConversation = Conversations.BuiltConversation<any, any>;
 type RequirementsOfConversations<C extends ReadonlyArray<BuiltConversation>> =
 	C[number] extends Conversations.BuiltConversation<any, infer R> ? R : never;
-export type CancelEffect = (
+export type BeforeConversationEffect = (
 	update: Update,
-) => Effect.Effect<unknown, TaggedError, any>;
-type RequirementsOfCancel<C> = C extends (
+) => Effect.Effect<
+	DispatchOutcome.DispatchOutcome | undefined,
+	TaggedError,
+	any
+>;
+type RequirementsOfBeforeConversation<C> = C extends (
 	update: Update,
-) => Effect.Effect<unknown, TaggedError, infer R>
+) => Effect.Effect<
+	DispatchOutcome.DispatchOutcome | undefined,
+	TaggedError,
+	infer R
+>
 	? Exclude<R, UpdateContext.UpdateContext | MessageContext.MessageContext>
 	: never;
 export interface Options<
 	B extends Bot.Bot<any, any>,
 	G extends ReadonlyArray<BotBuilder.BuiltGroup<any>>,
 	C extends ReadonlyArray<BuiltConversation> = readonly [],
-	Cancel extends CancelEffect | undefined = undefined,
+	BeforeConversation extends BeforeConversationEffect | undefined = undefined,
 > {
 	readonly bot: B;
 	readonly groups: G;
 	readonly conversations?: C;
 	readonly botUsername: string;
-	readonly cancel?: Cancel;
+	readonly beforeConversation?: BeforeConversation;
 	readonly mapError?: (error: TaggedError) => DispatchOutcome.DispatchOutcome;
 }
 export class UnknownPersistedConversationError extends Data.TaggedError(
@@ -129,15 +137,15 @@ export const make = <
 	B extends Bot.Bot<any, any>,
 	const G extends ReadonlyArray<BotBuilder.BuiltGroup<any>>,
 	const C extends ReadonlyArray<BuiltConversation> = readonly [],
-	Cancel extends CancelEffect | undefined = undefined,
+	BeforeConversation extends BeforeConversationEffect | undefined = undefined,
 >(
-	options: Options<B, G, C, Cancel>,
+	options: Options<B, G, C, BeforeConversation>,
 ): Effect.Effect<
 	Router,
 	never,
 	| RequirementsOfGroups<G>
 	| RequirementsOfConversations<C>
-	| RequirementsOfCancel<Cancel>
+	| RequirementsOfBeforeConversation<BeforeConversation>
 	| MiddlewareRegistry
 	| ConversationStorage
 	| Conversations.Conversations
@@ -146,7 +154,7 @@ export const make = <
 		type RuntimeRequirements =
 			| RequirementsOfGroups<G>
 			| RequirementsOfConversations<C>
-			| RequirementsOfCancel<Cancel>
+			| RequirementsOfBeforeConversation<BeforeConversation>
 			| MiddlewareRegistry
 			| ConversationStorage
 			| Conversations.Conversations;
@@ -221,18 +229,20 @@ export const make = <
 			>;
 		};
 		const router = InternalRouter.make({
-			cancelBotUsername: options.botUsername,
-			...(options.cancel === undefined
+			...(options.beforeConversation === undefined
 				? {}
 				: {
-						cancel: (update: Update) =>
-							Effect.matchEffect(
-								provideContexts(update, options.cancel!(update)),
+						beforeConversation: (update: Update) => {
+							if (messageOf(update) === undefined)
+								return Effect.succeed(undefined);
+							return Effect.matchEffect(
+								provideContexts(update, options.beforeConversation!(update)),
 								{
-									onSuccess: () => Effect.succeed(DispatchOutcome.handled),
+									onSuccess: (outcome) => Effect.succeed(outcome),
 									onFailure: (error) => Effect.succeed(mapError(error)),
 								},
-							),
+							);
+						},
 					}),
 			conversation: (update) => {
 				const routing = UpdateRoutingScope.fromUpdate(options.bot.name, update);
