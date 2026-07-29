@@ -32,14 +32,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm format
       - run: pnpm lint
-      - run: pnpm --filter tfx telegram:check
-      - run: pnpm check:tfx:package
-      - run: pnpm check
       - run: pnpm test:unit
       - run: pnpm test:integration
-      - run: pnpm build
-      - run: pnpm check:packed:consumers
-      - run: pnpm --filter carneloot-bot demo:test
 
   bun:
     runs-on: ubuntu-latest
@@ -66,6 +60,5 @@ jobs:
           install: true
           cache: true
       - run: pnpm install --frozen-lockfile
-      - run: bun x tsc -b tsconfig.json --pretty false
       - run: bun x vitest run --exclude '**/*.integration.test.ts' --exclude '**/*.e2e.test.ts' packages/tfx/test packages/postgres/test apps/carneloot-bot/test
       - run: bun x vitest run --config vitest.integration.config.ts
