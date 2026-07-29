@@ -5,6 +5,13 @@ export interface DemoSummary {
 	readonly reminderEvents: number;
 	readonly reminderStatus: 'scheduled' | 'completed';
 	readonly deliveryOutcome: 'not-materialized' | 'sent' | 'unknown' | 'failed';
+	readonly deliveryMode: 'at-least-once';
+	readonly durableDeduplication: true;
+	readonly caregiverSharedFood: true;
+	readonly jobDeclarations: readonly [
+		'feeding-reminder',
+		'food-added-notification',
+	];
 }
 export const format = (summary: DemoSummary): string =>
-	`users=${summary.users} pets=${summary.pets} food_entries=${summary.foodEntries} reminder_events=${summary.reminderEvents} reminder_status=${summary.reminderStatus} delivery_outcome=${summary.deliveryOutcome}`;
+	`users=${summary.users} pets=${summary.pets} food_entries=${summary.foodEntries} reminder_events=${summary.reminderEvents} reminder_status=${summary.reminderStatus} delivery_outcome=${summary.deliveryOutcome} delivery_mode=${summary.deliveryMode} durable_deduplication=${summary.durableDeduplication} caregiver_shared_food=${summary.caregiverSharedFood} jobs=${summary.jobDeclarations.join(',')}`;

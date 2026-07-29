@@ -8,6 +8,9 @@ import {
 	CommandInput,
 	InlineKeyboard,
 	MessageContext,
+	MessageHandler,
+	MessageHandlerResult,
+	MessageInput,
 	Middleware,
 	ReplyKeyboard,
 	UpdateContext,
@@ -21,6 +24,9 @@ import * as CommandSubpath from 'tfx/Command';
 import * as CommandInputSubpath from 'tfx/CommandInput';
 import * as InlineKeyboardSubpath from 'tfx/InlineKeyboard';
 import * as MessageContextSubpath from 'tfx/MessageContext';
+import * as MessageHandlerSubpath from 'tfx/MessageHandler';
+import * as MessageHandlerResultSubpath from 'tfx/MessageHandlerResult';
+import * as MessageInputSubpath from 'tfx/MessageInput';
 import * as MiddlewareSubpath from 'tfx/Middleware';
 import * as ReplyKeyboardSubpath from 'tfx/ReplyKeyboard';
 import * as UpdateContextSubpath from 'tfx/UpdateContext';
@@ -35,6 +41,9 @@ void [
 	CommandInput,
 	InlineKeyboard,
 	MessageContext,
+	MessageHandler,
+	MessageHandlerResult,
+	MessageInput,
 	Middleware,
 	ReplyKeyboard,
 	UpdateContext,
@@ -47,6 +56,9 @@ void [
 	CommandInputSubpath,
 	InlineKeyboardSubpath,
 	MessageContextSubpath,
+	MessageHandlerSubpath,
+	MessageHandlerResultSubpath,
+	MessageInputSubpath,
 	MiddlewareSubpath,
 	ReplyKeyboardSubpath,
 	UpdateContextSubpath,

@@ -16,8 +16,11 @@ import * as TelegramSchemas from 'tfx/TelegramSchemas';
 import * as UpdateDelivery from 'tfx/UpdateDelivery';
 
 import * as AppLive from './AppLive.js';
+import { Carneloot, menuCommands } from './bot/Declaration.js';
 import { AppConfig, type AppConfigService } from './Config.js';
 import * as DemoSummary from './DemoSummary.js';
+import * as FeedingReminderJob from './jobs/FeedingReminderJob.js';
+import * as FoodAddedNotificationJob from './jobs/FoodAddedNotificationJob.js';
 import * as Program from './Program.js';
 
 class DemoTestError extends Data.TaggedError('DemoTestError')<{
@@ -136,6 +139,45 @@ const program = Effect.scoped(
 			Layer.succeed(AppConfig, config),
 		);
 		const context = yield* Layer.build(graph);
+		const declaredCommands = menuCommands.map(({ command }) => command);
+		const expectedCommands = [
+			'cadastrar',
+			'adicionar_pet',
+			'listar_pets',
+			'deletar_pet',
+			'adicionar_cuidador',
+			'remover_cuidador',
+			'listar_cuidadores',
+			'convites_pet',
+			'parar_de_cuidar_pet',
+			'configurar_inicio_dia',
+			'configurar_atraso_notificacao',
+			'status_racao',
+			'colocar_racao',
+			'corrigir_racao',
+			'deletar_racao',
+			'colocar_racao_todos',
+			'todos',
+		];
+		const messageHandlers = Object.values(Carneloot.groups)
+			.flatMap((group) => Object.keys(group.messageHandlers))
+			.sort();
+		const jobDeclarations = [
+			FeedingReminderJob.declaration.name,
+			FoodAddedNotificationJob.declaration.name,
+		] as const;
+		if (
+			JSON.stringify(declaredCommands) !== JSON.stringify(expectedCommands) ||
+			JSON.stringify(messageHandlers) !== JSON.stringify(['foodReply']) ||
+			JSON.stringify(jobDeclarations) !==
+				JSON.stringify(['feeding-reminder', 'food-added-notification'])
+		)
+			return yield* Effect.fail(
+				new DemoTestError({
+					reason: 'SummaryMismatch',
+					message: 'demo declarations do not match Slice 2 release contract',
+				}),
+			);
 		for (const [index, text] of transcript.entries()) {
 			const outcome = yield* Effect.provide(
 				Effect.flatMap(BotRuntime, (runtime) =>
@@ -198,9 +240,13 @@ const program = Effect.scoped(
 			reminderEvents: counts.reminder_events,
 			reminderStatus: event.status,
 			deliveryOutcome: delivery.status,
+			deliveryMode: 'at-least-once',
+			durableDeduplication: true,
+			caregiverSharedFood: true,
+			jobDeclarations,
 		});
 		const expected =
-			'users=1 pets=1 food_entries=1 reminder_events=1 reminder_status=completed delivery_outcome=sent';
+			'users=1 pets=1 food_entries=1 reminder_events=1 reminder_status=completed delivery_outcome=sent delivery_mode=at-least-once durable_deduplication=true caregiver_shared_food=true jobs=feeding-reminder,food-added-notification';
 		if (summary !== expected)
 			return yield* Effect.fail(
 				new DemoTestError({

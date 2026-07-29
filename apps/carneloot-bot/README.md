@@ -54,15 +54,31 @@ Production must provide `FNOX_AGE_KEY_FILE`, `FNOX_PROFILE=production`, and `DAT
 
 ## Commands
 
+Telegram menu declares 17 names:
+
 1. `/cadastrar`
 2. `/adicionar_pet`
 3. `/listar_pets`
-4. `/configurar_inicio_dia`
-5. `/configurar_atraso_notificacao`
-6. `/status_racao`
-7. `/colocar_racao`
+4. `/deletar_pet`
+5. `/adicionar_cuidador`
+6. `/remover_cuidador`
+7. `/listar_cuidadores`
+8. `/convites_pet`
+9. `/parar_de_cuidar_pet`
+10. `/configurar_inicio_dia`
+11. `/configurar_atraso_notificacao`
+12. `/status_racao`
+13. `/colocar_racao`
+14. `/corrigir_racao`
+15. `/deletar_racao`
+16. `/colocar_racao_todos`
+17. `/todos` (alias for `/colocar_racao_todos`)
 
-`/cancelar` is reserved conversation control, not a declared command. Day-start configuration selects `Alterar` before hour/timezone. Reminder configuration selects `Definir` (or later `Alterar`/`Excluir`) before duration.
+`/cancelar` is conversation control, not declared menu command. Finite choices display reply keyboards with `Cancelar`; free-text and terminal replies remove stale keyboards. Day-start selects `Alterar` before hour/timezone. Reminder selects `Definir` (later `Alterar` or `Excluir`) before duration.
+
+Pet owner invites caregiver with `/adicionar_cuidador`; invited user accepts or rejects through `/convites_pet`. Only accepted caregivers can see cared pets, record food, or use food reply shortcuts. Owner can remove access; caregiver can leave with `/parar_de_cuidar_pet`. Every food mutation rechecks current owner/caregiver access transactionally.
+
+Reply to a feeding reminder to record food for its pet. Reply to source food messages for safe correction/deletion flows. Reply identities are scoped to bot and chat, so same Telegram message number in another chat cannot mutate food.
 
 ## Tests and deterministic demo
 
@@ -78,5 +94,14 @@ RUN_TESTCONTAINERS=true mise exec -- pnpm --filter carneloot-bot demo:test
 Real PostgreSQL suites skip locally only when neither database option exists and cannot skip in CI. Fake Telegram is used by E2E/demo validation; no Telegram network call occurs.
 
 ## Delivery semantics and operations
+
+Runbook: [`../../docs/demos/2026-07-16-slice-2-shared-pet-food.md`](../../docs/demos/2026-07-16-slice-2-shared-pet-food.md). Import legacy data only after backup and dry-run:
+
+```sh
+mise exec -- pnpm --filter carneloot-bot import:legacy -- import --dry-run --source-url file:./fixture.db --source-id fixture --bot-id carneloot --database-url "$DATABASE_URL" --report ./legacy-report.json
+mise exec -- pnpm --filter carneloot-bot import:legacy -- import --source-url file:./fixture.db --source-id fixture --bot-id carneloot --database-url "$DATABASE_URL" --report ./legacy-report.json
+```
+
+Treat importer promotion/cutover as one-way until backup restore is proven. Stop polling before rollback; never run more than one active bot replica against same bot/update stream.
 
 Reminder jobs are durable and at-least-once. Each recipient is fenced `pending → sending → outcome`. Definitive failures may retry; ambiguous transport/persistence or expired sending leases become terminal `unknown` and are never automatically resent, preventing duplicate owner notifications. Startup globally recovers expired leases. Failed and quarantined job identities are exposed in worker diagnostics; release health fails on unexpected quarantined jobs. Operators must inspect problem jobs and reconcile unknown deliveries rather than blindly replaying them.

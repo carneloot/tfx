@@ -23,6 +23,19 @@ for (const packageName of ['tfx', '@tfx/postgres']) {
 		);
 	}
 }
+const publicTfx = await import('tfx');
+const MessageHandler = await import('tfx/MessageHandler');
+const MessageInput = await import('tfx/MessageInput');
+const MessageHandlerResult = await import('tfx/MessageHandlerResult');
+if (
+	publicTfx.MessageHandler !== MessageHandler ||
+	publicTfx.MessageInput !== MessageInput ||
+	publicTfx.MessageHandlerResult !== MessageHandlerResult ||
+	typeof MessageHandler.make !== 'function' ||
+	typeof MessageInput.replyText !== 'function' ||
+	MessageHandlerResult.handled._tag !== 'Handled'
+)
+	throw new Error('Packed typed message-handler public API failed');
 const Telegram = await import('tfx/Telegram');
 const client = HttpClient.make((request) =>
 	Effect.succeed(

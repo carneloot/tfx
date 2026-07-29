@@ -7,11 +7,33 @@ import {
 	rmSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const archive = process.argv[2];
-if (archive === undefined)
-	throw new Error('Usage: check-packed-package.ts <archive.tgz>');
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const packed = process.argv[2] === undefined;
+const packDir = packed
+	? mkdtempSync(join(tmpdir(), 'effectloot-pack-'))
+	: undefined;
+const archive =
+	process.argv[2] ??
+	(() => {
+		execFileSync(
+			'pnpm',
+			['--filter', 'tfx', 'pack', '--pack-destination', packDir!],
+			{
+				cwd: root,
+				stdio: 'inherit',
+				env: { ...process.env, PNPM_CONFIG_IGNORE_SCRIPTS: 'true' },
+			},
+		);
+		const result = readdirSync(packDir!)
+			.map((file) => join(packDir!, file))
+			.find((file) => file.endsWith('.tgz'));
+		if (result === undefined)
+			throw new Error('tfx pack did not produce an archive');
+		return result;
+	})();
 const temp = mkdtempSync(join(tmpdir(), 'effectloot-pack-check-'));
 try {
 	execFileSync('tar', ['-xzf', archive, '-C', temp]);
@@ -45,4 +67,5 @@ try {
 	);
 } finally {
 	rmSync(temp, { recursive: true, force: true });
+	if (packed) rmSync(packDir!, { recursive: true, force: true });
 }
