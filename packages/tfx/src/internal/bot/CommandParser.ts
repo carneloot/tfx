@@ -122,16 +122,17 @@ const parseNode = (
 					return Effect.succeed(result);
 				}
 				const before = cursor.offset;
-				return Effect.flatMap(parseNode(input.input!, cursor), (part) => {
+				return Effect.gen(function* () {
+					const part = yield* parseNode(input.input!, cursor);
 					if (cursor.offset === before)
-						return Effect.fail(
+						return yield* Effect.fail(
 							new CommandInputError(
 								'InvalidSequence',
 								'Repeated input did not consume command text',
 							),
 						);
 					parts.push(part);
-					return loop();
+					return yield* loop();
 				});
 			};
 			return loop();
