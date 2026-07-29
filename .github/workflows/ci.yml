@@ -7,22 +7,6 @@ on:
 jobs:
   node:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: tfx
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/tfx
     steps:
       - uses: actions/checkout@v4
       - run: git submodule update --init .repos/telegram-api
@@ -34,9 +18,21 @@ jobs:
       - run: pnpm format
       - run: pnpm lint
       - run: pnpm test:unit
-      - run: pnpm test:integration
 
   bun:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --init .repos/telegram-api
+      - uses: jdx/mise-action@v4.2.3
+        with:
+          install: true
+          cache: true
+      - run: pnpm install --frozen-lockfile
+      - run: bun x vitest run --exclude '**/*.integration.test.ts' --exclude '**/*.e2e.test.ts' packages/tfx/test packages/postgres/test apps/carneloot-bot/test
+
+  node-integration:
+    needs: [node, bun]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -62,5 +58,33 @@ jobs:
           install: true
           cache: true
       - run: pnpm install --frozen-lockfile
-      - run: bun x vitest run --exclude '**/*.integration.test.ts' --exclude '**/*.e2e.test.ts' packages/tfx/test packages/postgres/test apps/carneloot-bot/test
+      - run: pnpm test:integration
+
+  bun-integration:
+    needs: [node, bun]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tfx
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/tfx
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --init .repos/telegram-api
+      - uses: jdx/mise-action@v4.2.3
+        with:
+          install: true
+          cache: true
+      - run: pnpm install --frozen-lockfile
       - run: bun x vitest run --config vitest.integration.config.ts
