@@ -11,6 +11,7 @@ import {
 	type LegacySnapshot,
 } from '../../src/importer/LegacySchemas.js';
 import { LegacySource } from '../../src/importer/LegacySource.js';
+import { LegacyTarget } from '../../src/importer/LegacyTarget.js';
 import { verifyLegacy } from '../../src/importer/LegacyVerification.js';
 
 const emptySnapshot = () =>
@@ -19,14 +20,20 @@ const emptySnapshot = () =>
 	) as unknown as LegacySnapshot;
 
 describe('legacy importer', () => {
-	it('dry run requires no target service', async () => {
-		const reads = await Effect.runPromise(
+	it('dry run promotes transactionally and reports rollback-backed counts', async () => {
+		const result = await Effect.runPromise(
 			Effect.gen(function* () {
-				const calls = yield* Ref.make(0);
+				const options = yield* Ref.make<
+					undefined | { readonly dryRun: boolean }
+				>(undefined);
 				const source = Layer.succeed(LegacySource, {
-					readSnapshot: Ref.update(calls, (count) => count + 1).pipe(
-						Effect.as(emptySnapshot()),
-					),
+					readSnapshot: Effect.succeed(emptySnapshot()),
+				});
+				const target = Layer.succeed(LegacyTarget, {
+					promote: (_mapped, promotionOptions) =>
+						Ref.set(options, promotionOptions).pipe(
+							Effect.as({ inserted: { users: 2 }, existing: { pets: 1 } }),
+						),
 				});
 				const config = Layer.succeed(LegacyImportConfig, {
 					sourceUrl: 'file:fixture.db',
@@ -34,20 +41,23 @@ describe('legacy importer', () => {
 					botId: 'carneloot',
 					dryRun: true,
 				});
-				yield* runDry.pipe(
+				const report = yield* runDry.pipe(
 					Effect.provide(
 						Layer.mergeAll(
 							source,
+							target,
 							config,
 							NodeCrypto.layer,
 							NodeServices.layer,
 						),
 					),
 				);
-				return yield* Ref.get(calls);
+				return { report, options: yield* Ref.get(options) };
 			}),
 		);
-		expect(reads).toBe(1);
+		expect(result.options).toEqual({ dryRun: true });
+		expect(result.report.counts.users?.inserted).toBe(2);
+		expect(result.report.counts.pets?.existing).toBe(1);
 	});
 
 	it('excludes known pet config for non-imported pet with warning', async () => {

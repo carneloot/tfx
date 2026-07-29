@@ -11,7 +11,7 @@ import * as NotificationRepositoryLive from '../postgres/NotificationRepositoryL
 import * as PetFoodRepositoryLive from '../postgres/PetFoodRepositoryLive.js';
 import * as ReminderSchedulerLive from '../postgres/ReminderSchedulerLive.js';
 import { flags, migrationFlags, toConfig } from './Cli.js';
-import { LegacyImportConfig, layerFrom } from './LegacyImportConfig.js';
+import { layerFrom } from './LegacyImportConfig.js';
 import { runDry, runImport } from './LegacyImporter.js';
 import { LegacyImportError } from './LegacyImportError.js';
 import {
@@ -73,6 +73,11 @@ const targetInfrastructure = (
 	);
 };
 
+const dryRunTarget = (databaseUrl: Redacted.Redacted<string>) =>
+	LegacyTargetLive.layer.pipe(
+		Layer.provideMerge(PgClient.layer({ url: databaseUrl })),
+	);
+
 const completeImport = (
 	report: LegacyImportReport,
 	reportPath: string | undefined,
@@ -96,10 +101,17 @@ const completeImport = (
 	});
 
 const importLegacy = (config: ReturnType<typeof toConfig>) => {
-	const workflow = config.dryRun
-		? runDry.pipe(Effect.provide(LegacySourceLive.layer))
-		: config.databaseUrl
-			? runImport.pipe(
+	const workflow = config.databaseUrl
+		? config.dryRun
+			? runDry.pipe(
+					Effect.provide(
+						Layer.merge(
+							LegacySourceLive.layer,
+							dryRunTarget(config.databaseUrl),
+						),
+					),
+				)
+			: runImport.pipe(
 					Effect.provide(
 						Layer.merge(
 							LegacySourceLive.layer,
@@ -107,13 +119,12 @@ const importLegacy = (config: ReturnType<typeof toConfig>) => {
 						),
 					),
 				)
-			: Effect.fail(
-					new LegacyImportError({
-						reason: 'InvalidConfiguration',
-						message:
-							'Target PostgreSQL connection URL is required unless --dry-run is set',
-					}),
-				);
+		: Effect.fail(
+				new LegacyImportError({
+					reason: 'InvalidConfiguration',
+					message: 'Target PostgreSQL connection URL is required',
+				}),
+			);
 	return workflow.pipe(
 		Effect.tap((report) => completeImport(report, config.reportPath)),
 		Effect.withSpan('legacy-import.import'),

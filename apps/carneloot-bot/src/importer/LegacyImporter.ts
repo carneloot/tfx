@@ -5,7 +5,7 @@ import * as Effect from 'effect/Effect';
 import { sourceFingerprint } from './LegacyId.js';
 import { LegacyImportConfig } from './LegacyImportConfig.js';
 import { LegacyImportError } from './LegacyImportError.js';
-import { mapLegacySnapshot } from './LegacyMapping.js';
+import { mapLegacySnapshot, type MappedLegacy } from './LegacyMapping.js';
 import { writeReportAtomic, type LegacyImportReport } from './LegacyReport.js';
 import { decodeSnapshot } from './LegacySchemas.js';
 import { LegacySource } from './LegacySource.js';
@@ -62,20 +62,16 @@ const complete = (
 		return completed;
 	});
 
-export const runDry = Effect.gen(function* () {
-	const { config, startedAt, report } = yield* prepare;
-	return yield* complete(config, startedAt, report);
-});
-
-export const runImport = Effect.gen(function* () {
-	const { config, startedAt, mapped, report: initialReport } = yield* prepare;
-	let report = initialReport;
-	let reminderFailure: LegacyImportError | undefined;
-	if (report.blockers.length === 0) {
+const promote = (
+	report: LegacyImportReport,
+	mapped: MappedLegacy,
+	dryRun: boolean,
+) =>
+	Effect.gen(function* () {
 		const target = yield* LegacyTarget;
-		const promoted = yield* target.promote(mapped, { dryRun: false }).pipe(
+		const promoted = yield* target.promote(mapped, { dryRun }).pipe(
 			Effect.withSpan('legacy-import.promote', {
-				attributes: { dryRun: false, mappedRows: mapped.rows.length },
+				attributes: { dryRun, mappedRows: mapped.rows.length },
 			}),
 		);
 		const counts = Object.fromEntries(
@@ -88,7 +84,24 @@ export const runImport = Effect.gen(function* () {
 				},
 			]),
 		);
-		report = { ...report, counts };
+		return { ...report, counts };
+	});
+
+export const runDry = Effect.gen(function* () {
+	const { config, startedAt, mapped, report: initialReport } = yield* prepare;
+	const report =
+		initialReport.blockers.length === 0
+			? yield* promote(initialReport, mapped, true)
+			: initialReport;
+	return yield* complete(config, startedAt, report);
+});
+
+export const runImport = Effect.gen(function* () {
+	const { config, startedAt, mapped, report: initialReport } = yield* prepare;
+	let report = initialReport;
+	let reminderFailure: LegacyImportError | undefined;
+	if (report.blockers.length === 0) {
+		report = yield* promote(report, mapped, false);
 		reminderFailure = yield* rebuildFeedingReminders(
 			mapped.fingerprint,
 			config.botId,

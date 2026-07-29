@@ -4,7 +4,7 @@ import { Command } from 'effect/unstable/cli';
 import { describe, expect, it } from 'vitest';
 
 import { flags, toConfig } from '../../src/importer/Cli.js';
-import { blockerSummary } from '../../src/importer/Command.js';
+import { blockerSummary, commandImport } from '../../src/importer/Command.js';
 import type { LegacyImportConfigService } from '../../src/importer/LegacyImportConfig.js';
 import { countSummary } from '../../src/importer/LegacyReport.js';
 
@@ -46,19 +46,26 @@ describe('legacy importer CLI', () => {
 		expect(Redacted.value(result.sourceAuthToken)).toBe('token');
 	});
 
-	it('allows dry run without target database URL', async () => {
-		const result = await Effect.runPromise(
-			run([
-				'--source-url',
-				'file:test.db',
-				'--source-id',
-				'fixture',
-				'--bot-id',
-				'carneloot',
-				'--dry-run',
-			]),
-		);
-		expect(result?.databaseUrl).toBeUndefined();
+	it('requires target database URL for dry run', async () => {
+		await expect(
+			Effect.runPromise(
+				Command.runWith(commandImport, { version: 'test' })([
+					'--source-url',
+					'file:test.db',
+					'--source-id',
+					'fixture',
+					'--bot-id',
+					'carneloot',
+					'--dry-run',
+				]).pipe(Effect.provide(NodeServices.layer)) as Effect.Effect<
+					void,
+					unknown,
+					never
+				>,
+			),
+		).rejects.toMatchObject({
+			message: 'Target PostgreSQL connection URL is required',
+		});
 	});
 
 	it('renders one-line sanitized count summary', () => {
