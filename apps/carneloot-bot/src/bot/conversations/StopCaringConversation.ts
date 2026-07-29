@@ -7,7 +7,6 @@ import {
 	ConversationChoice,
 	ConversationInput,
 	ConversationPrompt,
-	MessageContext,
 } from 'tfx';
 import type { TaggedError } from 'tfx/TaggedError';
 import * as Telegram from 'tfx/Telegram';
@@ -19,6 +18,7 @@ import { PetName } from '../../domain/Pet.js';
 import { PetCaregiverRepository } from '../../ports/PetCaregiverRepository.js';
 import { PetRepository } from '../../ports/PetRepository.js';
 import { UserRepository } from '../../ports/UserRepository.js';
+import * as ConversationUi from './ConversationUi.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
 const Base = {
@@ -30,19 +30,17 @@ const Base = {
 const PetState = Schema.Struct(Base);
 const ConfirmState = Schema.Struct({ ...Base, petId: PetId, petName: PetName });
 const Text = ConversationInput.text(Schema.String);
-const widen = <A, E extends TaggedError, R>(effect: Effect.Effect<A, E, R>) =>
-	effect;
-const reply = (text: string, removeKeyboard = false) =>
-	widen(
-		Effect.flatMap(MessageContext.MessageContext, (context) =>
-			context.reply(
-				text,
-				removeKeyboard
-					? { reply_markup: ConversationPrompt.removeReplyKeyboard }
-					: undefined,
-			),
-		).pipe(Effect.asVoid),
+const reply = ConversationUi.reply;
+const replyRemovingKeyboard = ConversationUi.replyRemovingKeyboard;
+const petChoice = (state: typeof PetState.Type) =>
+	ConversationChoice.reply(
+		ConversationUi.uniqueReplyOptions(
+			state.pets.map((item) => ({ label: item.name, value: item.id })),
+		),
+		{ cancelLabel: 'Cancelar' },
 	);
+const confirmChoice = ConversationChoice.boolean({ yes: 'Sim', no: 'Não' });
+
 const required = <A, E extends TaggedError, R>(
 	effect: Effect.Effect<A, E, R>,
 ) =>
@@ -54,24 +52,6 @@ const required = <A, E extends TaggedError, R>(
 		yield* Telegram.Telegram;
 		return yield* effect;
 	});
-const petChoice = (items: ReadonlyArray<typeof PetOption.Type>) =>
-	ConversationChoice.make(
-		items.map((item) => ({ label: item.name, value: item.id })),
-	);
-const confirmChoice = ConversationChoice.make([
-	{ label: 'Sim', value: true },
-	{ label: 'Não', value: false },
-]);
-const prompt = <A>(text: string, choice: ConversationChoice.Choice<A, never>) =>
-	Effect.flatMap(MessageContext.MessageContext, (context) =>
-		context.reply(text, {
-			reply_markup: {
-				keyboard: choice.options.map((item) => [{ text: item.label }]),
-				one_time_keyboard: true,
-				resize_keyboard: true,
-			},
-		}),
-	).pipe(Effect.asVoid);
 const stay = () =>
 	required(
 		Effect.succeed(
@@ -82,13 +62,15 @@ const stay = () =>
 	);
 const unavailable = () =>
 	ConversationBuilder.complete({
-		afterCommit: reply('Este pet não está mais disponível para você.', true),
+		afterCommit: replyRemovingKeyboard(
+			'Este pet não está mais disponível para você.',
+		),
 	});
 const output = (
 	notices: ReadonlyArray<{ readonly chatId: number; readonly text: string }>,
 ) =>
 	Effect.gen(function* () {
-		yield* reply('Você parou de cuidar deste pet.', true);
+		yield* replyRemovingKeyboard('Você parou de cuidar deste pet.');
 		const telegram = yield* Telegram.Telegram;
 		yield* Effect.forEach(
 			notices,
@@ -105,7 +87,10 @@ export const declaration = Conversation.make('stop-caring-for-pet', {
 	initialize: (state) => state,
 	steps: {
 		pet: Conversation.step('pet', { state: PetState, input: Text }),
-		confirm: Conversation.step('confirm', { state: ConfirmState, input: Text }),
+		confirm: Conversation.step('confirm', {
+			state: ConfirmState,
+			input: ConversationInput.choice(confirmChoice),
+		}),
 	},
 	idleTimeout: 15 * 60 * 1000,
 	error: ApplicationError,
@@ -116,18 +101,21 @@ export const built = ConversationBuilder.done(
 			enter: (state) =>
 				required(
 					state.pets.length === 0
-						? reply('Você não está cuidando de nenhum pet.', true)
-						: prompt('Escolha o pet:', petChoice(state.pets)),
+						? replyRemovingKeyboard('Você não está cuidando de nenhum pet.')
+						: ConversationUi.promptChoice('Escolha o pet:', petChoice(state)),
 				),
 			onInput: (state, value) =>
 				required(
 					Effect.gen(function* () {
 						const selected = yield* Effect.result(
-							ConversationPrompt.resolve(petChoice(state.pets), value),
+							ConversationPrompt.resolve(petChoice(state), value),
 						);
 						if (selected._tag === 'Failure') return yield* stay();
 						const resolved = selected.success;
-						if (resolved._tag === 'Cancelled') return yield* stay();
+						if (resolved._tag === 'Cancelled')
+							return ConversationBuilder.cancelled({
+								afterCommit: replyRemovingKeyboard('Operação cancelada.'),
+							});
 						const pet = state.pets.find((item) => item.id === resolved.value);
 						if (pet === undefined) return yield* stay();
 						return ConversationBuilder.to('confirm', {
@@ -142,22 +130,23 @@ export const built = ConversationBuilder.done(
 		.step('confirm', {
 			enter: (state) =>
 				required(
-					prompt(`Deseja parar de cuidar de ${state.petName}?`, confirmChoice),
+					ConversationUi.promptChoice(
+						`Deseja parar de cuidar de ${state.petName}?`,
+						confirmChoice,
+					),
 				),
-			onInput: (state, value) =>
+			onInput: (state, selected) =>
 				required(
 					Effect.gen(function* () {
-						const selected = yield* Effect.result(
-							ConversationPrompt.resolve(confirmChoice, value),
-						);
-						if (
-							selected._tag === 'Failure' ||
-							selected.success._tag === 'Cancelled'
-						)
-							return yield* stay();
-						if (!selected.success.value)
+						if (selected._tag === 'Cancelled')
+							return ConversationBuilder.cancelled({
+								afterCommit: replyRemovingKeyboard('Operação cancelada.'),
+							});
+						if (!selected.value)
 							return ConversationBuilder.complete({
-								afterCommit: reply('Você continuará cuidando deste pet.', true),
+								afterCommit: replyRemovingKeyboard(
+									'Você continuará cuidando deste pet.',
+								),
 							});
 						const result = yield* Effect.result(
 							StopCaring.execute(state, state.petId),

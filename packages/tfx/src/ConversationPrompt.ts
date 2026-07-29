@@ -6,17 +6,35 @@ import * as ConversationChoice from './ConversationChoice.js';
 import * as InlineKeyboard from './InlineKeyboard.js';
 import * as ReplyKeyboard from './ReplyKeyboard.js';
 
+const renderedRows = <A, R>(
+	declaration: ConversationChoice.Choice<A, R>,
+	values: ReadonlyArray<string>,
+) => {
+	const rows = ConversationChoice.rows(declaration, values);
+	return declaration.cancelLabel === undefined
+		? rows
+		: [
+				...rows,
+				[
+					{
+						label: declaration.cancelLabel,
+						value: declaration.cancelLabel,
+					},
+				],
+			];
+};
+
 export const choice = <A, R>(declaration: ConversationChoice.Choice<A, R>) =>
 	Effect.map(ConversationChoice.encodeValues(declaration), (values) =>
 		declaration.callbackData === undefined
 			? ReplyKeyboard.rows(
-					ConversationChoice.rows(declaration, values).map((row) =>
+					renderedRows(declaration, values).map((row) =>
 						row.map((item) => item.label),
 					),
 					{ oneTime: true, resize: true },
 				)
 			: InlineKeyboard.rows(
-					ConversationChoice.rows(declaration, values).map((row) =>
+					renderedRows(declaration, values).map((row) =>
 						row.map((item) => InlineKeyboard.callback(item.label, item.value)),
 					),
 				),

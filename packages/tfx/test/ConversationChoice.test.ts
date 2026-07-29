@@ -15,25 +15,35 @@ describe('ConversationChoice', () => {
 			]),
 		).toThrow('Duplicate');
 	});
-	it('renders immutable rows and resolves selected/cancelled', async () => {
-		const choice = ConversationChoice.make(
+	it('renders immutable reply rows and resolves selected/cancelled', async () => {
+		const choice = ConversationChoice.reply(
 			[
 				{ label: 'A', value: 1 },
 				{ label: 'B', value: 2 },
 			],
-			{ columns: 2, cancelLabel: 'Cancel' },
+			{ columns: 2, cancelLabel: 'Cancelar' },
 		);
 		const markup = await Effect.runPromise(ConversationPrompt.choice(choice));
 		expect(markup).toMatchObject({
-			keyboard: [[{ text: 'A' }, { text: 'B' }]],
+			keyboard: [[{ text: 'A' }, { text: 'B' }], [{ text: 'Cancelar' }]],
+			one_time_keyboard: true,
+			resize_keyboard: true,
 		});
 		expect(Object.isFrozen(markup)).toBe(true);
 		await expect(
 			Effect.runPromise(ConversationPrompt.resolve(choice, 'A')),
 		).resolves.toEqual({ _tag: 'Selected', value: 1 });
 		await expect(
-			Effect.runPromise(ConversationPrompt.resolve(choice, 'Cancel')),
+			Effect.runPromise(ConversationPrompt.resolve(choice, 'Cancelar')),
 		).resolves.toEqual({ _tag: 'Cancelled' });
+	});
+	it('renders boolean replies in two columns', async () => {
+		const confirmation = ConversationChoice.boolean({ yes: 'Sim', no: 'Não' });
+		expect(
+			await Effect.runPromise(ConversationPrompt.choice(confirmation)),
+		).toMatchObject({
+			keyboard: [[{ text: 'Sim' }, { text: 'Não' }]],
+		});
 	});
 	it('rejects duplicate encoded callback values', async () => {
 		const codec = CallbackData.make('choice', Schema.String);

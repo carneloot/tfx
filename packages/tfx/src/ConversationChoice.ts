@@ -9,6 +9,10 @@ export interface Option<A> {
 	readonly label: string;
 	readonly value: A;
 }
+export interface ReplyConfig {
+	readonly cancelLabel?: string;
+	readonly columns?: number;
+}
 export interface Choice<A, R> {
 	readonly options: ReadonlyArray<Option<A>>;
 	readonly callbackData:
@@ -74,6 +78,33 @@ export const make = <
 		_R: undefined as never,
 	});
 };
+export const reply = <A>(
+	options: ReadonlyArray<Option<A>>,
+	config: ReplyConfig = {},
+): Choice<A, never> => make(options, config);
+
+export const boolean = (
+	labels: {
+		readonly yes: string;
+		readonly no: string;
+		readonly cancelLabel?: string;
+	},
+	config: Omit<ReplyConfig, 'cancelLabel'> = {},
+): Choice<boolean, never> =>
+	reply(
+		[
+			{ label: labels.yes, value: true },
+			{ label: labels.no, value: false },
+		],
+		{
+			...config,
+			columns: config.columns ?? 2,
+			...(labels.cancelLabel === undefined
+				? {}
+				: { cancelLabel: labels.cancelLabel }),
+		},
+	);
+
 export const selected = <A>(value: A): ChoiceResult<A> =>
 	Object.freeze({ _tag: 'Selected', value });
 export const cancelled: ChoiceResult<never> = Object.freeze({

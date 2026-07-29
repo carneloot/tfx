@@ -55,7 +55,13 @@ type Sender = {
 	readonly first_name: string;
 	readonly username?: string;
 };
-type Sent = { readonly chatId: number; readonly text: string };
+type Sent = {
+	readonly chatId: number;
+	readonly text: string;
+	readonly replyMarkup: unknown;
+};
+const sentText = (sent: ReadonlyArray<Sent>) =>
+	sent.map((message) => message.text);
 const update = (id: number, text: string, sender: Sender) => ({
 	update_id: id,
 	message: {
@@ -82,9 +88,14 @@ const makeGraph = (sql: PgClient.PgClient, sent: Sent[]) => {
 		sendMessage: (payload: {
 			readonly chat_id: number;
 			readonly text: string;
+			readonly reply_markup?: unknown;
 		}) =>
 			Effect.sync(() => {
-				sent.push({ chatId: payload.chat_id, text: payload.text });
+				sent.push({
+					chatId: payload.chat_id,
+					text: payload.text,
+					replyMarkup: payload.reply_markup,
+				});
 				return { message_id: sent.length };
 			}),
 		setMessageReaction: () => Effect.succeed(true),
@@ -147,16 +158,44 @@ else
 									status: string;
 								}>`SELECT status FROM carneloot.pet_caregivers`;
 							yield* send('/adicionar_cuidador');
+							expect(sent.at(-1)?.replyMarkup).toEqual({
+								keyboard: [[{ text: 'Rex' }], [{ text: 'Cancelar' }]],
+								one_time_keyboard: true,
+								resize_keyboard: true,
+							});
+							expect(
+								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
+							).toHaveLength(1);
+							expect(yield* relation()).toHaveLength(0);
 							yield* send('/cancelar');
-							expect(sent.at(-1)).toEqual({
+							expect(yield* relation()).toHaveLength(0);
+							expect(sent.at(-1)).toMatchObject({
 								chatId: owner.id,
 								text: 'Conversa cancelada.',
+								replyMarkup: { remove_keyboard: true },
 							});
 							expect(
 								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
 							).toHaveLength(0);
+							// Visible cancellation removes same selection conversation without invite write.
+							yield* send('/adicionar_cuidador');
+							expect(
+								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
+							).toHaveLength(1);
+							expect(yield* relation()).toHaveLength(0);
+							yield* send('Cancelar');
+							expect(yield* relation()).toHaveLength(0);
+							expect(
+								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
+							).toHaveLength(0);
+							expect(sent.at(-1)?.replyMarkup).toEqual({
+								remove_keyboard: true,
+							});
 							for (const text of ['/adicionar_cuidador', 'Rex', '@care_e2e'])
 								yield* send(text);
+							expect(sent.at(-2)?.replyMarkup).toEqual({
+								remove_keyboard: true,
+							});
 							expect((yield* relation())[0]?.status).toBe('pending');
 							expect(sent).toContainEqual({
 								chatId: caregiver.id,
@@ -172,7 +211,15 @@ else
 							expect(sent.at(-1)?.text).toBe(
 								'Envie o @username da pessoa cuidadora.',
 							);
+							expect(
+								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
+							).toHaveLength(1);
+							expect((yield* relation())[0]?.status).toBe('pending');
 							yield* send('/cancelar');
+							expect(
+								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
+							).toHaveLength(0);
+							expect((yield* relation())[0]?.status).toBe('pending');
 							for (const text of ['/convites_pet', 'Rex (Owner)', 'Sim'])
 								yield* send(text, caregiver);
 							expect((yield* relation())[0]?.status).toBe('accepted');
@@ -292,6 +339,7 @@ else
 							expect(
 								countSent(caregiver.id, 'Você não cuida mais do pet Rex.'),
 							).toBe(2);
+							expect(sentText(sent)).toContain('Conversa cancelada.');
 							expect(
 								countSent(owner.id, 'Caregiver parou de cuidar do pet Rex.'),
 							).toBe(1);
@@ -345,10 +393,11 @@ else
 							const final = update(209, 'Sim', caregiver);
 							yield* dispatchWith(second, final);
 							yield* dispatchWith(second, final);
-							expect(sent.slice(before)).toEqual([
+							expect(sent.slice(before)).toMatchObject([
 								{
 									chatId: caregiver.id,
 									text: 'Este convite não está mais disponível.',
+									replyMarkup: { remove_keyboard: true },
 								},
 							]);
 							expect(
@@ -367,7 +416,7 @@ else
 			);
 		});
 
-		it('resumes persisted selection after layer rebuild and deduplicates stale final update', async () => {
+		it('resumes persisted selection after layer rebuild with valid keyboard label', async () => {
 			await Effect.runPromise(
 				Effect.provide(
 					Effect.scoped(
@@ -396,20 +445,21 @@ else
 								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
 							).toHaveLength(1);
 							const second = yield* Layer.build(makeGraph(sql, sent));
-							yield* sql`DELETE FROM carneloot.pets WHERE name='Rex'`;
-							const final = update(105, 'Sim', owner);
-							yield* dispatchWith(second, final);
-							yield* dispatchWith(second, final);
+							expect(sent.at(-1)?.replyMarkup).toEqual({
+								keyboard: [
+									[{ text: 'Sim' }, { text: 'Não' }],
+									[{ text: 'Cancelar' }],
+								],
+								one_time_keyboard: true,
+								resize_keyboard: true,
+							});
+							yield* dispatchWith(second, update(105, 'Sim', owner));
 							expect(
-								sent.filter(
-									(item) =>
-										item.text ===
-										'Este pet não está mais disponível para você.',
-								),
-							).toHaveLength(1);
-							expect(
-								yield* sql`SELECT update_id FROM tfx_caregiver_e2e.case_update_deduplication WHERE update_id=105`,
-							).toHaveLength(1);
+								yield* sql`SELECT id FROM carneloot.pets WHERE name='Rex'`,
+							).toHaveLength(0);
+							expect(sent.at(-1)?.replyMarkup).toEqual({
+								remove_keyboard: true,
+							});
 							expect(
 								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
 							).toHaveLength(0);

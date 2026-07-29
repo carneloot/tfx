@@ -6,8 +6,9 @@ import * as Schema from 'effect/Schema';
 import {
 	Conversation,
 	ConversationBuilder,
+	ConversationChoice,
 	ConversationInput,
-	MessageContext,
+	ConversationPrompt,
 } from 'tfx';
 import type { TaggedError } from 'tfx/TaggedError';
 
@@ -22,6 +23,7 @@ import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
 import { PetRepository } from '../../ports/PetRepository.js';
 import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
 import { UserRepository } from '../../ports/UserRepository.js';
+import * as ConversationUi from './ConversationUi.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
 const Base = {
@@ -45,14 +47,31 @@ const ActionState = Schema.Struct({
 });
 const SelectedState = Schema.Struct({ ...Base, petId: PetId });
 const Text = ConversationInput.text(Schema.String);
+const petChoice = (state: typeof PetState.Type) =>
+	ConversationChoice.reply(
+		ConversationUi.uniqueReplyOptions(
+			state.pets.map((pet) => ({ label: pet.name, value: pet.id })),
+		),
+		{ cancelLabel: 'Cancelar' },
+	);
+const actionChoice = (currentDelayMs: number | null) =>
+	ConversationChoice.reply(
+		currentDelayMs === null
+			? [{ label: 'Definir', value: 'define' as const }]
+			: [
+					{ label: 'Alterar', value: 'change' as const },
+					{ label: 'Excluir', value: 'delete' as const },
+				],
+		{ columns: 2, cancelLabel: 'Cancelar' },
+	);
+const deleteChoice = ConversationChoice.reply(
+	[{ label: 'Confirmar', value: true }],
+	{ cancelLabel: 'Cancelar' },
+);
 const widen = <A, E extends TaggedError, R>(effect: Effect.Effect<A, E, R>) =>
 	effect;
-const reply = (text: string) =>
-	widen(
-		Effect.flatMap(MessageContext.MessageContext, (context) =>
-			context.reply(text),
-		).pipe(Effect.asVoid),
-	);
+const reply = ConversationUi.reply;
+const replyRemovingKeyboard = ConversationUi.replyRemovingKeyboard;
 const required = <A, E extends TaggedError, R>(
 	effect: Effect.Effect<A, E, R>,
 ) =>
@@ -132,7 +151,7 @@ export const declaration = Conversation.make('configure-reminder-delay', {
 		}),
 		deleteConfirm: Conversation.step('deleteConfirm', {
 			state: SelectedState,
-			input: Text,
+			input: ConversationInput.choice(deleteChoice),
 		}),
 	},
 	idleTimeout: '15 minutes',
@@ -151,13 +170,28 @@ export const built = ConversationBuilder.done(
 		.step('pet', {
 			enter: (state) =>
 				required(
-					reply(`Escolha o pet: ${state.pets.map((p) => p.name).join(', ')}`),
+					state.pets.length === 0
+						? replyRemovingKeyboard('Você não tem pets')
+						: ConversationUi.promptChoice('Escolha o pet:', petChoice(state)),
 				),
 			onInput: (state, value) =>
 				required(
 					widen(
 						Effect.gen(function* () {
-							const pet = state.pets.find((item) => item.name === value);
+							if (state.pets.length === 0)
+								return ConversationBuilder.cancelled({
+									afterCommit: replyRemovingKeyboard('Você não tem pets'),
+								});
+							const result = yield* Effect.result(
+								ConversationPrompt.resolve(petChoice(state), value),
+							);
+							if (result._tag === 'Failure') return yield* invalidChoice;
+							const selected = result.success;
+							if (selected._tag === 'Cancelled')
+								return ConversationBuilder.cancelled({
+									afterCommit: replyRemovingKeyboard('Operação cancelada.'),
+								});
+							const pet = state.pets.find((item) => item.id === selected.value);
 							if (pet === undefined) return yield* invalidChoice;
 							yield* authorize({
 								actorId: state.actorId,
@@ -184,15 +218,28 @@ export const built = ConversationBuilder.done(
 		.step('action', {
 			enter: (state) =>
 				required(
-					reply(
+					ConversationUi.promptChoice(
 						state.currentDelayMs === null
-							? 'Notificações desativadas. Envie Definir.'
-							: `Atraso atual: ${normalized(Duration.millis(state.currentDelayMs))}. Envie Alterar ou Excluir.`,
+							? 'Notificações desativadas.'
+							: `Atraso atual: ${normalized(Duration.millis(state.currentDelayMs))}.`,
+						actionChoice(state.currentDelayMs),
 					),
 				),
 			onInput: (state, value) =>
 				required(
 					Effect.gen(function* () {
+						const resolved = yield* Effect.result(
+							ConversationPrompt.resolve(
+								actionChoice(state.currentDelayMs),
+								value,
+							),
+						);
+						if (resolved._tag === 'Failure') return yield* invalidChoice;
+						if (resolved.success._tag === 'Cancelled')
+							return ConversationBuilder.cancelled({
+								afterCommit: replyRemovingKeyboard('Operação cancelada.'),
+							});
+						const action = resolved.success.value;
 						const selected = {
 							actorId: state.actorId,
 							botId: state.botId,
@@ -200,11 +247,11 @@ export const built = ConversationBuilder.done(
 							pets: state.pets,
 							petId: state.petId,
 						};
-						if (value === 'Definir' && state.currentDelayMs === null)
+						if (action === 'define' && state.currentDelayMs === null)
 							return ConversationBuilder.to('duration', selected);
-						if (value === 'Alterar' && state.currentDelayMs !== null)
+						if (action === 'change' && state.currentDelayMs !== null)
 							return ConversationBuilder.to('duration', selected);
-						if (value === 'Excluir' && state.currentDelayMs !== null)
+						if (action === 'delete' && state.currentDelayMs !== null)
 							return ConversationBuilder.to('deleteConfirm', selected);
 						return yield* invalidChoice;
 					}),
@@ -213,7 +260,11 @@ export const built = ConversationBuilder.done(
 		})
 		.step('duration', {
 			enter: () =>
-				required(reply('Envie a duração, por exemplo 30 minutos ou 2 horas.')),
+				required(
+					replyRemovingKeyboard(
+						'Envie a duração, por exemplo 30 minutos ou 2 horas.',
+					),
+				),
 			onInput: (state, value) =>
 				required(
 					widen(
@@ -222,7 +273,7 @@ export const built = ConversationBuilder.done(
 							if (result._tag === 'Failure') return yield* invalidDuration;
 							yield* ConfigureReminderDelay.set(access(state), result.success);
 							return ConversationBuilder.complete({
-								afterCommit: reply(
+								afterCommit: replyRemovingKeyboard(
 									`Atraso de notificação configurado para ${normalized(result.success)}.`,
 								),
 							});
@@ -232,19 +283,33 @@ export const built = ConversationBuilder.done(
 			onInvalid: () => invalidDuration,
 		})
 		.step('deleteConfirm', {
-			enter: () => required(reply('Envie Confirmar para excluir o atraso.')),
-			onInput: (state, value) =>
+			enter: () =>
 				required(
-					value !== 'Confirmar'
-						? invalidChoice
-						: widen(
-								Effect.as(
-									ConfigureReminderDelay.remove(access(state)),
-									ConversationBuilder.complete({
-										afterCommit: reply('Notificações desativadas.'),
-									}),
+					ConversationUi.promptChoice(
+						'Confirma excluir o atraso?',
+						deleteChoice,
+					),
+				),
+			onInput: (state, selected) =>
+				required(
+					selected._tag === 'Cancelled'
+						? Effect.succeed(
+								ConversationBuilder.cancelled({
+									afterCommit: replyRemovingKeyboard('Operação cancelada.'),
+								}),
+							)
+						: !selected.value
+							? invalidChoice
+							: widen(
+									Effect.as(
+										ConfigureReminderDelay.remove(access(state)),
+										ConversationBuilder.complete({
+											afterCommit: replyRemovingKeyboard(
+												'Notificações desativadas.',
+											),
+										}),
+									),
 								),
-							),
 				),
 			onInvalid: () => invalidChoice,
 		}),

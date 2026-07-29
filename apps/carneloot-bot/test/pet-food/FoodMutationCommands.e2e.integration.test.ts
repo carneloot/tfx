@@ -55,7 +55,13 @@ type Sender = {
 	readonly first_name: string;
 	readonly username?: string;
 };
-type Sent = { readonly chatId: number; readonly text: string };
+type Sent = {
+	readonly chatId: number;
+	readonly text: string;
+	readonly replyMarkup: unknown;
+};
+const sentText = (sent: ReadonlyArray<Sent>) =>
+	sent.map((message) => message.text);
 const update = (id: number, text: string, sender: Sender, date: number) => ({
 	update_id: id,
 	message: {
@@ -82,9 +88,14 @@ const makeGraph = (sql: PgClient.PgClient, sent: Sent[]) => {
 		sendMessage: (payload: {
 			readonly chat_id: number;
 			readonly text: string;
+			readonly reply_markup?: unknown;
 		}) =>
 			Effect.sync(() => {
-				sent.push({ chatId: payload.chat_id, text: payload.text });
+				sent.push({
+					chatId: payload.chat_id,
+					text: payload.text,
+					replyMarkup: payload.reply_markup,
+				});
 				return { message_id: sent.length };
 			}),
 		setMessageReaction: () => Effect.succeed(true),
@@ -194,14 +205,40 @@ else
 							const latest = rows[2]!;
 							yield* assertReminder(latest.id, `${day}T18:00:00.000Z`);
 
-							// Duplicate business timestamp is rejected without changing latest reminder.
-							for (const text of [
-								'/corrigir_racao',
-								'Rex',
-								`60 g — ${displayDay} 10:00 — Owner`,
-								'08:00',
-							])
-								yield* send(text);
+							// Correction moves from pet and entry choices to keyboard-free text.
+							const correctionStart = sent.length;
+							yield* send('/corrigir_racao');
+							expect(sent[correctionStart]?.replyMarkup).toEqual({
+								keyboard: [[{ text: 'Rex' }], [{ text: 'Cancelar' }]],
+								one_time_keyboard: true,
+								resize_keyboard: true,
+							});
+							yield* send('Rex');
+							const entryKeyboard = {
+								keyboard: [
+									[{ text: `60 g — ${displayDay} 10:00 — Owner` }],
+									[{ text: `50 g — ${displayDay} 08:00 — Owner` }],
+									[{ text: `40 g — ${displayDay} 06:00 — Owner` }],
+									[{ text: 'Cancelar' }],
+								],
+								one_time_keyboard: true,
+								resize_keyboard: true,
+							};
+							expect(sent[correctionStart + 1]?.replyMarkup).toEqual(
+								entryKeyboard,
+							);
+							const beforeForged = yield* entries();
+							yield* send('registro forjado');
+							expect(yield* entries()).toEqual(beforeForged);
+							expect(sent.at(-1)?.replyMarkup).toEqual(entryKeyboard);
+							yield* send(`60 g — ${displayDay} 10:00 — Owner`);
+							expect(sent.at(-1)?.replyMarkup).toEqual({
+								remove_keyboard: true,
+							});
+							yield* send('08:00');
+							expect(sent.at(-1)?.replyMarkup).toEqual({
+								remove_keyboard: true,
+							});
 							expect(
 								(yield* entries()).find((row) => row.id === latest.id)?.fed_at,
 							).toEqual(new Date(`${day}T10:00:00.000Z`));
@@ -267,6 +304,9 @@ else
 							expect(yield* entries()).toHaveLength(0);
 							expect(yield* active()).toHaveLength(0);
 							expect(yield* jobs()).toHaveLength(0);
+							expect(sentText(sent)).toContain(
+								'Digite a nova quantidade, horário, ou ambos:',
+							);
 						}),
 					),
 					postgres,

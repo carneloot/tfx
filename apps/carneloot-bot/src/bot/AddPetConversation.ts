@@ -1,11 +1,6 @@
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
-import {
-	Conversation,
-	ConversationBuilder,
-	ConversationInput,
-	MessageContext,
-} from 'tfx';
+import { Conversation, ConversationBuilder, ConversationInput } from 'tfx';
 
 import * as AddPet from '../application/AddPet.js';
 import { ApplicationError } from '../domain/ApplicationError.js';
@@ -13,6 +8,7 @@ import { BotId, TelegramUserId, UserId } from '../domain/Ids.js';
 import { PetName } from '../domain/Pet.js';
 import { PetRepository } from '../ports/PetRepository.js';
 import { UserRepository } from '../ports/UserRepository.js';
+import * as ConversationUi from './conversations/ConversationUi.js';
 
 const State = Schema.Struct({
 	ownerId: UserId,
@@ -39,31 +35,35 @@ export const built = ConversationBuilder.done(
 			Effect.gen(function* () {
 				yield* PetRepository;
 				yield* UserRepository;
-				const context = yield* MessageContext.MessageContext;
-				yield* context.reply('Qual o nome do seu pet?');
+				yield* ConversationUi.replyRemovingKeyboard('Qual o nome do seu pet?');
 			}),
 		onInput: (state, name) =>
 			Effect.gen(function* () {
-				const context = yield* MessageContext.MessageContext;
 				return yield* AddPet.execute({ ...state, name }).pipe(
 					Effect.as(
 						ConversationBuilder.complete({
-							afterCommit: context.reply('Pet cadastrado com sucesso!'),
+							afterCommit: ConversationUi.replyRemovingKeyboard(
+								'Pet cadastrado com sucesso!',
+							),
 						}),
 					),
 					Effect.catchTag('PetNameAlreadyExists', () =>
 						Effect.succeed(
 							ConversationBuilder.stay({
-								afterCommit: context.reply('Já existe um pet com esse nome.'),
+								afterCommit: ConversationUi.replyRemovingKeyboard(
+									'Já existe um pet com esse nome.',
+								),
 							}),
 						),
 					),
 				);
 			}),
 		onInvalid: () =>
-			Effect.map(MessageContext.MessageContext, (context) =>
+			Effect.succeed(
 				ConversationBuilder.stay({
-					afterCommit: context.reply('Nome de pet inválido.'),
+					afterCommit: ConversationUi.replyRemovingKeyboard(
+						'Nome de pet inválido.',
+					),
 				}),
 			),
 	}),

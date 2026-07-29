@@ -83,6 +83,7 @@ const startup = {
 
 const harness = (hasEntry = true) => {
 	const replies: string[] = [];
+	const replyOptions: unknown[] = [];
 	const entries: PetFoodEntry[] = hasEntry ? [entry] : [];
 	const access = { value: true };
 	const schedulerFails = { value: false };
@@ -99,11 +100,12 @@ const harness = (hasEntry = true) => {
 		messageId: 1,
 		messageThreadId: undefined,
 		businessConnectionId: undefined,
-		reply: (text) =>
+		reply: (text, options) =>
 			Effect.suspend(() => {
 				if (outputFails.value && text.includes('sucesso'))
 					return Effect.die('output failed');
 				replies.push(text);
+				replyOptions.push(options);
 				return Effect.succeed({} as never);
 			}),
 		replyToCurrent: () => Effect.die('unused'),
@@ -202,6 +204,7 @@ const harness = (hasEntry = true) => {
 	);
 	return {
 		replies,
+		replyOptions,
 		entries,
 		access,
 		schedulerFails,
@@ -249,6 +252,9 @@ describe('CorrectFoodConversation', () => {
 		expect(h.replies).toContain(
 			'Não há registros de ração hoje para este pet.',
 		);
+		expect(h.replyOptions.at(-1)).toEqual({
+			reply_markup: { remove_keyboard: true },
+		});
 	});
 
 	it('supports Cancelar without correcting', async () => {
@@ -265,6 +271,40 @@ describe('CorrectFoodConversation', () => {
 		);
 		expect(h.updates).toBe(0);
 		expect(h.replies).toContain('Operação cancelada.');
+		expect(h.replyOptions.at(-1)).toEqual({
+			reply_markup: { remove_keyboard: true },
+		});
+	});
+
+	it('renders choice keyboards and removes entry keyboard before correction', async () => {
+		const h = harness();
+		await run(
+			Effect.provide(
+				Effect.gen(function* () {
+					yield* start();
+					yield* resume('Rex', 1);
+					yield* resume(label, 2);
+				}),
+				h.layer,
+			),
+		);
+		expect(h.replyOptions).toEqual([
+			{
+				reply_markup: {
+					keyboard: [[{ text: 'Rex' }], [{ text: 'Cancelar' }]],
+					one_time_keyboard: true,
+					resize_keyboard: true,
+				},
+			},
+			{
+				reply_markup: {
+					keyboard: [[{ text: label }], [{ text: 'Cancelar' }]],
+					one_time_keyboard: true,
+					resize_keyboard: true,
+				},
+			},
+			{ reply_markup: { remove_keyboard: true } },
+		]);
 	});
 
 	it('keeps correction step active after invalid correction', async () => {
@@ -319,6 +359,9 @@ describe('CorrectFoodConversation', () => {
 		);
 		expect(h.updates).toBe(0);
 		expect(h.replies).toContain('Este pet não está mais disponível para você.');
+		expect(h.replyOptions.at(-1)).toEqual({
+			reply_markup: { remove_keyboard: true },
+		});
 	});
 
 	it('anchors time correction to MessageContext.message.date', async () => {
@@ -355,6 +398,9 @@ describe('CorrectFoodConversation', () => {
 		);
 		expect(h.entries[0]?.amountMg).toBe(75_000);
 		expect(h.replies).toContain('Ração alterada com sucesso!');
+		expect(h.replyOptions.at(-1)).toEqual({
+			reply_markup: { remove_keyboard: true },
+		});
 	});
 
 	it('rolls mutation back when transactional reminder mutation fails', async () => {

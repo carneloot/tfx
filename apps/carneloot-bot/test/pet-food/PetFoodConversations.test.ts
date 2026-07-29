@@ -59,6 +59,9 @@ const petId = Schema.decodeUnknownSync(PetId)(
 const foodEntryId = Schema.decodeUnknownSync(FoodEntryId)(
 	'00000000-0000-4000-8000-000000000003',
 );
+const secondPetId = Schema.decodeUnknownSync(PetId)(
+	'00000000-0000-4000-8000-000000000004',
+);
 const botId = Schema.decodeUnknownSync(BotId)('carneloot');
 const telegramUserId = Schema.decodeUnknownSync(TelegramUserId)(42);
 const privateChatId = Schema.decodeUnknownSync(TelegramChatId)(42);
@@ -110,6 +113,8 @@ interface Harness {
 	authorizationFails: { value: boolean };
 	outputFailure: { value: boolean };
 	removeKeyboardReplies: Array<boolean>;
+	replyMarkups: Array<unknown>;
+	foodEntries: Array<PetFoodEntry>;
 	layer: Layer.Layer<
 		| ConversationStorage
 		| PetFoodRepository
@@ -137,6 +142,8 @@ const harness = (): Harness => {
 	const authorizationFails = { value: false };
 	const outputFailure = { value: false };
 	const removeKeyboardReplies: Array<boolean> = [];
+	const replyMarkups: Array<unknown> = [];
+	const foodEntries: Array<PetFoodEntry> = [];
 	const context = {
 		message: { date: Date.parse('2024-01-02T12:00:00Z') / 1_000 } as never,
 		chatId: scope.chatId,
@@ -154,10 +161,13 @@ const harness = (): Harness => {
 				);
 				if (
 					outputFailure.value &&
-					(text.includes('sucesso') || text.includes('configurado para'))
+					(text.includes('sucesso') ||
+						text.includes('configurado para') ||
+						text.includes('Foram adicionados'))
 				)
 					return Effect.die(new Error('output failed'));
 				replies.push(text);
+				replyMarkups.push(options?.reply_markup);
 				return Effect.succeed({} as never);
 			}),
 		replyToCurrent: () => Effect.succeed({} as never),
@@ -214,24 +224,52 @@ const harness = (): Harness => {
 				};
 				return settings.value;
 			}),
-		latestEntry: () =>
-			Effect.succeed({
-				id: foodEntryId,
-				petId,
-				recordedBy: ownerId,
-				amountMg: 1000 as never,
-				fedAt: DateTime.makeUnsafe(1000),
-				sourceBotId: botId,
-				sourceUpdateId: 1,
-				sourceMessageChatId: null,
-				sourceMessageId: null,
-				createdAt: DateTime.makeUnsafe(1000),
-				updatedAt: DateTime.makeUnsafe(1000),
-			} satisfies PetFoodEntry),
-		findBySource: () => Effect.succeed(undefined),
+		latestEntry: (selectedPetId) =>
+			Effect.succeed(
+				foodEntries.findLast((entry) => entry.petId === selectedPetId) ??
+					({
+						id: foodEntryId,
+						petId: selectedPetId,
+						recordedBy: ownerId,
+						amountMg: 1000 as never,
+						fedAt: DateTime.makeUnsafe(1000),
+						sourceBotId: botId,
+						sourceUpdateId: 1,
+						sourceMessageChatId: null,
+						sourceMessageId: null,
+						createdAt: DateTime.makeUnsafe(1000),
+						updatedAt: DateTime.makeUnsafe(1000),
+					} satisfies PetFoodEntry),
+			),
+		findBySource: (selectedPetId, sourceBotId, sourceUpdateId) =>
+			Effect.succeed(
+				foodEntries.find(
+					(entry) =>
+						entry.petId === selectedPetId &&
+						entry.sourceBotId === sourceBotId &&
+						entry.sourceUpdateId === sourceUpdateId,
+				),
+			),
 		findBusinessDuplicate: () => Effect.succeed(undefined),
 		findBusinessDuplicateExcluding: unused,
-		insert: () => Effect.die('unused'),
+		insert: (entry) =>
+			Effect.sync(() => {
+				const persisted = {
+					id: entry.id,
+					petId: entry.petId,
+					recordedBy: entry.recordedBy,
+					amountMg: entry.amountMg,
+					fedAt: entry.fedAt,
+					sourceBotId: entry.source.botId,
+					sourceUpdateId: entry.source.updateId,
+					sourceMessageChatId: entry.source.messageChatId,
+					sourceMessageId: entry.source.messageId,
+					createdAt: entry.now,
+					updatedAt: entry.now,
+				} satisfies PetFoodEntry;
+				foodEntries.push(persisted);
+				return persisted;
+			}),
 		listEntries: unused,
 		lockEntry: unused,
 		lockAccessibleBySourceMessage: unused,
@@ -302,6 +340,8 @@ const harness = (): Harness => {
 		authorizationFails,
 		outputFailure,
 		removeKeyboardReplies,
+		replyMarkups,
+		foodEntries,
 		layer,
 		context,
 	};
@@ -321,7 +361,9 @@ const resume = (
 			service.resume(built, input, { scope, updateId }),
 		),
 	);
-const start = (built: typeof DayStart.built | typeof Reminder.built) =>
+const start = (
+	built: typeof DayStart.built | typeof Reminder.built | typeof AddFood.built,
+) =>
 	withFreshConversations(
 		Effect.flatMap(Conversations, (service) =>
 			service.start(built, startup, { scope, conflict: 'replace' }),
@@ -351,6 +393,209 @@ describe('pet food conversation transcripts', () => {
 			failure: { _tag: 'InvalidReminderDurationError' },
 		});
 	});
+	it('renders finite choices and removes keyboards at text boundaries', async () => {
+		const h = harness();
+		h.settings.value = {
+			petId,
+			dayStart: '00:00' as never,
+			timeZone: 'UTC' as never,
+			reminderDelay: null,
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
+		};
+		await run(
+			Effect.provide(
+				Effect.gen(function* () {
+					yield* start(AddFood.built);
+					yield* resume(AddFood.built, 'Rex', 1);
+					yield* start(DayStart.built);
+					yield* resume(DayStart.built, 'Rex', 2);
+					yield* resume(DayStart.built, 'Alterar', 3);
+					yield* resume(DayStart.built, '0h', 4);
+					yield* start(Reminder.built);
+					yield* resume(Reminder.built, 'Rex', 5);
+					yield* resume(Reminder.built, 'Definir', 6);
+				}),
+				h.layer,
+			),
+		);
+		expect(h.replyMarkups).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					keyboard: [[{ text: 'Rex' }], [{ text: 'Cancelar' }]],
+					one_time_keyboard: true,
+					resize_keyboard: true,
+				}),
+				expect.objectContaining({
+					keyboard: [[{ text: 'Alterar' }], [{ text: 'Cancelar' }]],
+				}),
+				expect.objectContaining({
+					keyboard: [[{ text: 'Definir' }], [{ text: 'Cancelar' }]],
+				}),
+				expect.objectContaining({
+					keyboard: [
+						[{ text: '0h' }, { text: '1h' }, { text: '2h' }, { text: '3h' }],
+						[{ text: '4h' }, { text: '5h' }, { text: '6h' }, { text: '7h' }],
+						[{ text: '8h' }, { text: '9h' }, { text: '10h' }, { text: '11h' }],
+						[
+							{ text: '12h' },
+							{ text: '13h' },
+							{ text: '14h' },
+							{ text: '15h' },
+						],
+						[
+							{ text: '16h' },
+							{ text: '17h' },
+							{ text: '18h' },
+							{ text: '19h' },
+						],
+						[
+							{ text: '20h' },
+							{ text: '21h' },
+							{ text: '22h' },
+							{ text: '23h' },
+						],
+						[{ text: 'Cancelar' }],
+					],
+				}),
+				{ remove_keyboard: true },
+			]),
+		);
+
+		const existing = harness();
+		existing.settings.value = {
+			petId,
+			dayStart: null,
+			timeZone: null,
+			reminderDelay: Duration.minutes(1),
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
+		};
+		await run(
+			Effect.provide(
+				Effect.gen(function* () {
+					yield* start(Reminder.built);
+					yield* resume(Reminder.built, 'Rex', 1);
+					yield* resume(Reminder.built, 'Excluir', 2);
+				}),
+				existing.layer,
+			),
+		);
+		expect(existing.replyMarkups).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					keyboard: [
+						[{ text: 'Alterar' }, { text: 'Excluir' }],
+						[{ text: 'Cancelar' }],
+					],
+				}),
+				expect.objectContaining({
+					keyboard: [[{ text: 'Confirmar' }], [{ text: 'Cancelar' }]],
+				}),
+			]),
+		);
+	});
+
+	it('persists ID selected from duplicate pet labels', async () => {
+		const h = harness();
+		h.settings.value = {
+			petId,
+			dayStart: '00:00' as never,
+			timeZone: 'UTC' as never,
+			reminderDelay: null,
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
+		};
+		const duplicatePets = {
+			...startup,
+			pets: [
+				{ id: petId, name: petName },
+				{ id: secondPetId, name: petName },
+			],
+		};
+		await run(
+			Effect.provide(
+				withFreshConversations(
+					Effect.gen(function* () {
+						const conversations = yield* Conversations;
+						yield* conversations.start(AddFood.built, duplicatePets, { scope });
+						yield* conversations.resume(AddFood.built, 'Rex (2)', {
+							scope,
+							updateId: 1,
+						});
+						const storage = yield* ConversationStorage;
+						expect(yield* storage.load(scope)).toMatchObject({
+							step: 'amount',
+							state: { petId: secondPetId },
+						});
+					}),
+				),
+				h.layer,
+			),
+		);
+	});
+
+	it('removes keyboard from AddFood free-text outputs and commits before failed output', async () => {
+		const h = harness();
+		h.settings.value = {
+			petId,
+			dayStart: '00:00' as never,
+			timeZone: 'UTC' as never,
+			reminderDelay: null,
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
+		};
+		await run(
+			Effect.provide(
+				Effect.gen(function* () {
+					yield* start(AddFood.built);
+					yield* resume(AddFood.built, 'Rex', 1);
+					yield* resume(AddFood.built, 'inválido', 2);
+					yield* resume(AddFood.built, '10 g', 3);
+				}),
+				h.layer,
+			),
+		);
+		expect(h.replies.at(-1)).toBe(
+			'Foram adicionados 10 g de ração para o pet Rex.',
+		);
+		expect(h.replyMarkups.slice(1)).toEqual([
+			{ remove_keyboard: true },
+			{ remove_keyboard: true },
+			{ remove_keyboard: true },
+			{ remove_keyboard: true },
+		]);
+
+		const failed = harness();
+		failed.settings.value = h.settings.value;
+		failed.outputFailure.value = true;
+		const result = await run(
+			Effect.provide(
+				Effect.gen(function* () {
+					yield* start(AddFood.built);
+					yield* resume(AddFood.built, 'Rex', 1);
+					const exit = yield* Effect.exit(resume(AddFood.built, '10 g', 2));
+					const storage = yield* ConversationStorage;
+					expect(yield* storage.load(scope)).toBeUndefined();
+					return exit;
+				}),
+				failed.layer,
+			),
+		);
+		expect(result._tag).toBe('Failure');
+		expect(failed.foodEntries).toHaveLength(1);
+		expect(failed.replies).toEqual([
+			'Escolha o pet:',
+			'Envie a quantidade e, opcionalmente, o horário.',
+		]);
+		expect(failed.replyMarkups).toEqual([
+			expect.objectContaining({
+				keyboard: [[{ text: 'Rex' }], [{ text: 'Cancelar' }]],
+			}),
+			{ remove_keyboard: true },
+		]);
+	});
+
 	it('completes midnight day-start after a service rebuild', async () => {
 		const h = harness();
 		await run(
@@ -366,8 +611,8 @@ describe('pet food conversation transcripts', () => {
 		);
 		expect(h.dayMutations).toEqual([['00:00', 'UTC']]);
 		expect(h.replies).toEqual([
-			'Escolha o pet: Rex',
-			'Início do dia não configurado. Envie Alterar.',
+			'Escolha o pet:',
+			'Início do dia não configurado.',
 			'Escolha a hora de 0h a 23h.',
 			'Envie o fuso horário, por exemplo America/Sao_Paulo.',
 			'Início do dia configurado com sucesso!',
@@ -387,7 +632,7 @@ describe('pet food conversation transcripts', () => {
 		);
 		expect(forged.replies.slice(-2)).toEqual([
 			'Por favor, escolha uma opção',
-			'Escolha o pet: Rex',
+			'Escolha o pet:',
 		]);
 
 		const invalid = harness();
@@ -565,7 +810,7 @@ describe('pet food conversation transcripts', () => {
 			),
 		);
 		expect(h.replies).toContain('Conversa cancelada.');
-		expect(h.removeKeyboardReplies.filter(Boolean)).toHaveLength(1);
+		expect(h.removeKeyboardReplies.filter(Boolean)).toHaveLength(2);
 	});
 
 	it('repeating starts replace state and cancellation removes both flows', async () => {
@@ -600,7 +845,7 @@ describe('pet food conversation transcripts', () => {
 		expect(h.removeKeyboardReplies.filter(Boolean)).toHaveLength(2);
 	});
 
-	it('does not create state when no pets exist', async () => {
+	it('removes keyboards and does not create state for empty AddFood and reminder', async () => {
 		const h = harness();
 		const emptyPets: PetRepositoryService = {
 			findById: () => Effect.die('unused'),
@@ -615,7 +860,14 @@ describe('pet food conversation transcripts', () => {
 				Effect.gen(function* () {
 					yield* withFreshConversations(
 						Effect.provideService(
-							PetFoodHandlers.startConfigureDayStart,
+							PetFoodHandlers.startAddFood,
+							PetRepository,
+							emptyPets,
+						),
+					);
+					yield* withFreshConversations(
+						Effect.provideService(
+							PetFoodHandlers.startConfigureReminderDelay,
 							PetRepository,
 							emptyPets,
 						),
@@ -626,6 +878,10 @@ describe('pet food conversation transcripts', () => {
 				h.layer,
 			),
 		);
-		expect(h.replies).toContain('Você não tem pets');
+		expect(h.replies).toEqual(['Você não tem pets', 'Você não tem pets']);
+		expect(h.replyMarkups).toEqual([
+			{ remove_keyboard: true },
+			{ remove_keyboard: true },
+		]);
 	});
 });

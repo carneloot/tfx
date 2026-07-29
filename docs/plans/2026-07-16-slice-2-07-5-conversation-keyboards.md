@@ -76,7 +76,7 @@ No other Carneloot conversation exists at plan creation time. Any conversation a
 
 ### Task 1: Complete reusable tfx reply-choice rendering
 
-- [ ] **Step 1: Write failing cancellation and constructor tests**
+- [x] **Step 1: Write failing cancellation and constructor tests**
 
 Extend `packages/tfx/test/ConversationChoice.test.ts` to assert:
 
@@ -110,13 +110,13 @@ expect(await Effect.runPromise(ConversationPrompt.choice(confirmation))).toMatch
 
 Retain empty-option, duplicate-label, duplicate-callback-value, immutability, acknowledgement, and removal assertions.
 
-- [ ] **Step 2: Run focused tfx tests and verify failure**
+- [x] **Step 2: Run focused tfx tests and verify failure**
 
 Run: `pnpm exec vitest run packages/tfx/test/ConversationChoice.test.ts`
 
 Expected: FAIL because `reply`/`boolean` do not exist and `cancelLabel` is not rendered.
 
-- [ ] **Step 3: Add reply and boolean constructors**
+- [x] **Step 3: Add reply and boolean constructors**
 
 Add these exact public constructors to `packages/tfx/src/ConversationChoice.ts`:
 
@@ -156,7 +156,7 @@ export const boolean = (
 
 Add type tests proving branded `PetId` values remain typed through `ConversationInput.choice(ConversationChoice.reply(...))` and boolean input resolves as `ChoiceResult<boolean>`.
 
-- [ ] **Step 4: Render cancellation as a dedicated row**
+- [x] **Step 4: Render cancellation as a dedicated row**
 
 Update `ConversationPrompt.choice` so both reply and inline rendering append cancellation after normal option rows without changing normal column layout:
 
@@ -182,13 +182,13 @@ const renderedRows = <A, R>(
 
 Use `renderedRows` in both branches of `ConversationPrompt.choice`. Keep `resolve` cancellation precedence before label/callback decoding.
 
-- [ ] **Step 5: Run tfx gates**
+- [x] **Step 5: Run tfx gates**
 
 Run: `pnpm --filter tfx check && pnpm exec vitest run packages/tfx/test/ConversationChoice.test.ts`
 
 Expected: PASS with exact cancellation row, boolean layout, branded value inference through the package type-test build, duplicate protection, and callback acknowledgement.
 
-- [ ] **Step 6: Commit tfx primitives**
+- [x] **Step 6: Commit tfx primitives**
 
 ```bash
 git add packages/tfx/src/ConversationChoice.ts packages/tfx/src/ConversationPrompt.ts packages/tfx/test/ConversationChoice.test.ts packages/tfx/type-test/ConversationChoice.tst.ts
@@ -197,7 +197,7 @@ git commit -m "fix(tfx): complete reply choice keyboards"
 
 ### Task 2: Centralize Carneloot conversation UI output
 
-- [ ] **Step 1: Write failing UI helper tests**
+- [x] **Step 1: Write failing UI helper tests**
 
 Create `apps/carneloot-bot/test/ConversationUi.test.ts` with a recorded `MessageContext` and assert these exact payloads:
 
@@ -224,13 +224,13 @@ expect(textOutput).toEqual({
 
 Also assert ordinary `reply('texto')` sends no markup, Telegram failures remain in the typed failure channel, duplicate labels become `Rex (1)`/`Rex (2)`, and an option originally labelled `Cancelar` is disambiguated from the reserved cancellation row.
 
-- [ ] **Step 2: Run helper test and verify failure**
+- [x] **Step 2: Run helper test and verify failure**
 
 Run: `pnpm exec vitest run apps/carneloot-bot/test/ConversationUi.test.ts`
 
 Expected: FAIL because `ConversationUi.ts` does not exist.
 
-- [ ] **Step 3: Implement shared output helpers**
+- [x] **Step 3: Implement shared output helpers**
 
 Create `apps/carneloot-bot/src/bot/conversations/ConversationUi.ts`:
 
@@ -282,7 +282,7 @@ export const promptChoice = <A, R>(
 
 Reply choices have already been synchronously validated and have no callback encoder, so rendering cannot produce an expected application error. Callback choices must not use this helper unless their rendering errors are added truthfully to the caller’s error schema.
 
-- [ ] **Step 4: Add one cancellation transition pattern**
+- [x] **Step 4: Add one cancellation transition pattern**
 
 Every migrated conversation handles a visible cancellation result with this exact shape rather than treating it as invalid input:
 
@@ -295,13 +295,13 @@ if (selected._tag === 'Cancelled')
 
 Do not create a generic transition helper; keeping transition construction in each conversation preserves concrete Effect error/context inference.
 
-- [ ] **Step 5: Run helper tests and package check**
+- [x] **Step 5: Run helper tests and package check**
 
 Run: `pnpm exec vitest run apps/carneloot-bot/test/ConversationUi.test.ts && pnpm --filter carneloot-bot check`
 
 Expected: PASS with one canonical rendering/removal path and no widened conversation error/context.
 
-- [ ] **Step 6: Commit UI helper**
+- [x] **Step 6: Commit UI helper**
 
 ```bash
 git add apps/carneloot-bot/src/bot/conversations/ConversationUi.ts apps/carneloot-bot/test/ConversationUi.test.ts
@@ -310,7 +310,7 @@ git commit -m "refactor(carneloot): centralize conversation keyboards"
 
 ### Task 3: Retrofit owned-pet food configuration conversations
 
-- [ ] **Step 1: Add failing transcript markup assertions**
+- [x] **Step 1: Add failing transcript markup assertions**
 
 Extend `apps/carneloot-bot/test/pet-food/PetFoodConversations.test.ts` and `apps/carneloot-bot/test/AddPetConversation.test.ts` to record full `reply` options and assert:
 
@@ -330,13 +330,13 @@ Extend `apps/carneloot-bot/test/pet-food/PetFoodConversations.test.ts` and `apps
 - cancellation deletes state, sends removal markup once, and performs no domain mutation;
 - successful add-pet, add-food, day-start, reminder-set, and reminder-delete terminal replies all include removal markup, even when the preceding free-text prompt already removed the keyboard.
 
-- [ ] **Step 2: Run focused tests and verify failure**
+- [x] **Step 2: Run focused tests and verify failure**
 
 Run: `pnpm exec vitest run apps/carneloot-bot/test/AddPetConversation.test.ts apps/carneloot-bot/test/pet-food/PetFoodConversations.test.ts`
 
 Expected: FAIL because older choice steps send text-only prompts and free-text boundaries retain stale keyboards.
 
-- [ ] **Step 3: Migrate add-food pet selection**
+- [x] **Step 3: Migrate add-food pet selection**
 
 In `AddFoodConversation.ts`, build pet choices from persisted state:
 
@@ -352,7 +352,7 @@ const petChoice = (state: typeof PetState.Type) =>
 
 Render with `ConversationUi.promptChoice('Escolha o pet:', petChoice(state))`, resolve the selected label through `ConversationPrompt.resolve`, handle `Cancelled`, then locate the chosen persisted pet by ID before existing authorization/settings logic. Keep the `amount` step as `ConversationInput.text`; its enter reply uses `replyRemovingKeyboard`.
 
-- [ ] **Step 4: Migrate day-start finite choices**
+- [x] **Step 4: Migrate day-start finite choices**
 
 Use these declarations in `ConfigureDayStartConversation.ts`:
 
@@ -373,7 +373,7 @@ const hourChoice = ConversationChoice.reply(
 
 Pet remains a dynamic text-backed choice resolved from state. `confirm` and `hour` may use `ConversationInput.choice` because their declarations are static. Convert selected hour directly to `LocalTime`; remove the regex parser. Keep `timezone` as text and remove the keyboard when prompting.
 
-- [ ] **Step 5: Migrate reminder finite choices**
+- [x] **Step 5: Migrate reminder finite choices**
 
 In `ConfigureReminderDelayConversation.ts`, use a dynamic action declaration so impossible actions are never rendered:
 
@@ -397,11 +397,11 @@ const deleteChoice = ConversationChoice.reply(
 
 Pet/action remain dynamic text-backed choices resolved with `ConversationPrompt.resolve`. `deleteConfirm` uses `ConversationInput.choice(deleteChoice)`. Keep duration parsing unchanged and remove the keyboard in its prompt.
 
-- [ ] **Step 6: Preserve access and transaction behavior**
+- [x] **Step 6: Preserve access and transaction behavior**
 
 For every migrated pet selection, retain current `authorize(...)` call before protected settings reads. Final configuration services continue locking/rechecking inside their existing PostgreSQL transactions. Button values come only from persisted IDs; never store repository objects in state. Use `ConversationUi.replyRemovingKeyboard` for every successful, cancelled, access-lost, setup-warning terminal exit and for every prompt entering a free-text step.
 
-- [ ] **Step 7: Run focused tests and check**
+- [x] **Step 7: Run focused tests and check**
 
 Run: `pnpm exec vitest run apps/carneloot-bot/test/AddPetConversation.test.ts apps/carneloot-bot/test/pet-food/PetFoodConversations.test.ts apps/carneloot-bot/test/CancelConversation.test.ts`
 
@@ -409,7 +409,7 @@ Run: `pnpm --filter carneloot-bot check`
 
 Expected: PASS for exact keyboard rows, invalid re-entry, cancellation, free-text removal, restart, access loss, output failure, and unchanged mutations.
 
-- [ ] **Step 8: Commit owned-pet keyboard retrofit**
+- [x] **Step 8: Commit owned-pet keyboard retrofit**
 
 ```bash
 git add apps/carneloot-bot/src/bot/conversations/AddPetConversation.ts apps/carneloot-bot/src/bot/conversations/AddFoodConversation.ts apps/carneloot-bot/src/bot/conversations/ConfigureDayStartConversation.ts apps/carneloot-bot/src/bot/conversations/ConfigureReminderDelayConversation.ts apps/carneloot-bot/test/AddPetConversation.test.ts apps/carneloot-bot/test/CancelConversation.test.ts apps/carneloot-bot/test/pet-food/PetFoodConversations.test.ts
@@ -418,7 +418,7 @@ git commit -m "feat(carneloot): add keyboards to food setup flows"
 
 ### Task 4: Normalize pet and caregiver conversation keyboards
 
-- [ ] **Step 1: Add failing keyboard contract tests**
+- [x] **Step 1: Add failing keyboard contract tests**
 
 Extend caregiver conversation tests to assert exact rows and removal for:
 
@@ -433,13 +433,13 @@ Extend caregiver conversation tests to assert exact rows and removal for:
 - invalid forged labels stay and re-render the same keyboard;
 - output failure does not roll back the already committed transition or domain mutation.
 
-- [ ] **Step 2: Run caregiver tests and verify failure**
+- [x] **Step 2: Run caregiver tests and verify failure**
 
 Run: `pnpm exec vitest run apps/carneloot-bot/test/caregivers/CaregiverConversations.test.ts apps/carneloot-bot/test/caregivers/CaregiverOwnerConversations.test.ts apps/carneloot-bot/test/caregivers/CaregiverInviteeConversations.test.ts`
 
 Expected: FAIL because current manual markup omits visible cancellation in several flows and does not consistently remove keyboards before text/terminal output.
 
-- [ ] **Step 3: Replace manual markup with canonical rendering**
+- [x] **Step 3: Replace manual markup with canonical rendering**
 
 In all six caregiver/pet-management conversation files:
 
@@ -452,11 +452,11 @@ In all six caregiver/pet-management conversation files:
 - preserve each existing `false` confirmation path: delete-pet and stop-caring complete unchanged, while invitation response persists rejection and performs its existing post-commit output;
 - keep selected IDs and labels in state and retain all current authorization rechecks.
 
-- [ ] **Step 4: Remove keyboards at free-text and terminal boundaries**
+- [x] **Step 4: Remove keyboards at free-text and terminal boundaries**
 
 `InviteCaregiverConversation.username.enter` uses `replyRemovingKeyboard`. List completion, empty caregiver/invitation collections, access-loss exits, successful mutations, rejection/no answers, and notification-output attempts all send removal markup. Do not move Telegram DMs into transactions; they remain `afterCommit`.
 
-- [ ] **Step 5: Run caregiver unit and PostgreSQL E2E tests**
+- [x] **Step 5: Run caregiver unit and PostgreSQL E2E tests**
 
 Run: `pnpm exec vitest run apps/carneloot-bot/test/caregivers/CaregiverConversations.test.ts apps/carneloot-bot/test/caregivers/CaregiverOwnerConversations.test.ts apps/carneloot-bot/test/caregivers/CaregiverInviteeConversations.test.ts`
 
@@ -464,7 +464,7 @@ Run: `RUN_TESTCONTAINERS=true pnpm exec vitest run --config vitest.integration.c
 
 Expected: PASS with unchanged relationship semantics plus exact keyboard payloads/removal.
 
-- [ ] **Step 6: Commit caregiver keyboard normalization**
+- [x] **Step 6: Commit caregiver keyboard normalization**
 
 ```bash
 git add apps/carneloot-bot/src/bot/conversations/DeletePetConversation.ts apps/carneloot-bot/src/bot/conversations/InviteCaregiverConversation.ts apps/carneloot-bot/src/bot/conversations/ListCaregiversConversation.ts apps/carneloot-bot/src/bot/conversations/PetInvitationsConversation.ts apps/carneloot-bot/src/bot/conversations/RemoveCaregiverConversation.ts apps/carneloot-bot/src/bot/conversations/StopCaringConversation.ts apps/carneloot-bot/test/caregivers
@@ -473,7 +473,7 @@ git commit -m "feat(carneloot): normalize caregiver keyboards"
 
 ### Task 5: Normalize correction and deletion keyboards
 
-- [ ] **Step 1: Add failing exact-markup tests**
+- [x] **Step 1: Add failing exact-markup tests**
 
 Extend correction/deletion tests to assert:
 
@@ -486,13 +486,13 @@ all terminal replies: remove_keyboard = true
 
 Keep existing empty-day, invalid correction, restart, revocation, transaction rollback, message-date anchor, and output-failure assertions.
 
-- [ ] **Step 2: Run focused tests and verify failure**
+- [x] **Step 2: Run focused tests and verify failure**
 
 Run: `pnpm exec vitest run apps/carneloot-bot/test/pet-food/CorrectFoodConversation.test.ts apps/carneloot-bot/test/pet-food/DeleteFoodConversation.test.ts`
 
 Expected: FAIL because current conversations hand-build keyboards and correction does not remove the entry keyboard before free text.
 
-- [ ] **Step 3: Use shared rendering and typed cancellation**
+- [x] **Step 3: Use shared rendering and typed cancellation**
 
 In both conversations, replace local `choice`/`prompt`/keyboard helpers with:
 
@@ -505,7 +505,7 @@ ConversationChoice.reply(ConversationUi.uniqueReplyOptions(options), {
 
 Resolve dynamic choices through `ConversationPrompt.resolve`. Treat `Cancelled` as a cancelled transition, not a selected sentinel string. In correction, prompt the free-text step with `ConversationUi.replyRemovingKeyboard`. In deletion, every success/empty/access-loss/missing-entry terminal path removes keyboard.
 
-- [ ] **Step 4: Run focused and E2E tests**
+- [x] **Step 4: Run focused and E2E tests**
 
 Run: `pnpm exec vitest run apps/carneloot-bot/test/pet-food/CorrectFoodConversation.test.ts apps/carneloot-bot/test/pet-food/DeleteFoodConversation.test.ts`
 
@@ -513,7 +513,7 @@ Run: `RUN_TESTCONTAINERS=true pnpm exec vitest run --config vitest.integration.c
 
 Expected: PASS with unchanged mutation/reminder behavior and exact keyboard lifecycle.
 
-- [ ] **Step 5: Commit mutation keyboard normalization**
+- [x] **Step 5: Commit mutation keyboard normalization**
 
 ```bash
 git add apps/carneloot-bot/src/bot/conversations/CorrectFoodConversation.ts apps/carneloot-bot/src/bot/conversations/DeleteFoodConversation.ts apps/carneloot-bot/test/pet-food/CorrectFoodConversation.test.ts apps/carneloot-bot/test/pet-food/DeleteFoodConversation.test.ts apps/carneloot-bot/test/pet-food/FoodMutationCommands.e2e.integration.test.ts
@@ -522,11 +522,11 @@ git commit -m "refactor(carneloot): normalize food mutation keyboards"
 
 ### Task 6: Prove keyboard lifecycle through decoded Telegram updates
 
-- [ ] **Step 1: Preserve reply markup in E2E recorders**
+- [x] **Step 1: Preserve reply markup in E2E recorders**
 
 Update owned-pet, caregiver, and food-mutation Telegram recorders to store both message text and `reply_markup` rather than flattening requests to text. Keep existing text assertions unchanged by exposing helpers that select recorded text separately.
 
-- [ ] **Step 2: Add representative update-driven keyboard scenarios**
+- [x] **Step 2: Add representative update-driven keyboard scenarios**
 
 Assert through decoded updates and real conversation storage:
 
@@ -538,7 +538,7 @@ Assert through decoded updates and real conversation storage:
 6. forged labels do not mutate state/domain data and re-render the same finite choices;
 7. visible `Cancelar` and global `/cancelar` each delete one conversation row and perform no domain write.
 
-- [ ] **Step 3: Run update-driven suites**
+- [x] **Step 3: Run update-driven suites**
 
 Run: `pnpm exec vitest run apps/carneloot-bot/test/e2e/OwnedPetFoodLoop.e2e.test.ts`
 
@@ -546,7 +546,7 @@ Run: `RUN_TESTCONTAINERS=true pnpm exec vitest run --config vitest.integration.c
 
 Expected: PASS with exact Telegram markup and unchanged PostgreSQL state transitions.
 
-- [ ] **Step 4: Commit E2E proof**
+- [x] **Step 4: Commit E2E proof**
 
 ```bash
 git add apps/carneloot-bot/test/e2e/OwnedPetFoodLoop.e2e.test.ts apps/carneloot-bot/test/caregivers/CaregiverCommands.e2e.integration.test.ts apps/carneloot-bot/test/pet-food/FoodMutationCommands.e2e.integration.test.ts
@@ -555,7 +555,7 @@ git commit -m "test(carneloot): prove conversation keyboard lifecycle"
 
 ### Task 7: Run Slice 2 Plan 7.5 gates
 
-- [ ] **Step 1: Audit every conversation against the matrix**
+- [x] **Step 1: Audit every conversation against the matrix**
 
 Run:
 
@@ -567,7 +567,7 @@ rg "ConversationUi.promptChoice|replyRemovingKeyboard" apps/carneloot-bot/src/bo
 
 Expected: every finite-choice step in the coverage matrix uses `ConversationUi.promptChoice`; no conversation hand-builds reply-keyboard markup; every free-text boundary after a choice uses removal.
 
-- [ ] **Step 2: Run all conversation tests**
+- [x] **Step 2: Run all conversation tests**
 
 Run:
 
@@ -587,7 +587,7 @@ pnpm exec vitest run \
 
 Expected: PASS for rendering, selection, invalid input, cancellation, restart, access loss, transaction rollback, and output failure.
 
-- [ ] **Step 3: Run PostgreSQL and package gates**
+- [x] **Step 3: Run PostgreSQL and package gates**
 
 Run:
 
@@ -601,11 +601,11 @@ pnpm test
 
 Expected: all integration, formatting, lint, type, and unit gates PASS.
 
-- [ ] **Step 4: Run fresh review**
+- [x] **Step 4: Run fresh review**
 
 Review every conversation against the finite-choice rule. Reject any manual Telegram keyboard object, missing visible cancellation on selection/action keyboards, stale keyboard on free-text/terminal output, weakened authorization check, changed transaction boundary, or assertion that inspects text without required markup.
 
-- [ ] **Step 5: Commit final fixes**
+- [x] **Step 5: Commit final fixes**
 
 ```bash
 git add packages/tfx apps/carneloot-bot

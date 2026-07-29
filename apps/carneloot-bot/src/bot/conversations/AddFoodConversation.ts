@@ -5,7 +5,9 @@ import * as Schema from 'effect/Schema';
 import {
 	Conversation,
 	ConversationBuilder,
+	ConversationChoice,
 	ConversationInput,
+	ConversationPrompt,
 	MessageContext,
 	UpdateContext,
 } from 'tfx';
@@ -31,6 +33,7 @@ import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
 import { PetRepository } from '../../ports/PetRepository.js';
 import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
 import { UserRepository } from '../../ports/UserRepository.js';
+import * as ConversationUi from './ConversationUi.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
 const Base = {
@@ -49,11 +52,14 @@ const AmountState = Schema.Struct({
 const Text = ConversationInput.text(Schema.String);
 const widen = <A, E extends TaggedError, R>(effect: Effect.Effect<A, E, R>) =>
 	effect;
-const reply = (text: string) =>
-	widen(
-		Effect.flatMap(MessageContext.MessageContext, (context) =>
-			context.reply(text),
-		).pipe(Effect.asVoid),
+const reply = ConversationUi.reply;
+const replyRemovingKeyboard = ConversationUi.replyRemovingKeyboard;
+const petChoice = (state: typeof PetState.Type) =>
+	ConversationChoice.reply(
+		ConversationUi.uniqueReplyOptions(
+			state.pets.map((pet) => ({ label: pet.name, value: pet.id })),
+		),
+		{ cancelLabel: 'Cancelar' },
 	);
 const required = <A, E extends TaggedError, R>(
 	effect: Effect.Effect<A, E, R>,
@@ -69,9 +75,13 @@ const required = <A, E extends TaggedError, R>(
 		yield* UserRepository;
 		return yield* effect;
 	});
-const stay = (text: string) =>
+const stay = (text: string, removeKeyboard = false) =>
 	required(
-		Effect.succeed(ConversationBuilder.stay({ afterCommit: reply(text) })),
+		Effect.succeed(
+			ConversationBuilder.stay({
+				afterCommit: removeKeyboard ? replyRemovingKeyboard(text) : reply(text),
+			}),
+		),
 	);
 const setupWarning = (name: string) =>
 	`Você não configurou o início do dia para o pet ${name}.`;
@@ -121,16 +131,30 @@ export const built = ConversationBuilder.done(
 		.step('pet', {
 			enter: (state) =>
 				required(
-					reply(
-						`Escolha o pet: ${state.pets.map((pet) => pet.name).join(', ')}`,
-					),
+					state.pets.length === 0
+						? replyRemovingKeyboard('Você não tem pets')
+						: ConversationUi.promptChoice('Escolha o pet:', petChoice(state)),
 				),
 			onInput: (state, value) =>
 				required(
 					widen(
 						Effect.gen(function* () {
+							if (state.pets.length === 0)
+								return ConversationBuilder.cancelled({
+									afterCommit: replyRemovingKeyboard('Você não tem pets'),
+								});
+							const result = yield* Effect.result(
+								ConversationPrompt.resolve(petChoice(state), value),
+							);
+							if (result._tag === 'Failure')
+								return yield* stay('Por favor, escolha uma opção');
+							const selected = result.success;
+							if (selected._tag === 'Cancelled')
+								return ConversationBuilder.cancelled({
+									afterCommit: replyRemovingKeyboard('Operação cancelada.'),
+								});
 							const pet = state.pets.find(
-								(candidate) => candidate.name === value,
+								(candidate) => candidate.id === selected.value,
 							);
 							if (pet === undefined)
 								return yield* stay('Por favor, escolha uma opção');
@@ -161,7 +185,11 @@ export const built = ConversationBuilder.done(
 		})
 		.step('amount', {
 			enter: () =>
-				required(reply('Envie a quantidade e, opcionalmente, o horário.')),
+				required(
+					replyRemovingKeyboard(
+						'Envie a quantidade e, opcionalmente, o horário.',
+					),
+				),
 			onInput: (state, value) =>
 				required(
 					widen(
@@ -170,6 +198,7 @@ export const built = ConversationBuilder.done(
 							if (parsed === undefined)
 								return yield* stay(
 									'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',
+									true,
 								);
 							const amount = yield* Effect.result(
 								Schema.decodeUnknownEffect(FoodAmount)(parsed.amount),
@@ -177,6 +206,7 @@ export const built = ConversationBuilder.done(
 							if (amount._tag === 'Failure')
 								return yield* stay(
 									'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',
+									true,
 								);
 							const context = yield* MessageContext.MessageContext;
 							const update = yield* UpdateContext.UpdateContext;
@@ -231,7 +261,7 @@ export const built = ConversationBuilder.done(
 								: `${base} Horário: ${localized(result.success.entry.fedAt, state.timeZone)}.`;
 							return ConversationBuilder.complete({
 								afterCommit: Effect.andThen(
-									context.reply(text),
+									replyRemovingKeyboard(text),
 									context.react([{ type: 'emoji', emoji: '👍' }]),
 								),
 							});
@@ -241,6 +271,7 @@ export const built = ConversationBuilder.done(
 			onInvalid: () =>
 				stay(
 					'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',
+					true,
 				),
 		}),
 );

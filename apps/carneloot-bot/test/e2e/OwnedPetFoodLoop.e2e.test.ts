@@ -91,10 +91,18 @@ const fixture = Effect.gen(function* () {
 	const sql = yield* PgClient.PgClient;
 	yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
 	yield* sql.unsafe('DROP SCHEMA IF EXISTS tfx_owned_pet_e2e CASCADE');
-	const sent: string[] = [];
+	type Sent = {
+		readonly text: string;
+		readonly replyMarkup: unknown;
+	};
+	const sent: Sent[] = [];
+	const sentText = () => sent.map((message) => message.text);
 	let failNext = false;
 	const telegram = Layer.succeed(Telegram, {
-		sendMessage: (payload: { readonly text: string }) =>
+		sendMessage: (payload: {
+			readonly text: string;
+			readonly reply_markup?: unknown;
+		}) =>
 			Effect.suspend(() => {
 				if (failNext) {
 					failNext = false;
@@ -104,7 +112,7 @@ const fixture = Effect.gen(function* () {
 						}) as never,
 					);
 				}
-				sent.push(payload.text);
+				sent.push({ text: payload.text, replyMarkup: payload.reply_markup });
 				return Effect.succeed({ message_id: sent.length });
 			}),
 		setMessageReaction: () => Effect.succeed(true),
@@ -131,6 +139,7 @@ const fixture = Effect.gen(function* () {
 		context,
 		dispatch,
 		sent,
+		sentText,
 		sql,
 		failNext: () => {
 			failNext = true;
@@ -186,7 +195,14 @@ else
 								expect(
 									yield* f.dispatch(messageUpdate(index + 1, text, sender)),
 								).toMatchObject({ _tag: 'Handled' });
-							expect(f.sent).toEqual([
+							const keyboard = (
+								rows: ReadonlyArray<ReadonlyArray<string>>,
+							) => ({
+								keyboard: rows.map((row) => row.map((text) => ({ text }))),
+								one_time_keyboard: true,
+								resize_keyboard: true,
+							});
+							expect(f.sentText()).toEqual([
 								'Usuário cadastrado com sucesso!',
 								'Usuário cadastrado com sucesso!',
 								'Qual o nome do seu pet?',
@@ -207,6 +223,34 @@ else
 								'Foram adicionados 50 g de ração para o pet Rex.',
 								'- Rex: 50 g, última vez há menos de 1 minuto',
 							]);
+							expect(f.sent[5]?.replyMarkup).toEqual(
+								keyboard([['Rex'], ['Cancelar']]),
+							);
+							expect(f.sent[6]?.replyMarkup).toEqual(
+								keyboard([['Alterar'], ['Cancelar']]),
+							);
+							expect(f.sent[7]?.replyMarkup).toEqual(
+								keyboard([
+									['0h', '1h', '2h', '3h'],
+									['4h', '5h', '6h', '7h'],
+									['8h', '9h', '10h', '11h'],
+									['12h', '13h', '14h', '15h'],
+									['16h', '17h', '18h', '19h'],
+									['20h', '21h', '22h', '23h'],
+									['Cancelar'],
+								]),
+							);
+							expect(f.sent[8]?.replyMarkup).toEqual({ remove_keyboard: true });
+							expect(f.sent[9]?.replyMarkup).toEqual({ remove_keyboard: true });
+							expect(f.sent[15]?.replyMarkup).toEqual(
+								keyboard([['Rex'], ['Cancelar']]),
+							);
+							expect(f.sent[16]?.replyMarkup).toEqual({
+								remove_keyboard: true,
+							});
+							expect(f.sent[17]?.replyMarkup).toEqual({
+								remove_keyboard: true,
+							});
 							const sql = f.sql;
 							const [profile] = yield* sql<{
 								username: string;
@@ -244,14 +288,19 @@ else
 					Effect.scoped(
 						Effect.gen(function* () {
 							const f = yield* fixture;
+							const sql = f.sql;
 							const sender: Sender = { id: 5002, first_name: 'Guard' };
 							yield* f.dispatch(messageUpdate(100, '/listar_pets', sender));
 							yield* f.dispatch(messageUpdate(101, '/cadastrar', undefined));
 							yield* f.dispatch(messageUpdate(102, '/cadastrar', sender));
 							yield* f.dispatch(messageUpdate(103, '/listar_pets', sender));
 							yield* f.dispatch(messageUpdate(104, '/adicionar_pet', sender));
+							expect(
+								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
+							).toHaveLength(1);
+							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(0);
 							yield* f.dispatch(messageUpdate(105, '/cancelar', sender));
-							expect(f.sent).toEqual([
+							expect(f.sentText()).toEqual([
 								'Por favor cadastre-se primeiro utilizando /cadastrar',
 								'Não foi possível identificar o usuário.',
 								'Usuário cadastrado com sucesso!',
@@ -259,10 +308,10 @@ else
 								'Qual o nome do seu pet?',
 								'Conversa cancelada.',
 							]);
-							const sql = f.sql;
 							expect(
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(0);
+							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(0);
 
 							// Invalid selections stay active and emit correction prompts.
 							for (const [id, text] of [
@@ -283,11 +332,11 @@ else
 							] as const)
 								yield* f.dispatch(messageUpdate(id, text, sender));
 							expect(
-								f.sent.filter(
-									(text) => text === 'Por favor, escolha uma opção',
-								),
+								f
+									.sentText()
+									.filter((text) => text === 'Por favor, escolha uma opção'),
 							).toHaveLength(3);
-							expect(f.sent).toContain(
+							expect(f.sentText()).toContain(
 								'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',
 							);
 							// Food before delay persists without a reminder.
@@ -305,7 +354,7 @@ else
 								[127, '50g'],
 							] as const)
 								yield* f.dispatch(messageUpdate(id, text, sender));
-							expect(f.sent).toContain(
+							expect(f.sentText()).toContain(
 								'Formato inválido. Envie uma duração positiva de até 30 dias.',
 							);
 							expect(
@@ -327,7 +376,12 @@ else
 							expect(
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(1);
+							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(1);
 							yield* f.dispatch(messageUpdate(129, '/cancelar', sender));
+							expect(
+								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
+							).toHaveLength(0);
+							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(1);
 							// Force scheduler persistence failure and prove food transaction rollback.
 							yield* sql.unsafe(
 								`CREATE FUNCTION carneloot.fail_e2e_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced scheduler rollback'; END $$`,

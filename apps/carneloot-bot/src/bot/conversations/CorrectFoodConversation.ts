@@ -25,6 +25,7 @@ import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
 import { PetRepository } from '../../ports/PetRepository.js';
 import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
 import { UserRepository } from '../../ports/UserRepository.js';
+import * as ConversationUi from './ConversationUi.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
 const EntryOption = Schema.Struct({ id: FoodEntryId, label: Schema.String });
@@ -46,19 +47,8 @@ const CorrectionState = Schema.Struct({
 	entryId: FoodEntryId,
 });
 const Text = ConversationInput.text(Schema.String);
-const widen = <A, E extends TaggedError, R>(effect: Effect.Effect<A, E, R>) =>
-	effect;
-const reply = (text: string, removeKeyboard = false) =>
-	widen(
-		Effect.flatMap(MessageContext.MessageContext, (context) =>
-			context.reply(
-				text,
-				removeKeyboard
-					? { reply_markup: ConversationPrompt.removeReplyKeyboard }
-					: undefined,
-			),
-		).pipe(Effect.asVoid),
-	);
+const reply = ConversationUi.reply;
+const replyRemovingKeyboard = ConversationUi.replyRemovingKeyboard;
 const required = <A, E extends TaggedError, R>(
 	effect: Effect.Effect<A, E, R>,
 ) =>
@@ -71,26 +61,11 @@ const required = <A, E extends TaggedError, R>(
 		yield* UserRepository;
 		return yield* effect;
 	});
-const choice = <A>(
-	options: ReadonlyArray<{ readonly label: string; readonly value: A }>,
-) =>
-	ConversationChoice.make<A | 'cancel'>([
-		...options,
-		{ label: 'Cancelar', value: 'cancel' },
-	]);
-const prompt = <A>(
-	text: string,
-	selected: ConversationChoice.Choice<A, never>,
-) =>
-	Effect.flatMap(MessageContext.MessageContext, (context) =>
-		context.reply(text, {
-			reply_markup: {
-				keyboard: selected.options.map((item) => [{ text: item.label }]),
-				one_time_keyboard: true,
-				resize_keyboard: true,
-			},
-		}),
-	).pipe(Effect.asVoid);
+const choice = <A>(options: ReadonlyArray<ConversationChoice.Option<A>>) =>
+	ConversationChoice.reply(ConversationUi.uniqueReplyOptions(options), {
+		cancelLabel: 'Cancelar',
+		columns: 1,
+	});
 const invalid = required(
 	Effect.succeed(
 		ConversationBuilder.stay({
@@ -100,7 +75,9 @@ const invalid = required(
 );
 const unavailable = () =>
 	ConversationBuilder.complete({
-		afterCommit: reply('Este pet não está mais disponível para você.', true),
+		afterCommit: replyRemovingKeyboard(
+			'Este pet não está mais disponível para você.',
+		),
 	});
 const grams = (mg: number) =>
 	`${Number.isInteger(mg / 1000) ? mg / 1000 : (mg / 1000).toFixed(3).replace(/0+$/u, '').replace(/\.$/u, '')} g`;
@@ -127,7 +104,7 @@ export const built = ConversationBuilder.done(
 		.step('pet', {
 			enter: (state) =>
 				required(
-					prompt(
+					ConversationUi.promptChoice(
 						'Escolha o pet:',
 						choice(
 							state.pets.map((pet) => ({ label: pet.name, value: pet.id })),
@@ -137,11 +114,21 @@ export const built = ConversationBuilder.done(
 			onInput: (state, value) =>
 				required(
 					Effect.gen(function* () {
-						if (value === 'Cancelar')
-							return ConversationBuilder.complete({
-								afterCommit: reply('Operação cancelada.', true),
+						const resolved = yield* Effect.result(
+							ConversationPrompt.resolve(
+								choice(
+									state.pets.map((pet) => ({ label: pet.name, value: pet.id })),
+								),
+								value,
+							),
+						);
+						if (resolved._tag === 'Failure') return yield* invalid;
+						const selected = resolved.success;
+						if (selected._tag === 'Cancelled')
+							return ConversationBuilder.cancelled({
+								afterCommit: replyRemovingKeyboard('Operação cancelada.'),
 							});
-						const pet = state.pets.find((item) => item.name === value);
+						const pet = state.pets.find((item) => item.id === selected.value);
 						if (pet === undefined) return yield* invalid;
 						const access = {
 							actorId: state.actorId,
@@ -165,9 +152,8 @@ export const built = ConversationBuilder.done(
 							settings === undefined
 						)
 							return ConversationBuilder.complete({
-								afterCommit: reply(
+								afterCommit: replyRemovingKeyboard(
 									`Você não configurou o início do dia para o pet ${pet.name}.`,
-									true,
 								),
 							});
 						const window = DayBoundary.current(yield* DateTime.now, {
@@ -186,9 +172,8 @@ export const built = ConversationBuilder.done(
 						);
 						if (entries.length === 0)
 							return ConversationBuilder.complete({
-								afterCommit: reply(
+								afterCommit: replyRemovingKeyboard(
 									'Não há registros de ração hoje para este pet.',
-									true,
 								),
 							});
 						return ConversationBuilder.to('entry', {
@@ -208,7 +193,7 @@ export const built = ConversationBuilder.done(
 		.step('entry', {
 			enter: (state) =>
 				required(
-					prompt(
+					ConversationUi.promptChoice(
 						'Escolha o registro de ração:',
 						choice(
 							state.entries.map((entry) => ({
@@ -221,11 +206,26 @@ export const built = ConversationBuilder.done(
 			onInput: (state, value) =>
 				required(
 					Effect.gen(function* () {
-						if (value === 'Cancelar')
-							return ConversationBuilder.complete({
-								afterCommit: reply('Operação cancelada.', true),
+						const resolved = yield* Effect.result(
+							ConversationPrompt.resolve(
+								choice(
+									state.entries.map((entry) => ({
+										label: entry.label,
+										value: entry.id,
+									})),
+								),
+								value,
+							),
+						);
+						if (resolved._tag === 'Failure') return yield* invalid;
+						const selected = resolved.success;
+						if (selected._tag === 'Cancelled')
+							return ConversationBuilder.cancelled({
+								afterCommit: replyRemovingKeyboard('Operação cancelada.'),
 							});
-						const entry = state.entries.find((item) => item.label === value);
+						const entry = state.entries.find(
+							(item) => item.id === selected.value,
+						);
 						if (entry === undefined) return yield* invalid;
 						return ConversationBuilder.to('correction', {
 							...state,
@@ -237,7 +237,9 @@ export const built = ConversationBuilder.done(
 		})
 		.step('correction', {
 			enter: () =>
-				required(reply('Digite a nova quantidade, horário, ou ambos:')),
+				required(
+					replyRemovingKeyboard('Digite a nova quantidade, horário, ou ambos:'),
+				),
 			onInput: (state, value) =>
 				required(
 					Effect.gen(function* () {
@@ -265,7 +267,7 @@ export const built = ConversationBuilder.done(
 							return yield* Effect.fail(result.failure);
 						}
 						return ConversationBuilder.complete({
-							afterCommit: reply('Ração alterada com sucesso!', true),
+							afterCommit: replyRemovingKeyboard('Ração alterada com sucesso!'),
 						});
 					}),
 				),

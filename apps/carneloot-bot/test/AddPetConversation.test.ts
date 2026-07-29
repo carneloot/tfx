@@ -45,15 +45,20 @@ const userLayer = Layer.succeed(UserRepository, {
 		}),
 });
 const replies: Array<string> = [];
+const replyOptions: Array<unknown> = [];
 const message = {
 	message: {} as never,
 	chatId: 1,
 	messageId: 1,
 	messageThreadId: undefined,
 	businessConnectionId: undefined,
-	reply: (text: string) =>
+	reply: (
+		text: string,
+		options: Parameters<MessageContextService['reply']>[1],
+	) =>
 		Effect.sync(() => {
 			replies.push(text);
+			replyOptions.push(options);
 			return {} as never;
 		}),
 	replyToCurrent: () => Effect.succeed({} as never),
@@ -64,6 +69,8 @@ const message = {
 } as unknown as MessageContextService;
 describe('AddPetConversation', () => {
 	it('persists primitive owner state and commits one pet before success output', async () => {
+		replies.length = 0;
+		replyOptions.length = 0;
 		let inserts = 0;
 		const petLayer = Layer.succeed(PetRepository, {
 			findById: () => Effect.die('unused'),
@@ -129,9 +136,16 @@ describe('AddPetConversation', () => {
 			'Qual o nome do seu pet?',
 			'Pet cadastrado com sucesso!',
 		]);
+		expect(replyOptions).toEqual([
+			{ reply_markup: { remove_keyboard: true } },
+			{ reply_markup: { remove_keyboard: true } },
+			{ reply_markup: { remove_keyboard: true } },
+			{ reply_markup: { remove_keyboard: true } },
+		]);
 	});
 	it('re-prompts duplicate names and retains the conversation', async () => {
 		replies.length = 0;
+		replyOptions.length = 0;
 		let inserts = 0;
 		const petLayer = Layer.succeed(PetRepository, {
 			findById: () => Effect.die('unused'),
@@ -175,6 +189,11 @@ describe('AddPetConversation', () => {
 			'Qual o nome do seu pet?',
 			'Já existe um pet com esse nome.',
 			'Qual o nome do seu pet?',
+		]);
+		expect(replyOptions).toEqual([
+			{ reply_markup: { remove_keyboard: true } },
+			{ reply_markup: { remove_keyboard: true } },
+			{ reply_markup: { remove_keyboard: true } },
 		]);
 	});
 	it('rejects corrupt persisted identity state before mutation', async () => {

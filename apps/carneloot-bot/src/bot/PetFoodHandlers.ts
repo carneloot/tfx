@@ -13,6 +13,7 @@ import { PetRepository } from '../ports/PetRepository.js';
 import * as AddFoodConversation from './conversations/AddFoodConversation.js';
 import * as ConfigureDayStartConversation from './conversations/ConfigureDayStartConversation.js';
 import * as ConfigureReminderDelayConversation from './conversations/ConfigureReminderDelayConversation.js';
+import * as ConversationUi from './conversations/ConversationUi.js';
 import * as CorrectFoodConversation from './conversations/CorrectFoodConversation.js';
 import * as DeleteFoodConversation from './conversations/DeleteFoodConversation.js';
 import { CurrentUser } from './CurrentUser.js';
@@ -34,9 +35,8 @@ const start = (
 		const current = yield* CurrentUser;
 		const repository = yield* PetRepository;
 		const pets = yield* repository.listOwned(current.user.id);
-		const context = yield* MessageContext.MessageContext;
 		if (pets.length === 0) {
-			yield* context.reply('Você não tem pets');
+			yield* ConversationUi.replyRemovingKeyboard('Você não tem pets');
 			return;
 		}
 		const update = yield* UpdateContext.UpdateContext;
@@ -220,9 +220,8 @@ export const startDeleteFood = startFoodMutation(
 export const startAddFood = Effect.gen(function* () {
 	const current = yield* CurrentUser;
 	const pets = (yield* ListPets.execute(current.user.id)).map(({ pet }) => pet);
-	const context = yield* MessageContext.MessageContext;
 	if (pets.length === 0) {
-		yield* context.reply('Você não tem pets');
+		yield* ConversationUi.replyRemovingKeyboard('Você não tem pets');
 		return;
 	}
 	const update = yield* UpdateContext.UpdateContext;

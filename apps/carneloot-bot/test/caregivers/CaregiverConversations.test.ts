@@ -89,13 +89,15 @@ type Built =
 	| typeof Remove.built
 	| typeof Stop.built;
 
-const harness = (initial: CaregiverStatus | undefined = 'pending') => {
+const harness = (initial: CaregiverStatus | null = 'pending') => {
 	const replies: string[] = [],
+		markups: unknown[] = [],
 		notices: string[] = [],
 		mutations: string[] = [];
+	const responsePetIds: (typeof petId)[] = [];
 	const relation: { value: PetCaregiver | undefined } = {
 		value:
-			initial === undefined
+			initial === null
 				? undefined
 				: {
 						petId,
@@ -115,9 +117,13 @@ const harness = (initial: CaregiverStatus | undefined = 'pending') => {
 		businessConnectionId: undefined,
 		reply: (text, options) =>
 			Effect.suspend(() => {
-				if (outputFailure.value && /sucesso|aceito|parou/.test(text))
+				if (
+					outputFailure.value &&
+					/sucesso|aceito|recusado|removido|parou/.test(text)
+				)
 					return Effect.die('output');
 				replies.push(text);
+				markups.push(options?.reply_markup);
 				if (
 					(options?.reply_markup as { remove_keyboard?: boolean } | undefined)
 						?.remove_keyboard
@@ -168,10 +174,15 @@ const harness = (initial: CaregiverStatus | undefined = 'pending') => {
 				mutations.push('invite');
 				return relation.value;
 			}),
-		setPendingResponse: (_p: unknown, _u: unknown, status: CaregiverStatus) =>
+		setPendingResponse: (
+			responsePetId: typeof petId,
+			_u: unknown,
+			status: CaregiverStatus,
+		) =>
 			Effect.sync(() => {
 				if (!relation.value || relation.value.status !== 'pending')
 					return undefined;
+				responsePetIds.push(responsePetId);
 				relation.value = { ...relation.value, status };
 				mutations.push(status);
 				return relation.value;
@@ -216,8 +227,10 @@ const harness = (initial: CaregiverStatus | undefined = 'pending') => {
 	);
 	return {
 		replies,
+		markups,
 		notices,
 		mutations,
+		responsePetIds,
 		relation,
 		available,
 		outputFailure,
@@ -265,7 +278,7 @@ describe('caregiver durable conversation transcripts', () => {
 		expect(h.replies.some((x) => x.includes('Caregiver — aceito'))).toBe(true);
 	});
 	it('invites with afterCommit notice and commits once when Telegram output fails', async () => {
-		const h = harness(undefined);
+		const h = harness(null);
 		h.outputFailure.value = true;
 		const exit = await run(
 			Effect.provide(
@@ -281,7 +294,7 @@ describe('caregiver durable conversation transcripts', () => {
 		);
 		expect(exit._tag).toBe('Failure');
 		expect(h.mutations.filter((x) => x === 'invite')).toHaveLength(1);
-		expect(h.relation.value?.status).toBe('pending');
+		expect((() => h.relation.value)()?.status).toBe('pending');
 	});
 	it.each([
 		['Sim', 'accepted'],
@@ -338,6 +351,251 @@ describe('caregiver durable conversation transcripts', () => {
 			expect(h.relation.value === undefined).toBe(answer === 'Sim');
 			expect(h.mutations).toContain('keyboard-removed');
 		}
+	});
+	it('renders canonical caregiver keyboards and removes them at boundaries', async () => {
+		const h = harness('accepted');
+		const keyboard = (rows: string[][]) =>
+			expect.objectContaining({
+				keyboard: rows.map((row) => row.map((text) => ({ text }))),
+				one_time_keyboard: true,
+				resize_keyboard: true,
+			});
+		await run(
+			Effect.provide(
+				Effect.gen(function* () {
+					yield* start(DeletePet.built, ownerStartup);
+					expect(h.markups.at(-1)).toEqual(keyboard([['Rex'], ['Cancelar']]));
+					yield* resume(DeletePet.built, 'Rex', 1);
+					expect(h.markups.at(-1)).toEqual(keyboard([['Sim', 'Não']]));
+					yield* resume(DeletePet.built, 'Não', 2);
+					expect(h.markups.at(-1)).toEqual({ remove_keyboard: true });
+
+					yield* start(Invite.built, ownerStartup);
+					expect(h.markups.at(-1)).toEqual(keyboard([['Rex'], ['Cancelar']]));
+					yield* resume(Invite.built, 'Rex', 3);
+					expect(h.markups.at(-1)).toEqual({ remove_keyboard: true });
+
+					yield* start(List.built, ownerStartup);
+					expect(h.markups.at(-1)).toEqual(keyboard([['Rex'], ['Cancelar']]));
+					yield* resume(List.built, 'Rex', 4);
+					expect(h.markups.at(-1)).toEqual({ remove_keyboard: true });
+
+					yield* start(Invitations.built, inviteeStartup);
+					expect(h.markups.at(-1)).toEqual(
+						keyboard([['Rex (Owner)'], ['Cancelar']]),
+					);
+					yield* resume(Invitations.built, 'Rex (Owner)', 5);
+					expect(h.markups.at(-1)).toEqual(keyboard([['Sim', 'Não']]));
+					yield* resume(Invitations.built, 'Não', 6);
+					expect(h.markups.at(-1)).toEqual({ remove_keyboard: true });
+
+					yield* start(Remove.built, ownerStartup);
+					expect(h.markups.at(-1)).toEqual(keyboard([['Rex'], ['Cancelar']]));
+					yield* resume(Remove.built, 'Rex', 7);
+					expect(h.markups.at(-1)).toEqual(
+						keyboard([['Caregiver (aceito)'], ['Cancelar']]),
+					);
+
+					yield* start(Stop.built, caredStartup);
+					expect(h.markups.at(-1)).toEqual(keyboard([['Rex'], ['Cancelar']]));
+					yield* resume(Stop.built, 'Rex', 8);
+					expect(h.markups.at(-1)).toEqual(keyboard([['Sim', 'Não']]));
+					yield* resume(Stop.built, 'Não', 9);
+					expect(h.markups.at(-1)).toEqual({ remove_keyboard: true });
+				}),
+				h.layer,
+			),
+		);
+	});
+	it('removes keyboard at every successful caregiver terminal', async () => {
+		const removeKeyboard = { remove_keyboard: true };
+		for (const [built, startup, inputs] of [
+			[DeletePet.built, ownerStartup, ['Rex', 'Sim']],
+			[Invite.built, ownerStartup, ['Rex', '@caregiver']],
+			[List.built, ownerStartup, ['Rex']],
+			[Invitations.built, inviteeStartup, ['Rex (Owner)', 'Sim']],
+			[Remove.built, ownerStartup, ['Rex', 'Caregiver (aceito)']],
+			[Stop.built, caredStartup, ['Rex', 'Sim']],
+		] as const) {
+			const h = harness(built === Invitations.built ? 'pending' : 'accepted');
+			await run(
+				Effect.provide(
+					Effect.gen(function* () {
+						yield* start(built, startup);
+						for (const [index, input] of inputs.entries())
+							yield* resume(built, input, index + 1);
+					}),
+					h.layer,
+				),
+			);
+			expect(h.markups.at(-1)).toEqual(removeKeyboard);
+		}
+	});
+	it('removes keyboard at unavailable and no-caregiver terminals', async () => {
+		for (const [built, startup, beforeTerminal, terminal] of [
+			[DeletePet.built, ownerStartup, ['Rex'], 'Sim'],
+			[Invite.built, ownerStartup, ['Rex'], '@caregiver'],
+			[List.built, ownerStartup, [], 'Rex'],
+			[Invitations.built, inviteeStartup, ['Rex (Owner)'], 'Sim'],
+			[Remove.built, ownerStartup, [], 'Rex'],
+			[Stop.built, caredStartup, ['Rex'], 'Sim'],
+		] as const) {
+			const h = harness(built === Invitations.built ? 'pending' : 'accepted');
+			await run(
+				Effect.provide(
+					Effect.gen(function* () {
+						yield* start(built, startup);
+						for (const [index, input] of beforeTerminal.entries())
+							yield* resume(built, input, index + 1);
+						h.available.value = false;
+						yield* resume(built, terminal, beforeTerminal.length + 1);
+					}),
+					h.layer,
+				),
+			);
+			expect(h.markups.at(-1)).toEqual({ remove_keyboard: true });
+		}
+
+		const h = harness(null);
+		await run(
+			Effect.provide(
+				Effect.gen(function* () {
+					yield* start(Remove.built, ownerStartup);
+					yield* resume(Remove.built, 'Rex', 1);
+				}),
+				Layer.fresh(h.layer),
+			),
+		);
+		expect(h.markups.at(-1)).toEqual({ remove_keyboard: true });
+	});
+	it('removes keyboard and confirms cancellation at every caregiver choice step', async () => {
+		const cancel = async (built: Built, startup: object, inputs: string[]) => {
+			const h = harness('accepted');
+			await run(
+				Effect.provide(
+					Effect.gen(function* () {
+						yield* start(built, startup);
+						for (const [index, input] of inputs.entries())
+							yield* resume(built, input, index + 1);
+					}),
+					h.layer,
+				),
+			);
+			expect(h.replies.at(-1)).toBe('Operação cancelada.');
+			expect(h.markups.at(-1)).toEqual({ remove_keyboard: true });
+		};
+		await cancel(DeletePet.built, ownerStartup, ['Cancelar']);
+		await cancel(Invite.built, ownerStartup, ['Cancelar']);
+		await cancel(List.built, ownerStartup, ['Cancelar']);
+		await cancel(Invitations.built, inviteeStartup, ['Cancelar']);
+		await cancel(Remove.built, ownerStartup, ['Cancelar']);
+		await cancel(Remove.built, ownerStartup, ['Rex', 'Cancelar']);
+		await cancel(Stop.built, caredStartup, ['Cancelar']);
+	});
+	it('maps duplicate invitation display-label suffix to selected pet id', async () => {
+		const secondPetId = Schema.decodeUnknownSync(PetId)(
+			'00000000-0000-4000-8000-000000000004',
+		);
+		const startup = {
+			...inviteeStartup,
+			invitations: [
+				{ petId, petName: 'Rex', ownerDisplayName: 'Owner' },
+				{ petId: secondPetId, petName: 'Rex', ownerDisplayName: 'Owner' },
+			],
+		};
+		const h = harness('pending');
+		await run(
+			Effect.provide(
+				Effect.gen(function* () {
+					yield* start(Invitations.built, startup);
+					expect(h.markups.at(-1)).toEqual({
+						keyboard: [
+							[{ text: 'Rex (Owner) (1)' }],
+							[{ text: 'Rex (Owner) (2)' }],
+							[{ text: 'Cancelar' }],
+						],
+						one_time_keyboard: true,
+						resize_keyboard: true,
+					});
+					yield* resume(Invitations.built, 'Rex (Owner) (2)', 1);
+					yield* resume(Invitations.built, 'Sim', 2);
+				}),
+				h.layer,
+			),
+		);
+		expect(h.responsePetIds).toEqual([secondPetId]);
+	});
+	it('commits remove, invitation response, and stop-caring before output failure', async () => {
+		const cases = [
+			{
+				built: Remove.built,
+				startup: ownerStartup,
+				inputs: ['Rex', 'Caregiver (aceito)'],
+				initial: 'accepted' as const,
+				assert: (h: ReturnType<typeof harness>) => {
+					expect(h.mutations.filter((x) => x === 'remove')).toHaveLength(1);
+					expect(h.relation.value).toBeUndefined();
+				},
+			},
+			{
+				built: Invitations.built,
+				startup: inviteeStartup,
+				inputs: ['Rex (Owner)', 'Sim'],
+				initial: 'pending' as const,
+				assert: (h: ReturnType<typeof harness>) => {
+					expect(h.mutations.filter((x) => x === 'accepted')).toHaveLength(1);
+					expect(h.relation.value?.status).toBe('accepted');
+				},
+			},
+			{
+				built: Stop.built,
+				startup: caredStartup,
+				inputs: ['Rex', 'Sim'],
+				initial: 'accepted' as const,
+				assert: (h: ReturnType<typeof harness>) => {
+					expect(h.mutations.filter((x) => x === 'remove')).toHaveLength(1);
+					expect(h.relation.value).toBeUndefined();
+				},
+			},
+		] as const;
+		for (const testCase of cases) {
+			const h = harness(testCase.initial);
+			h.outputFailure.value = true;
+			const exit = await run(
+				Effect.provide(
+					Effect.exit(
+						Effect.gen(function* () {
+							yield* start(testCase.built, testCase.startup);
+							for (const [index, input] of testCase.inputs.entries())
+								yield* resume(testCase.built, input, index + 1);
+						}),
+					),
+					h.layer,
+				),
+			);
+			expect(exit._tag).toBe('Failure');
+			testCase.assert(h);
+		}
+	});
+	it('cancels visibly and re-renders choices after forged labels', async () => {
+		const h = harness('accepted');
+		await run(
+			Effect.provide(
+				Effect.gen(function* () {
+					yield* start(DeletePet.built, ownerStartup);
+					const expected = h.markups.at(-1);
+					yield* resume(DeletePet.built, 'forged', 1);
+					expect(h.markups.at(-1)).toEqual(expected);
+					const storage = yield* ConversationStorage;
+					expect((yield* storage.load(scope))?.step).toBe('pet');
+					yield* resume(DeletePet.built, 'Cancelar', 2);
+					expect(yield* storage.load(scope)).toBeUndefined();
+					expect(h.markups.at(-1)).toEqual({ remove_keyboard: true });
+					expect(h.mutations).not.toContain('delete');
+				}),
+				h.layer,
+			),
+		);
 	});
 	it('rejects empty startup choices and invalid entries', () => {
 		expect(() =>

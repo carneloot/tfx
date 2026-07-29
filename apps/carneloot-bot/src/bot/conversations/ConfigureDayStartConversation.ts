@@ -4,8 +4,9 @@ import * as Schema from 'effect/Schema';
 import {
 	Conversation,
 	ConversationBuilder,
+	ConversationChoice,
 	ConversationInput,
-	MessageContext,
+	ConversationPrompt,
 } from 'tfx';
 import type { TaggedError } from 'tfx/TaggedError';
 
@@ -19,6 +20,7 @@ import { PetCaregiverRepository } from '../../ports/PetCaregiverRepository.js';
 import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
 import { PetRepository } from '../../ports/PetRepository.js';
 import { UserRepository } from '../../ports/UserRepository.js';
+import * as ConversationUi from './ConversationUi.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
 const Base = {
@@ -41,14 +43,28 @@ const TimeZoneState = Schema.Struct({
 	dayStart: LocalTime,
 });
 const Text = ConversationInput.text(Schema.String);
+const alterChoice = ConversationChoice.reply(
+	[{ label: 'Alterar', value: 'alter' as const }],
+	{ cancelLabel: 'Cancelar' },
+);
+const hourChoice = ConversationChoice.reply(
+	Array.from({ length: 24 }, (_, hour) => ({
+		label: `${hour}h`,
+		value: hour,
+	})),
+	{ columns: 4, cancelLabel: 'Cancelar' },
+);
+const petChoice = (state: typeof PetState.Type) =>
+	ConversationChoice.reply(
+		ConversationUi.uniqueReplyOptions(
+			state.pets.map((pet) => ({ label: pet.name, value: pet.id })),
+		),
+		{ cancelLabel: 'Cancelar' },
+	);
 const widen = <A, E extends TaggedError, R>(effect: Effect.Effect<A, E, R>) =>
 	effect;
-const reply = (text: string) =>
-	widen(
-		Effect.flatMap(MessageContext.MessageContext, (context) =>
-			context.reply(text),
-		).pipe(Effect.asVoid),
-	);
+const reply = ConversationUi.reply;
+const replyRemovingKeyboard = ConversationUi.replyRemovingKeyboard;
 const required = <A, E extends TaggedError, R>(
 	effect: Effect.Effect<A, E, R>,
 ) =>
@@ -77,9 +93,12 @@ export const declaration = Conversation.make('configure-pet-day-start', {
 		pet: Conversation.step('pet', { state: PetState, input: Text }),
 		confirm: Conversation.step('confirm', {
 			state: SelectedState,
-			input: Text,
+			input: ConversationInput.choice(alterChoice),
 		}),
-		hour: Conversation.step('hour', { state: HourState, input: Text }),
+		hour: Conversation.step('hour', {
+			state: HourState,
+			input: ConversationInput.choice(hourChoice),
+		}),
 		timezone: Conversation.step('timezone', {
 			state: TimeZoneState,
 			input: Text,
@@ -93,13 +112,28 @@ export const built = ConversationBuilder.done(
 		.step('pet', {
 			enter: (state) =>
 				required(
-					reply(`Escolha o pet: ${state.pets.map((p) => p.name).join(', ')}`),
+					state.pets.length === 0
+						? replyRemovingKeyboard('Você não tem pets')
+						: ConversationUi.promptChoice('Escolha o pet:', petChoice(state)),
 				),
 			onInput: (state, value) =>
 				required(
 					widen(
 						Effect.gen(function* () {
-							const pet = state.pets.find((item) => item.name === value);
+							if (state.pets.length === 0)
+								return ConversationBuilder.cancelled({
+									afterCommit: replyRemovingKeyboard('Você não tem pets'),
+								});
+							const result = yield* Effect.result(
+								ConversationPrompt.resolve(petChoice(state), value),
+							);
+							if (result._tag === 'Failure') return yield* invalid;
+							const selected = result.success;
+							if (selected._tag === 'Cancelled')
+								return ConversationBuilder.cancelled({
+									afterCommit: replyRemovingKeyboard('Operação cancelada.'),
+								});
+							const pet = state.pets.find((item) => item.id === selected.value);
 							if (pet === undefined) return yield* invalid;
 							yield* authorize({
 								actorId: state.actorId,
@@ -123,51 +157,69 @@ export const built = ConversationBuilder.done(
 		.step('confirm', {
 			enter: (state) =>
 				required(
-					reply(
+					ConversationUi.promptChoice(
 						state.currentDayStart === null
-							? 'Início do dia não configurado. Envie Alterar.'
-							: `Valor atual: ${state.currentDayStart} (${state.currentTimeZone}). Envie Alterar.`,
+							? 'Início do dia não configurado.'
+							: `Valor atual: ${state.currentDayStart} (${state.currentTimeZone}).`,
+						alterChoice,
 					),
 				),
-			onInput: (state, value) =>
+			onInput: (state, selected) =>
 				required(
-					value === 'Alterar'
+					selected._tag === 'Cancelled'
 						? Effect.succeed(
-								ConversationBuilder.to('hour', {
-									actorId: state.actorId,
-									botId: state.botId,
-									telegramUserId: state.telegramUserId,
-									pets: state.pets,
-									petId: state.petId,
+								ConversationBuilder.cancelled({
+									afterCommit: replyRemovingKeyboard('Operação cancelada.'),
 								}),
 							)
-						: invalid,
+						: selected.value === 'alter'
+							? Effect.succeed(
+									ConversationBuilder.to('hour', {
+										actorId: state.actorId,
+										botId: state.botId,
+										telegramUserId: state.telegramUserId,
+										pets: state.pets,
+										petId: state.petId,
+									}),
+								)
+							: invalid,
 				),
 			onInvalid: () => invalid,
 		})
 		.step('hour', {
-			enter: () => required(reply('Escolha a hora de 0h a 23h.')),
-			onInput: (state, value) =>
+			enter: () =>
 				required(
-					(() => {
-						const match = /^(?:([0-9])|([01][0-9])|(2[0-3]))h$/u.exec(value);
-						if (match === null) return invalid;
-						const hour = Number(match[1] ?? match[2] ?? match[3]);
-						return Effect.succeed(
-							ConversationBuilder.to('timezone', {
-								...state,
-								dayStart: Schema.decodeUnknownSync(LocalTime)(
-									`${String(hour).padStart(2, '0')}:00`,
-								),
-							}),
-						);
-					})(),
+					ConversationUi.promptChoice(
+						'Escolha a hora de 0h a 23h.',
+						hourChoice,
+					),
+				),
+			onInput: (state, selected) =>
+				required(
+					selected._tag === 'Cancelled'
+						? Effect.succeed(
+								ConversationBuilder.cancelled({
+									afterCommit: replyRemovingKeyboard('Operação cancelada.'),
+								}),
+							)
+						: Effect.succeed(
+								ConversationBuilder.to('timezone', {
+									...state,
+									dayStart: Schema.decodeUnknownSync(LocalTime)(
+										`${String(selected.value).padStart(2, '0')}:00`,
+									),
+								}),
+							),
 				),
 			onInvalid: () => invalid,
 		})
 		.step('timezone', {
 			enter: () =>
-				required(reply('Envie o fuso horário, por exemplo America/Sao_Paulo.')),
+				required(
+					replyRemovingKeyboard(
+						'Envie o fuso horário, por exemplo America/Sao_Paulo.',
+					),
+				),
 			onInput: (state, value) =>
 				required(
 					widen(
@@ -187,7 +239,9 @@ export const built = ConversationBuilder.done(
 								decoded.success,
 							);
 							return ConversationBuilder.complete({
-								afterCommit: reply('Início do dia configurado com sucesso!'),
+								afterCommit: replyRemovingKeyboard(
+									'Início do dia configurado com sucesso!',
+								),
 							});
 						}),
 					),
