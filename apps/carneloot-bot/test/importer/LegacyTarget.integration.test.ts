@@ -131,7 +131,14 @@ describe.skipIf(!enabled)('legacy target dry run', () => {
 				const foodCount = yield* sql<{
 					readonly count: number;
 				}>`SELECT count(*)::int count FROM carneloot.pet_food_entries WHERE pet_id=${petId}`;
-				return { promotion, foodCount: foodCount[0]?.count };
+				const ledgerCount = yield* sql<{
+					readonly count: number;
+				}>`SELECT count(*)::int count FROM carneloot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint}`;
+				return {
+					promotion,
+					foodCount: foodCount[0]?.count,
+					ledgerCount: ledgerCount[0]?.count,
+				};
 			}).pipe(
 				Effect.provide(
 					Layer.provideMerge(LegacyTargetLive.layer, PostgresTestLayer.layer),
@@ -143,5 +150,98 @@ describe.skipIf(!enabled)('legacy target dry run', () => {
 			existing: { users: 1, pets: 1, pet_food: 1 },
 		});
 		expect(result.foodCount).toBe(501);
+		expect(result.ledgerCount).toBe(503);
+	});
+
+	it('deduplicates mapped targets across probe batches while retaining ledgers', async () => {
+		const id = randomUUID();
+		const timestamp = '2026-01-01T00:00:00.000Z';
+		const mapped: MappedLegacy = {
+			fingerprint: `duplicate-${id}`,
+			rows: Array.from({ length: 501 }, (_, index) => ({
+				sourceTable: 'legacy_users',
+				sourceKey: String(index + 1),
+				targetTable: 'users' as const,
+				targetKey: id,
+				value: { id, created_at: timestamp, updated_at: timestamp },
+			})),
+			rounding: [],
+			warnings: [],
+		};
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const sql = yield* PgClient.PgClient;
+				const target = yield* LegacyTarget;
+				yield* migrate;
+				const promotion = yield* target.promote(mapped, { dryRun: false });
+				const users = yield* sql<{
+					readonly count: number;
+				}>`SELECT count(*)::int count FROM carneloot.users WHERE id=${id}`;
+				const ledgers = yield* sql<{
+					readonly count: number;
+				}>`SELECT count(*)::int count FROM carneloot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint}`;
+				return {
+					promotion,
+					users: users[0]?.count,
+					ledgers: ledgers[0]?.count,
+				};
+			}).pipe(
+				Effect.provide(
+					Layer.provideMerge(LegacyTargetLive.layer, PostgresTestLayer.layer),
+				),
+			),
+		);
+		expect(result.promotion).toEqual({
+			inserted: { legacy_users: 1 },
+			existing: { legacy_users: 500 },
+		});
+		expect(result.users).toBe(1);
+		expect(result.ledgers).toBe(501);
+	});
+
+	it('adopts preexisting composite targets through typed probes', async () => {
+		const userId = randomUUID();
+		const botId = `bot-${randomUUID()}`;
+		const timestamp = '2026-01-01T00:00:00.000Z';
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const sql = yield* PgClient.PgClient;
+				const target = yield* LegacyTarget;
+				yield* migrate;
+				yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${userId},${timestamp},${timestamp})`;
+				yield* sql`INSERT INTO carneloot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${botId},${42},${userId},${null},${'Composite'},${null},${42},${timestamp},${timestamp})`;
+				const identity = yield* sql<{
+					readonly row: Record<string, unknown>;
+				}>`SELECT to_jsonb(t) row FROM carneloot.telegram_identities t WHERE bot_id=${botId} AND telegram_user_id=${42}`;
+				const mapped: MappedLegacy = {
+					fingerprint: `composite-${randomUUID()}`,
+					rows: [
+						{
+							sourceTable: 'identities',
+							sourceKey: '1',
+							targetTable: 'telegram_identities',
+							targetKey: `${botId}/42`,
+							value: identity[0]!.row,
+						},
+					],
+					rounding: [],
+					warnings: [],
+				};
+				const promotion = yield* target.promote(mapped, { dryRun: false });
+				const ledgers = yield* sql<{
+					readonly count: number;
+				}>`SELECT count(*)::int count FROM carneloot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint}`;
+				return { promotion, ledgers: ledgers[0]?.count };
+			}).pipe(
+				Effect.provide(
+					Layer.provideMerge(LegacyTargetLive.layer, PostgresTestLayer.layer),
+				),
+			),
+		);
+		expect(result.promotion).toEqual({
+			inserted: {},
+			existing: { identities: 1 },
+		});
+		expect(result.ledgers).toBe(1);
 	});
 });

@@ -135,18 +135,29 @@ export const layer = Layer.effect(
 			ReadonlyArray<{ readonly row: Record<string, unknown> }>,
 			SqlError
 		> => {
-			const keys = rows.map((row) =>
-				targetRowKey(targetTable, row.value as Record<string, any>),
-			);
 			switch (targetTable) {
 				case 'users':
 					return sql`SELECT to_jsonb(t) row FROM carneloot.users t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
-				case 'telegram_identities':
-					return sql`SELECT to_jsonb(t) row FROM carneloot.telegram_identities t WHERE jsonb_build_array(t.bot_id,t.telegram_user_id)::text IN ${sql.in(keys)} FOR UPDATE`;
+				case 'telegram_identities': {
+					const values = sql.csv(
+						rows.map((row) => {
+							const value = row.value as any;
+							return sql`(${value.bot_id}::text, ${value.telegram_user_id}::bigint)`;
+						}),
+					);
+					return sql`SELECT to_jsonb(t) row FROM carneloot.telegram_identities t WHERE (t.bot_id,t.telegram_user_id) IN (VALUES ${values}) FOR UPDATE`;
+				}
 				case 'pets':
 					return sql`SELECT to_jsonb(t) row FROM carneloot.pets t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
-				case 'pet_caregivers':
-					return sql`SELECT to_jsonb(t) row FROM carneloot.pet_caregivers t WHERE jsonb_build_array(t.pet_id,t.caregiver_user_id)::text IN ${sql.in(keys)} FOR UPDATE`;
+				case 'pet_caregivers': {
+					const values = sql.csv(
+						rows.map((row) => {
+							const value = row.value as any;
+							return sql`(${value.pet_id}::uuid, ${value.caregiver_user_id}::uuid)`;
+						}),
+					);
+					return sql`SELECT to_jsonb(t) row FROM carneloot.pet_caregivers t WHERE (t.pet_id,t.caregiver_user_id) IN (VALUES ${values}) FOR UPDATE`;
+				}
 				case 'pet_food_settings':
 					return sql`SELECT to_jsonb(t) row FROM carneloot.pet_food_settings t WHERE pet_id IN ${sql.in(rows.map((row) => (row.value as any).pet_id))} FOR UPDATE`;
 				case 'pet_food_entries':
@@ -155,8 +166,15 @@ export const layer = Layer.effect(
 					return sql`SELECT to_jsonb(t) row FROM carneloot.api_keys t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'notification_templates':
 					return sql`SELECT to_jsonb(t) row FROM carneloot.notification_templates t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
-				case 'notification_subscriptions':
-					return sql`SELECT to_jsonb(t) row FROM carneloot.notification_subscriptions t WHERE jsonb_build_array(t.template_id,t.user_id)::text IN ${sql.in(keys)} FOR UPDATE`;
+				case 'notification_subscriptions': {
+					const values = sql.csv(
+						rows.map((row) => {
+							const value = row.value as any;
+							return sql`(${value.template_id}::uuid, ${value.user_id}::uuid)`;
+						}),
+					);
+					return sql`SELECT to_jsonb(t) row FROM carneloot.notification_subscriptions t WHERE (t.template_id,t.user_id) IN (VALUES ${values}) FOR UPDATE`;
+				}
 				case 'notification_events':
 					return sql`SELECT to_jsonb(t) row FROM carneloot.notification_events t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'notification_deliveries':
@@ -195,7 +213,12 @@ export const layer = Layer.effect(
 										rows.push(row);
 										bySourceTable.set(row.sourceTable, rows);
 									}
-									const newRows: PreparedRow[] = [];
+									const newTargets: PreparedRow[] = [];
+									const newLedgers: PreparedRow[] = [];
+									const plannedTargets = new Map<
+										string,
+										Record<string, unknown>
+									>();
 
 									for (const [sourceTable, sourceRows] of bySourceTable) {
 										const pendingLedgers = new Map<string, LedgerRow>();
@@ -239,12 +262,12 @@ export const layer = Layer.effect(
 													return yield* Effect.fail(
 														ledgerMismatch(item.row, ledger),
 													);
-												const target = targetByKey.get(
-													targetRowKey(
-														targetTable,
-														item.row.value as Record<string, any>,
-													),
+												const key = targetRowKey(
+													targetTable,
+													item.row.value as Record<string, any>,
 												);
+												const target =
+													targetByKey.get(key) ?? plannedTargets.get(key);
 												if (ledger) {
 													if (
 														target === undefined ||
@@ -264,6 +287,7 @@ export const layer = Layer.effect(
 												};
 												ledgerBySourceKey.set(item.row.sourceKey, newLedger);
 												pendingLedgers.set(item.row.sourceKey, newLedger);
+												newLedgers.push(item);
 												if (target !== undefined) {
 													if (
 														(yield* targetDigest(item.row, target)) !==
@@ -274,19 +298,20 @@ export const layer = Layer.effect(
 														(existing[item.row.sourceTable] ?? 0) + 1;
 													continue;
 												}
-												newRows.push(item);
+												plannedTargets.set(key, item.row.value);
+												newTargets.push(item);
 												inserted[item.row.sourceTable] =
 													(inserted[item.row.sourceTable] ?? 0) + 1;
 											}
 										}
 									}
 
-									for (const batch of chunks(newRows))
+									for (const batch of chunks(newTargets))
 										yield* insertTargetRows(
 											targetTable,
 											batch.map((item) => item.row.value),
 										);
-									for (const batch of chunks(newRows))
+									for (const batch of chunks(newLedgers))
 										yield* sql`INSERT INTO carneloot.legacy_import_ledger ${sql.insert(
 											batch.map((item) => ({
 												source_fingerprint: mapped.fingerprint,
