@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { flags, toConfig } from '../../src/importer/Cli.js';
 import { blockerSummary } from '../../src/importer/Command.js';
 import type { LegacyImportConfigService } from '../../src/importer/LegacyImportConfig.js';
+import { countSummary } from '../../src/importer/LegacyReport.js';
 
 const run = (args: ReadonlyArray<string>) =>
 	Effect.gen(function* () {
@@ -45,6 +46,33 @@ describe('legacy importer CLI', () => {
 		expect(Redacted.value(result.sourceAuthToken)).toBe('token');
 	});
 
+	it('renders one-line sanitized count summary', () => {
+		expect(
+			countSummary({
+				mode: 'dry-run',
+				startedAt: '',
+				completedAt: '',
+				durationMs: 0,
+				duration: '0ms',
+				sourceFingerprint: 'secret-hash',
+				counts: {
+					users: {
+						source: 2,
+						accepted: 1,
+						skipped: 1,
+						existing: 0,
+						inserted: 1,
+					},
+				},
+				rounding: [],
+				warnings: [],
+				blockers: [],
+				reminderRebuild: 'not-run',
+			}),
+		).toBe(
+			'Legacy import counts: source=2 accepted=1 skipped=1 existing=0 inserted=1',
+		);
+	});
 	it('renders actionable, sorted blocker details', () => {
 		const message = blockerSummary(
 			[

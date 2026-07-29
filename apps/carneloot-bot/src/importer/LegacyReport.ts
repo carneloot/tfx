@@ -42,6 +42,19 @@ const sorted = (issues: ReadonlyArray<ImportIssue>) =>
 			`${b.table}\0${b.sourceKey}\0${b.code}`,
 		),
 	);
+export const countSummary = (report: LegacyImportReport) => {
+	const totals = Object.values(report.counts).reduce(
+		(total, count) => ({
+			source: total.source + count.source,
+			accepted: total.accepted + count.accepted,
+			skipped: total.skipped + count.skipped,
+			existing: total.existing + count.existing,
+			inserted: total.inserted + count.inserted,
+		}),
+		{ source: 0, accepted: 0, skipped: 0, existing: 0, inserted: 0 },
+	);
+	return `Legacy import counts: source=${totals.source} accepted=${totals.accepted} skipped=${totals.skipped} existing=${totals.existing} inserted=${totals.inserted}`;
+};
 export const normalizeReport = (
 	report: LegacyImportReport,
 ): LegacyImportReport => ({

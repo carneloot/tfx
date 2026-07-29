@@ -67,6 +67,46 @@ describe('legacy mapping', () => {
 		expect(settings.reminder_delay_ms).toBe(7_230_000);
 	});
 
+	it('reports unknown configs and leaves invalid known configs for verification', async () => {
+		const snapshot = empty() as any;
+		snapshot.users = [
+			{
+				id: 'u',
+				telegram_id: '42',
+				username: null,
+				first_name: 'A',
+				last_name: null,
+			},
+		];
+		snapshot.pets = [{ id: 'p', name: 'Pet', owner_id: 'u' }];
+		snapshot.configs = [
+			{
+				id: 'invalid',
+				context: 'pet:p',
+				key: 'dayStart',
+				value: '{"hour":0,"timezone":"UTC"}',
+			},
+			{ id: 'unknown', context: 'pet:p', key: 'other', value: '{}' },
+		];
+		const mapped = await Effect.runPromise(
+			mapLegacySnapshot(
+				snapshot,
+				'sha256:test',
+				'bot',
+				new Date('2026-01-01'),
+			).pipe(Effect.provide(NodeCrypto.layer)),
+		);
+		expect(
+			mapped.rows.find((row) => row.targetTable === 'pet_food_settings'),
+		).toBeUndefined();
+		expect(mapped.warnings).toContainEqual(
+			expect.objectContaining({
+				code: 'unknown-config-key',
+				sourceKey: 'unknown',
+			}),
+		);
+	});
+
 	it('preserves food timestamp and reports exact rounding', async () => {
 		const snapshot = empty() as any;
 		snapshot.users = [

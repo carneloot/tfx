@@ -161,24 +161,52 @@ export const mapLegacySnapshot = (
 		}
 		const settings = new Map<string, Record<string, unknown>>();
 		for (const r of snapshot.configs) {
+			const configKey = id(r);
 			const match = /^pet:(.+)$/u.exec(String(r.context));
-			const petId = match ? ids.get(`pets:${match[1]}`) : undefined;
+			if (!match) {
+				warnings.push({
+					code:
+						String(r.key) === 'showNotifications'
+							? 'user-notification-preference-not-migrated'
+							: 'unknown-config-context',
+					table: 'configs',
+					sourceKey: configKey,
+					message: 'Unsupported legacy configuration is excluded',
+				});
+				continue;
+			}
+			const petId = ids.get(`pets:${match[1]}`);
+			if (r.key !== 'dayStart' && r.key !== 'notificationDelay') {
+				warnings.push({
+					code: 'unknown-config-key',
+					table: 'configs',
+					sourceKey: configKey,
+					message: 'Unsupported legacy configuration is excluded',
+				});
+				continue;
+			}
 			if (!petId) continue;
 			const current = settings.get(petId) ?? {};
-			const value = decodeLegacyConfigValue(r.value);
-			if (r.key === 'dayStart') {
-				const dayStart = Schema.decodeUnknownSync(LegacyPetDayStart)(value);
-				current.day_start = `${String(dayStart.hour).padStart(2, '0')}:00`;
-				current.timezone = dayStart.timezone;
-			} else if (r.key === 'notificationDelay') {
-				const delay = Schema.decodeUnknownSync(LegacyNotificationDelay)(value);
-				current.reminder_delay_ms =
-					((num(delay.days ?? 0) * 24 + num(delay.hours ?? 0)) * 60 +
-						num(delay.minutes ?? 0)) *
-						60_000 +
-					num(delay.seconds ?? 0) * 1000;
+			try {
+				const value = decodeLegacyConfigValue(r.value);
+				if (r.key === 'dayStart') {
+					const dayStart = Schema.decodeUnknownSync(LegacyPetDayStart)(value);
+					current.day_start = `${String(dayStart.hour).padStart(2, '0')}:00`;
+					current.timezone = dayStart.timezone;
+				} else {
+					const delay = Schema.decodeUnknownSync(LegacyNotificationDelay)(
+						value,
+					);
+					current.reminder_delay_ms =
+						((num(delay.days ?? 0) * 24 + num(delay.hours ?? 0)) * 60 +
+							num(delay.minutes ?? 0)) *
+							60_000 +
+						num(delay.seconds ?? 0) * 1000;
+				}
+				settings.set(petId, current);
+			} catch {
+				// Verification reports invalid known settings before promotion.
 			}
-			settings.set(petId, current);
 		}
 		for (const [petId, setting] of settings)
 			add('configs', `pet:${petId}`, 'pet_food_settings', petId, {

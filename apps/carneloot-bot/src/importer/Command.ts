@@ -8,7 +8,7 @@ import { flags, migrationFlags, toConfig } from './Cli.js';
 import { LegacyImportConfig, layerFrom } from './LegacyImportConfig.js';
 import { run } from './LegacyImporter.js';
 import { LegacyImportError } from './LegacyImportError.js';
-import type { ImportIssue } from './LegacyReport.js';
+import { countSummary, type ImportIssue } from './LegacyReport.js';
 import * as LegacySourceLive from './LegacySourceLive.js';
 import * as LegacyTargetLive from './LegacyTargetLive.js';
 
@@ -51,6 +51,7 @@ const infrastructure = Layer.unwrap(
 const importLegacy = Effect.gen(function* () {
 	const config = yield* LegacyImportConfig;
 	const report = yield* run;
+	yield* Effect.logInfo(countSummary(report));
 	yield* Effect.logInfo('carneloot.legacy_import.completed').pipe(
 		Effect.annotateLogs({
 			mode: report.mode,
