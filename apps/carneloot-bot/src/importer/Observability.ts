@@ -10,16 +10,16 @@ const resource = {
 	serviceName: 'carneloot-legacy-importer',
 };
 
-const defaultMotelUrl = 'http://127.0.0.1:27686';
+const defaultOtelUrl = 'http://127.0.0.1:4318';
 
 export const layer = Layer.unwrap(
 	Effect.map(
 		Config.all({
 			tracesUrl: Config.string('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT').pipe(
-				Config.withDefault(`${defaultMotelUrl}/v1/traces`),
+				Config.withDefault(`${defaultOtelUrl}/v1/traces`),
 			),
 			logsUrl: Config.string('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT').pipe(
-				Config.withDefault(`${defaultMotelUrl}/v1/logs`),
+				Config.withDefault(`${defaultOtelUrl}/v1/logs`),
 			),
 		}),
 		({ tracesUrl, logsUrl }) =>
