@@ -82,46 +82,36 @@ const build = <V extends ReadonlyArray<Version<number, any>>>(
 			return Effect.fail(
 				new VersionedSchemaError('MissingMigration', `Unknown version ${from}`),
 			);
-		return Effect.flatMap(
-			Schema.decodeUnknownEffect(source.schema)(value) as Effect.Effect<
-				any,
-				Schema.SchemaError,
-				never
-			>,
-			(
-				decoded,
-			): Effect.Effect<
-				unknown,
-				Schema.SchemaError | VersionedSchemaError,
-				unknown
-			> => {
-				let current = decoded;
-				for (let v = from; v < latest.version; v++) {
-					const migration = migrations.find(
-						(item) => item.from === v && item.to === v + 1,
+		return Effect.gen(function* () {
+			const decoded = yield* (Schema.decodeUnknownEffect(source.schema)(
+				value,
+			) as Effect.Effect<any, Schema.SchemaError, never>);
+			let current = decoded;
+			for (let v = from; v < latest.version; v++) {
+				const migration = migrations.find(
+					(item) => item.from === v && item.to === v + 1,
+				);
+				if (migration === undefined)
+					return yield* Effect.fail(
+						new VersionedSchemaError(
+							'MissingMigration',
+							`Missing migration ${v}→${v + 1}`,
+						),
 					);
-					if (migration === undefined)
-						return Effect.fail(
-							new VersionedSchemaError(
-								'MissingMigration',
-								`Missing migration ${v}→${v + 1}`,
-							),
-						);
-					try {
-						current = migration.migrate(current);
-					} catch (cause) {
-						return Effect.fail(
-							new VersionedSchemaError(
-								'DecodeFailure',
-								`Migration ${v}→${v + 1} failed`,
-								cause,
-							),
-						);
-					}
+				try {
+					current = migration.migrate(current);
+				} catch (cause) {
+					return yield* Effect.fail(
+						new VersionedSchemaError(
+							'DecodeFailure',
+							`Migration ${v}→${v + 1} failed`,
+							cause,
+						),
+					);
 				}
-				return Schema.decodeUnknownEffect(latest.schema)(current);
-			},
-		) as Effect.Effect<LatestOf<V>, VersionedSchemaError | Schema.SchemaError>;
+			}
+			return yield* Schema.decodeUnknownEffect(latest.schema)(current);
+		}) as Effect.Effect<LatestOf<V>, VersionedSchemaError | Schema.SchemaError>;
 	};
 	const self: History<V> = {
 		versions: Object.freeze([...versions]) as unknown as V,
