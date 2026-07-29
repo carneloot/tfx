@@ -448,7 +448,6 @@ else
 							expect(sent.at(-1)?.replyMarkup).toEqual({
 								keyboard: [
 									[{ text: 'Sim' }, { text: 'Não' }],
-									[{ text: 'Cancelar' }],
 								],
 								one_time_keyboard: true,
 								resize_keyboard: true,
