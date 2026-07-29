@@ -446,9 +446,7 @@ else
 							).toHaveLength(1);
 							const second = yield* Layer.build(makeGraph(sql, sent));
 							expect(sent.at(-1)?.replyMarkup).toEqual({
-								keyboard: [
-									[{ text: 'Sim' }, { text: 'Não' }],
-								],
+								keyboard: [[{ text: 'Sim' }, { text: 'Não' }]],
 								one_time_keyboard: true,
 								resize_keyboard: true,
 							});
