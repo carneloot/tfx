@@ -67,7 +67,8 @@ describe.skipIf(!enabled)('application layer', () => {
 							Effect.gen(function* () {
 								yield* BotRuntime;
 								yield* JobWorker;
-								yield* UpdateDeduplicator;
+								const deduplicator = yield* UpdateDeduplicator;
+								return deduplicator.diagnostics;
 							}),
 							context,
 						),
@@ -77,6 +78,7 @@ describe.skipIf(!enabled)('application layer', () => {
 		);
 		const count = (message: string) =>
 			captured.logs.filter((log) => log.message === message).length;
+		expect(captured.result).toEqual({ mode: 'durable', backend: 'postgres' });
 		expect(count('carneloot.migrations.started')).toBe(1);
 		expect(count('carneloot.migrations.completed')).toBe(1);
 		expect(count('tfx.postgres.migrations.started')).toBe(1);

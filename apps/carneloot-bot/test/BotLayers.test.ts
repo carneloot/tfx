@@ -10,6 +10,7 @@ import * as FoodReplyHandler from '../src/bot/FoodReplyHandler.js';
 import * as PetFoodHandlers from '../src/bot/PetFoodHandlers.js';
 import * as PetHandlers from '../src/bot/PetHandlers.js';
 import * as RegisteredUser from '../src/bot/RegisteredUser.js';
+import * as Router from '../src/Router.js';
 
 describe('public bot Layer construction', () => {
 	it('composes declarations, middleware, handlers, and conversation without private imports', () => {
@@ -58,6 +59,49 @@ describe('public bot Layer construction', () => {
 			'pets',
 			'petFood',
 			'replies',
+		]);
+		expect(
+			[
+				Router.accountHandlers,
+				Router.petHandlers,
+				Router.petFoodHandlers,
+				Router.replyHandlers,
+			].map((group) => ({
+				groupId: group.groupId,
+				entries: group.entries.map((entry) =>
+					entry._tag === 'Command'
+						? `${entry._tag}:${entry.commandId}`
+						: `${entry._tag}:${entry.messageHandlerId}`,
+				),
+			})),
+		).toEqual([
+			{ groupId: 'account', entries: ['Command:register'] },
+			{
+				groupId: 'pets',
+				entries: [
+					'Command:addPet',
+					'Command:listPets',
+					'Command:deletePet',
+					'Command:inviteCaregiver',
+					'Command:removeCaregiver',
+					'Command:listCaregivers',
+					'Command:petInvitations',
+					'Command:stopCaring',
+				],
+			},
+			{
+				groupId: 'petFood',
+				entries: [
+					'Command:configureDayStart',
+					'Command:configureReminderDelay',
+					'Command:foodStatus',
+					'Command:addFood',
+					'Command:correctFood',
+					'Command:deleteFood',
+					'Command:addFoodToAll',
+				],
+			},
+			{ groupId: 'replies', entries: ['Message:foodReply'] },
 		]);
 	});
 });

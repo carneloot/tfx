@@ -8,6 +8,7 @@ import type { AppConfigService } from '../src/Config.js';
 import * as PersistenceLive from '../src/PersistenceLive.js';
 import { NotificationRecipients } from '../src/ports/NotificationRecipients.js';
 import { NotificationRepository } from '../src/ports/NotificationRepository.js';
+import { PetCaregiverRepository } from '../src/ports/PetCaregiverRepository.js';
 import { PetFoodRepository } from '../src/ports/PetFoodRepository.js';
 import { PetRepository } from '../src/ports/PetRepository.js';
 import { UserRepository } from '../src/ports/UserRepository.js';
@@ -39,6 +40,7 @@ describe.skipIf(!enabled)('application persistence layer', () => {
 							yield* UpdateDeduplicator;
 							yield* UserRepository;
 							yield* PetRepository;
+							yield* PetCaregiverRepository;
 							yield* PetFoodRepository;
 							yield* NotificationRepository;
 							yield* NotificationRecipients;
