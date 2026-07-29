@@ -19,16 +19,17 @@ export const observe = <E, R>(options: {
 	readonly check: Effect.Effect<Observation, E, R>;
 }): Effect.Effect<ObservedCompletion, E, R> => {
 	const interval = Duration.min(Duration.millis(50), options.waitTimeout);
-	const pass = Effect.flatMap(
-		DateTime.now,
-		(now): Effect.Effect<Observation, E, R> =>
+	const pass: Effect.Effect<Observation, E, R> = Effect.gen(function* () {
+		const now = yield* DateTime.now;
+		if (
 			Duration.isGreaterThanOrEqualTo(
 				DateTime.distance(options.startedAt, now),
 				options.waitTimeout,
 			)
-				? Effect.succeed({ _tag: 'TimedOut' })
-				: options.check,
-	);
+		)
+			return { _tag: 'TimedOut' };
+		return yield* options.check;
+	});
 	return Effect.repeat(pass, {
 		while: isPending,
 		schedule: Schedule.spaced(interval).pipe(
