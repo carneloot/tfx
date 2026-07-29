@@ -186,31 +186,22 @@ export const layer = (
 										const check: Effect.Effect<
 											ObservedCompletion | Observer.Pending,
 											UpdateDeduplicatorError
-										> = Effect.flatMap(
-											protect(read(updateId)),
-											(
-												row,
-											): Effect.Effect<
-												ObservedCompletion | Observer.Pending,
-												UpdateDeduplicatorError
-											> => {
-												if (row === undefined || row.status === 'released')
-													return Effect.succeed({
-														_tag: 'Released' as const,
-													});
-												if (row.status === 'completed') {
-													if (row.outcome === undefined)
-														return Effect.fail(
-															invariant('Completed update has no outcome'),
-														);
-													return Effect.succeed({
-														_tag: 'Completed' as const,
-														outcome: row.outcome,
-													});
-												}
-												return Effect.succeed(Observer.pending);
-											},
-										);
+										> = Effect.gen(function* () {
+											const row = yield* protect(read(updateId));
+											if (row === undefined || row.status === 'released')
+												return { _tag: 'Released' as const };
+											if (row.status === 'completed') {
+												if (row.outcome === undefined)
+													return yield* Effect.fail(
+														invariant('Completed update has no outcome'),
+													);
+												return {
+													_tag: 'Completed' as const,
+													outcome: row.outcome,
+												};
+											}
+											return Observer.pending;
+										});
 										const observe = Observer.observe({
 											startedAt: now,
 											waitTimeout: wait,
