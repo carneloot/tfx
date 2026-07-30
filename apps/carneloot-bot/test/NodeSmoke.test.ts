@@ -2,12 +2,12 @@ import * as NodeCrypto from '@effect/platform-node/NodeCrypto';
 import * as Crypto from 'effect/Crypto';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
+import * as UpdateDelivery from 'tfx/UpdateDelivery';
 import { describe, expect, it } from 'vitest';
 
 import * as AppLive from '../src/AppLive.js';
 import * as Production from '../src/Production.js';
 import * as Router from '../src/Router.js';
-import * as UpdateDelivery from 'tfx/UpdateDelivery';
 import { testConfig } from './internal/TestConfig.js';
 
 type Assert<T extends true> = T;
@@ -19,7 +19,9 @@ const nodePortableApplicationLayer = Layer.provide(
 );
 
 type NodePortableApplicationExcludesCrypto = Assert<
-	IsNever<Extract<Layer.Services<typeof nodePortableApplicationLayer>, Crypto.Crypto>>
+	IsNever<
+		Extract<Layer.Services<typeof nodePortableApplicationLayer>, Crypto.Crypto>
+	>
 >;
 
 describe('portable Node composition', () => {

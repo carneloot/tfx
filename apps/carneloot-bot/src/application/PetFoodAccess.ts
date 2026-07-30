@@ -22,39 +22,40 @@ export interface AuthorizedPetFoodAccess {
 
 const denied = (message: string) => new PetAccessDenied({ message });
 
-export const authorize = Effect.fn('PetFoodAccess.authorize')
-	((access: PetFoodAccess) =>
-	Effect.gen(function* () {
-		const users = yield* UserRepository;
-		const current = yield* users.findByTelegram(
-			access.botId,
-			access.telegramUserId,
-		);
-		if (current.user.id !== access.actorId)
-			return yield* Effect.fail(
-				denied('Telegram identity no longer matches actor'),
+export const authorize = Effect.fn('PetFoodAccess.authorize')(
+	(access: PetFoodAccess) =>
+		Effect.gen(function* () {
+			const users = yield* UserRepository;
+			const current = yield* users.findByTelegram(
+				access.botId,
+				access.telegramUserId,
 			);
+			if (current.user.id !== access.actorId)
+				return yield* Effect.fail(
+					denied('Telegram identity no longer matches actor'),
+				);
 
-		const pets = yield* PetRepository;
-		const pet = yield* pets.lockById(access.petId);
-		if (pet === undefined)
-			return yield* Effect.fail(denied('Pet is not accessible'));
-		if (pet.ownerId === access.actorId)
+			const pets = yield* PetRepository;
+			const pet = yield* pets.lockById(access.petId);
+			if (pet === undefined)
+				return yield* Effect.fail(denied('Pet is not accessible'));
+			if (pet.ownerId === access.actorId)
+				return {
+					actorId: access.actorId,
+					ownerId: pet.ownerId,
+					pet,
+					role: 'owner',
+				};
+
+			const caregivers = yield* PetCaregiverRepository;
+			const relationship = yield* caregivers.lock(access.petId, access.actorId);
+			if (relationship?.status !== 'accepted')
+				return yield* Effect.fail(denied('Pet is not accessible'));
 			return {
 				actorId: access.actorId,
 				ownerId: pet.ownerId,
 				pet,
-				role: 'owner',
+				role: 'caregiver',
 			};
-
-		const caregivers = yield* PetCaregiverRepository;
-		const relationship = yield* caregivers.lock(access.petId, access.actorId);
-		if (relationship?.status !== 'accepted')
-			return yield* Effect.fail(denied('Pet is not accessible'));
-		return {
-			actorId: access.actorId,
-			ownerId: pet.ownerId,
-			pet,
-			role: 'caregiver',
-		};
-	}));
+		}),
+);

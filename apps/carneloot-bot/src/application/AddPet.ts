@@ -16,8 +16,7 @@ export interface Request {
 	readonly telegramUserId: TelegramUserId;
 	readonly name: unknown;
 }
-export const execute = Effect.fn('AddPet.execute')
-	((request: Request) =>
+export const execute = Effect.fn('AddPet.execute')((request: Request) =>
 	Effect.gen(function* () {
 		const name = yield* Schema.decodeUnknownEffect(PetName)(request.name).pipe(
 			Effect.mapError(
@@ -42,4 +41,5 @@ export const execute = Effect.fn('AddPet.execute')
 			Effect.annotateLogs({ ownerId: pet.ownerId, petId: pet.id }),
 		);
 		return pet;
-	}));
+	}),
+);

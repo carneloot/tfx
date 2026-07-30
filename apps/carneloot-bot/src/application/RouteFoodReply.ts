@@ -175,27 +175,28 @@ const route = (input: RouteFoodReplyInput) =>
 	);
 
 /** Routes and durably records one reply mutation in the same SQL transaction. */
-export const execute = Effect.fn('RouteFoodReply.execute')
-	((input: RouteFoodReplyInput) =>
-	Effect.gen(function* () {
-		const sql = yield* PgClient.PgClient;
-		return yield* sql.withTransaction(
-			Effect.gen(function* () {
-				const lockKey = `food-reply:${input.botId}:${input.updateId}`;
-				yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
-				const rows = yield* sql<{
-					result_json: unknown;
-				}>`SELECT result_json FROM carneloot.food_reply_operations WHERE bot_id=${input.botId} AND update_id=${input.updateId}`;
-				if (rows[0] !== undefined)
-					return yield* decodeStored(rows[0].result_json);
+export const execute = Effect.fn('RouteFoodReply.execute')(
+	(input: RouteFoodReplyInput) =>
+		Effect.gen(function* () {
+			const sql = yield* PgClient.PgClient;
+			return yield* sql.withTransaction(
+				Effect.gen(function* () {
+					const lockKey = `food-reply:${input.botId}:${input.updateId}`;
+					yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+					const rows = yield* sql<{
+						result_json: unknown;
+					}>`SELECT result_json FROM carneloot.food_reply_operations WHERE bot_id=${input.botId} AND update_id=${input.updateId}`;
+					if (rows[0] !== undefined)
+						return yield* decodeStored(rows[0].result_json);
 
-				const result = yield* route(input);
-				const encoded = yield* Schema.encodeEffect(FoodReplyResult)(
-					result,
-				).pipe(Effect.orDie);
-				const now = yield* DateTime.now;
-				yield* sql`INSERT INTO carneloot.food_reply_operations (bot_id,update_id,kind,result_json,created_at) VALUES (${input.botId},${input.updateId},${result._tag},${sql.json(encoded)},${DateTime.toDateUtc(now)})`;
-				return result;
-			}),
-		);
-	}));
+					const result = yield* route(input);
+					const encoded = yield* Schema.encodeEffect(FoodReplyResult)(
+						result,
+					).pipe(Effect.orDie);
+					const now = yield* DateTime.now;
+					yield* sql`INSERT INTO carneloot.food_reply_operations (bot_id,update_id,kind,result_json,created_at) VALUES (${input.botId},${input.updateId},${result._tag},${sql.json(encoded)},${DateTime.toDateUtc(now)})`;
+					return result;
+				}),
+			);
+		}),
+);

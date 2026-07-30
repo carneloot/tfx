@@ -143,7 +143,8 @@ export const layer = Layer.effect(
 								);
 								return yield* decode(created[0]);
 							}),
-						).pipe(Effect.withSpan('UserRepository.transaction'))
+						)
+						.pipe(Effect.withSpan('UserRepository.transaction'))
 						.pipe(Effect.mapError(persistence)),
 				),
 			findByUsername: (botId, username) =>

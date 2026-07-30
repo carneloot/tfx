@@ -25,41 +25,42 @@ export type PetFoodStatus = Data.TaggedEnum<{
 	};
 }>;
 const PetFoodStatus = Data.taggedEnum<PetFoodStatus>();
-export const execute = Effect.fn('GetFoodStatus.execute')
-	((identity: Identity) =>
-	Effect.gen(function* () {
-		const sql = yield* PgClient.PgClient;
-		const food = yield* PetFoodRepository;
-		return yield* sql.withTransaction(
-			Effect.gen(function* () {
-				const accessible = yield* ListPets.execute(identity.actorId);
-				const now = yield* DateTime.now;
-				return yield* Effect.forEach(accessible, ({ pet }) =>
-					Effect.gen(function* () {
-						yield* authorize({ ...identity, petId: pet.id });
-						const settings = yield* food.getSettings(pet.id);
-						if (
-							settings === undefined ||
-							settings.dayStart === null ||
-							settings.timeZone === null
-						)
-							return PetFoodStatus.MissingDayStart({ pet });
-						const window = DayBoundary.current(now, {
-							localTime: settings.dayStart,
-							timeZone: settings.timeZone,
-						});
-						const summary = yield* food.status(
-							pet.id,
-							window.start,
-							window.end,
-						);
-						return PetFoodStatus.Configured({
-							pet,
-							...summary,
-							window,
-						});
-					}),
-				);
-			}),
-		);
-	}));
+export const execute = Effect.fn('GetFoodStatus.execute')(
+	(identity: Identity) =>
+		Effect.gen(function* () {
+			const sql = yield* PgClient.PgClient;
+			const food = yield* PetFoodRepository;
+			return yield* sql.withTransaction(
+				Effect.gen(function* () {
+					const accessible = yield* ListPets.execute(identity.actorId);
+					const now = yield* DateTime.now;
+					return yield* Effect.forEach(accessible, ({ pet }) =>
+						Effect.gen(function* () {
+							yield* authorize({ ...identity, petId: pet.id });
+							const settings = yield* food.getSettings(pet.id);
+							if (
+								settings === undefined ||
+								settings.dayStart === null ||
+								settings.timeZone === null
+							)
+								return PetFoodStatus.MissingDayStart({ pet });
+							const window = DayBoundary.current(now, {
+								localTime: settings.dayStart,
+								timeZone: settings.timeZone,
+							});
+							const summary = yield* food.status(
+								pet.id,
+								window.start,
+								window.end,
+							);
+							return PetFoodStatus.Configured({
+								pet,
+								...summary,
+								window,
+							});
+						}),
+					);
+				}),
+			);
+		}),
+);

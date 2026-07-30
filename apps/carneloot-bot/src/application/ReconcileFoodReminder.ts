@@ -29,31 +29,34 @@ const snapshotsEqual = (
 				DateTime.toEpochMillis(right.fedAt)));
 
 /** Reconciles persistence-only scheduling within the caller's ambient transaction. */
-export const reconcile = Effect.fn('ReconcileFoodReminder.reconcile')
-	((request: ReconcileFoodReminderRequest) =>
-	Effect.gen(function* () {
-		const repository = yield* PetFoodRepository;
-		const scheduler = yield* ReminderScheduler;
-		const latest = yield* repository.latestEntry(request.petId);
-		const after =
-			latest === undefined ? undefined : { id: latest.id, fedAt: latest.fedAt };
+export const reconcile = Effect.fn('ReconcileFoodReminder.reconcile')(
+	(request: ReconcileFoodReminderRequest) =>
+		Effect.gen(function* () {
+			const repository = yield* PetFoodRepository;
+			const scheduler = yield* ReminderScheduler;
+			const latest = yield* repository.latestEntry(request.petId);
+			const after =
+				latest === undefined
+					? undefined
+					: { id: latest.id, fedAt: latest.fedAt };
 
-		if (snapshotsEqual(request.before, after)) return;
+			if (snapshotsEqual(request.before, after)) return;
 
-		const settings = yield* repository.getSettings(request.petId);
-		if (latest === undefined || settings?.reminderDelay == null) {
-			yield* scheduler.cancelForPet({
+			const settings = yield* repository.getSettings(request.petId);
+			if (latest === undefined || settings?.reminderDelay == null) {
+				yield* scheduler.cancelForPet({
+					botId: request.botId,
+					petId: request.petId,
+				});
+				return;
+			}
+
+			yield* scheduler.replaceForLatest({
 				botId: request.botId,
+				ownerUserId: request.ownerUserId,
 				petId: request.petId,
+				foodEntryId: latest.id,
+				runAt: DateTime.addDuration(latest.fedAt, settings.reminderDelay),
 			});
-			return;
-		}
-
-		yield* scheduler.replaceForLatest({
-			botId: request.botId,
-			ownerUserId: request.ownerUserId,
-			petId: request.petId,
-			foodEntryId: latest.id,
-			runAt: DateTime.addDuration(latest.fedAt, settings.reminderDelay),
-		});
-	}));
+		}),
+);

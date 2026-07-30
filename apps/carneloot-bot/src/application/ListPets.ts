@@ -9,8 +9,7 @@ export interface ListedPet {
 	readonly role: 'owner' | 'caregiver';
 }
 
-export const execute = Effect.fn('ListPets.execute')
-	((actorId: UserId) =>
+export const execute = Effect.fn('ListPets.execute')((actorId: UserId) =>
 	Effect.map(
 		Effect.flatMap(PetRepository, (repository) =>
 			repository.listAccessible(actorId),
@@ -35,4 +34,5 @@ export const execute = Effect.fn('ListPets.execute')
 							? 1
 							: 0;
 				}),
-	));
+	),
+);

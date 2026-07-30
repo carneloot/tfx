@@ -141,7 +141,8 @@ export const layer = Layer.effect(
 							>`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${id}::uuid,${ownerId}::uuid,${name},${petNameKey(name)},${timestamp},${timestamp}) RETURNING *`;
 							return yield* decode(rows[0]);
 						}),
-					).pipe(Effect.withSpan('PetRepository.transaction'))
+					)
+					.pipe(Effect.withSpan('PetRepository.transaction'))
 					.pipe(
 						Effect.mapError((cause) =>
 							constraint(cause) === 'pets_owner_name_key'
@@ -161,7 +162,8 @@ export const layer = Layer.effect(
 							>`SELECT * FROM carneloot.pets WHERE owner_id=${ownerId}::uuid ORDER BY name_key,id`;
 							return yield* Effect.forEach(rows, decode);
 						}),
-					).pipe(Effect.withSpan('PetRepository.transaction'))
+					)
+					.pipe(Effect.withSpan('PetRepository.transaction'))
 					.pipe(Effect.mapError(persistence)),
 			listAccessible: (userId) =>
 				sql
@@ -181,7 +183,8 @@ export const layer = Layer.effect(
 							ORDER BY p.name_key,p.id`;
 							return yield* Effect.forEach(rows, decode);
 						}),
-					).pipe(Effect.withSpan('PetRepository.transaction'))
+					)
+					.pipe(Effect.withSpan('PetRepository.transaction'))
 					.pipe(Effect.mapError(persistence)),
 		} satisfies PetRepositoryService;
 		return service;

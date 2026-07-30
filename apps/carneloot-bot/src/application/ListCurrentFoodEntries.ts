@@ -25,40 +25,41 @@ const formatLocalTimestamp = (
 };
 
 /** Enriches current-day entries for display without exposing Telegram profiles. */
-export const execute = Effect.fn('ListCurrentFoodEntries.execute')
-	((
-	botId: BotId,
-	timeZone: IanaTimeZone,
-	entries: ReadonlyArray<PetFoodEntry>,
-) =>
-	Effect.gen(function* () {
-		const users = yield* UserRepository;
-		const ordered = [...entries].sort((left, right) => {
-			const byTime =
-				DateTime.toEpochMillis(right.fedAt) -
-				DateTime.toEpochMillis(left.fedAt);
-			if (byTime !== 0) return byTime;
-			return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
-		});
-		const actorIds = [...new Set(ordered.map((entry) => entry.recordedBy))];
-		const actors = yield* Effect.forEach(actorIds, (actorId) =>
-			users.findById(botId, actorId),
-		);
-		const actorsById = new Map(
-			actors.map((actor) => [actor.user.id, actor] as const),
-		);
-		return yield* Effect.forEach(ordered, (entry) =>
-			Effect.gen(function* () {
-				const actor = actorsById.get(entry.recordedBy);
-				if (actor === undefined)
-					return yield* Effect.die(
-						new Error('Food entry actor lookup missing'),
-					);
-				return {
-					entry,
-					actorDisplay: displayName(actor),
-					localTimestamp: formatLocalTimestamp(entry.fedAt, timeZone),
-				};
-			}),
-		);
-	}));
+export const execute = Effect.fn('ListCurrentFoodEntries.execute')(
+	(
+		botId: BotId,
+		timeZone: IanaTimeZone,
+		entries: ReadonlyArray<PetFoodEntry>,
+	) =>
+		Effect.gen(function* () {
+			const users = yield* UserRepository;
+			const ordered = [...entries].sort((left, right) => {
+				const byTime =
+					DateTime.toEpochMillis(right.fedAt) -
+					DateTime.toEpochMillis(left.fedAt);
+				if (byTime !== 0) return byTime;
+				return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+			});
+			const actorIds = [...new Set(ordered.map((entry) => entry.recordedBy))];
+			const actors = yield* Effect.forEach(actorIds, (actorId) =>
+				users.findById(botId, actorId),
+			);
+			const actorsById = new Map(
+				actors.map((actor) => [actor.user.id, actor] as const),
+			);
+			return yield* Effect.forEach(ordered, (entry) =>
+				Effect.gen(function* () {
+					const actor = actorsById.get(entry.recordedBy);
+					if (actor === undefined)
+						return yield* Effect.die(
+							new Error('Food entry actor lookup missing'),
+						);
+					return {
+						entry,
+						actorDisplay: displayName(actor),
+						localTimestamp: formatLocalTimestamp(entry.fedAt, timeZone),
+					};
+				}),
+			);
+		}),
+);
