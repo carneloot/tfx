@@ -6,5 +6,7 @@ import * as Production from './Production.js';
 import * as Program from './Program.js';
 
 BunRuntime.runMain(
-	Program.fromLayer(Layer.provide(Production.appLayer, Observability.layer)),
+	Program.fromLayer(
+		Layer.provideMerge(Production.appLayer, Observability.layer),
+	),
 );
