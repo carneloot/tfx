@@ -18,6 +18,7 @@ export const conversationStorageConformance = (
 					const created = yield* storage.create(
 						{
 							scope,
+							originTrace: undefined,
 							conversationId: 'flow',
 							version: 1,
 							step: 'one',
@@ -63,6 +64,7 @@ export const conversationStorageConformance = (
 					const expiredScope = { ...scope, chatId: 99 };
 					yield* storage.create(
 						{
+							originTrace: undefined,
 							scope: expiredScope,
 							conversationId: 'expired',
 							version: 1,
@@ -76,6 +78,7 @@ export const conversationStorageConformance = (
 					expect(yield* storage.load(expiredScope)).toBeUndefined();
 					const replacement = yield* storage.create(
 						{
+							originTrace: undefined,
 							scope: expiredScope,
 							conversationId: 'replacement',
 							version: 1,
@@ -90,6 +93,7 @@ export const conversationStorageConformance = (
 					const createScope = { ...scope, chatId: 100 };
 					yield* storage.create(
 						{
+							originTrace: undefined,
 							scope: createScope,
 							conversationId: 'expired-create',
 							version: 1,
@@ -103,6 +107,7 @@ export const conversationStorageConformance = (
 					expect(
 						(yield* storage.create(
 							{
+								originTrace: undefined,
 								scope: createScope,
 								conversationId: 'replacement-create',
 								version: 1,

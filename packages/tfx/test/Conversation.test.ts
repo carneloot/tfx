@@ -181,6 +181,7 @@ describe('Conversation', () => {
 			yield* storage.create(
 				{
 					scope,
+					originTrace: undefined,
 					conversationId: 'other',
 					version: 1,
 					step: 'count',

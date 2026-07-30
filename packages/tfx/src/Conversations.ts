@@ -146,23 +146,31 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 						return yield* Effect.fail(
 							invariant(`Missing handlers for step '${initialStep}'`),
 						);
-					const now = yield* DateTime.now;
-					yield* storage.create(
-						{
-							scope,
-							conversationId: built.declaration.id,
-							version: built.declaration.version,
-							step: initialStep,
-							state,
-							lastUpdateId: undefined,
-							expiresAt:
-								built.declaration.idleTimeout === undefined
-									? undefined
-									: DateTime.addDuration(now, built.declaration.idleTimeout),
-						},
-						options.conflict ?? 'fail',
-					);
-					yield* output(handlers.enter(state));
+					return yield* Effect.gen(function* () {
+						const now = yield* DateTime.now;
+						const span = yield* Effect.currentSpan;
+						yield* storage.create(
+							{
+								scope,
+								originTrace: {
+									traceId: span.traceId,
+									spanId: span.spanId,
+									sampled: span.sampled,
+								},
+								conversationId: built.declaration.id,
+								version: built.declaration.version,
+								step: initialStep,
+								state,
+								lastUpdateId: undefined,
+								expiresAt:
+									built.declaration.idleTimeout === undefined
+										? undefined
+										: DateTime.addDuration(now, built.declaration.idleTimeout),
+							},
+							options.conflict ?? 'fail',
+						);
+						yield* output(handlers.enter(state));
+					}).pipe(Effect.withSpan('Conversation.start'));
 				}) as Effect.Effect<
 					void,
 					ConversationServiceError<B>,
@@ -174,140 +182,153 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 				options: { readonly scope?: Scope; readonly updateId: number },
 			) =>
 				Effect.gen(function* () {
-					const scope = yield* requireScope(options.scope);
-					const loaded = yield* storage.load(scope);
-					if (loaded === undefined) return { _tag: 'Missing' as const };
-					const result = yield* storage.transition<
-						void,
-						ConversationServiceError<B>,
-						BuiltRequirements<B>
-					>(
-						scope,
-						options.updateId,
-						loaded.revision,
-						(row) =>
-							Effect.gen(function* () {
-								if (row.conversationId !== built.declaration.id)
-									return yield* Effect.fail(
-										invariant(
-											`Stored conversation '${row.conversationId}' does not match '${built.declaration.id}'`,
-										),
-									);
-								const step = built.declaration.steps[row.step];
-								const handlers = built.implementations[row.step];
-								if (step === undefined || handlers === undefined)
-									return yield* Effect.fail(
-										invariant(`Unknown stored step '${row.step}'`),
-									);
-								const migrated =
-									row.version === built.declaration.version
-										? row.state
-										: built.declaration.migrations === undefined
-											? yield* Effect.fail(
-													new VersionedSchemaError(
-														'MissingMigration',
-														`Missing conversation migration ${row.version}→${built.declaration.version}`,
-													),
-												)
-											: yield* built.declaration.migrations
-													.migrate(row.version, row.state)
-													.pipe(
-														Effect.mapError((cause) =>
-															cause instanceof VersionedSchemaError
-																? cause
-																: invariant('Invalid migrated state', cause),
-														),
-													);
-								const state = yield* decodeState(
-									step.state,
-									migrated,
-									`stored state for step '${row.step}'`,
-								);
-								const decoded = yield* Effect.result(
-									ConversationInput.decode(step.input, input),
-								);
-								const transition = yield* (
-									decoded._tag === 'Success'
-										? handlers.onInput(state, decoded.success)
-										: handlers.onInvalid === undefined
-											? Effect.fail(decoded.failure)
-											: handlers.onInvalid(state, decoded.failure)
-								) as Effect.Effect<
-									Transition.Transition<
-										string,
-										unknown,
-										TaggedError,
-										BuiltRequirements<B>
-									>,
-									ConversationServiceError<B>,
-									BuiltRequirements<B>
-								>;
-								if (
-									transition._tag === 'Complete' ||
-									transition._tag === 'Cancelled'
-								)
-									return {
-										value: undefined,
-										mutation: {
-											_tag: 'Delete' as const,
-											...(transition.afterCommit === undefined
-												? {}
-												: { afterCommit: transition.afterCommit }),
-										},
-									};
-								const target =
-									transition._tag === 'Stay'
-										? { step: row.step, state }
-										: { step: transition.step, state: transition.state };
-								const targetDeclaration = built.declaration.steps[target.step];
-								if (targetDeclaration === undefined)
-									return yield* Effect.fail(
-										invariant(`Unknown target step '${target.step}'`),
-									);
-								const normalizedState = yield* decodeState(
-									targetDeclaration.state,
-									target.state,
-									`target state for step '${target.step}'`,
-								);
-								const now = yield* DateTime.now;
-								return {
-									value: undefined,
-									mutation: {
-										_tag: 'Persist' as const,
-										step: target.step,
-										state: normalizedState,
-										version: built.declaration.version,
-										...(built.declaration.idleTimeout === undefined
-											? {}
-											: {
-													expiresAt: DateTime.addDuration(
-														now,
-														built.declaration.idleTimeout,
-													),
-												}),
-										...(transition.afterCommit === undefined
-											? {}
-											: { afterCommit: transition.afterCommit }),
-									},
-								};
-							}) as Effect.Effect<
-								{ readonly value: void; readonly mutation: Mutation },
+					return yield* Effect.gen(function* () {
+						const scope = yield* requireScope(options.scope);
+						const loaded = yield* storage.load(scope);
+						if (loaded === undefined) return { _tag: 'Missing' as const };
+						const result = yield* storage
+							.transition<
+								void,
 								ConversationServiceError<B>,
 								BuiltRequirements<B>
-							>,
-					);
-					if (result._tag === 'Applied') {
-						yield* output(result.afterCommit);
-						if (result.row !== undefined) {
-							const handlers = built.implementations[result.row.step];
-							if (handlers === undefined)
-								return yield* Effect.fail(
-									invariant(`Missing handlers for step '${result.row.step}'`),
+							>(
+								scope,
+								options.updateId,
+								loaded.revision,
+								(row) =>
+									Effect.gen(function* () {
+										if (row.conversationId !== built.declaration.id)
+											return yield* Effect.fail(
+												invariant(
+													`Stored conversation '${row.conversationId}' does not match '${built.declaration.id}'`,
+												),
+											);
+										const step = built.declaration.steps[row.step];
+										const handlers = built.implementations[row.step];
+										if (step === undefined || handlers === undefined)
+											return yield* Effect.fail(
+												invariant(`Unknown stored step '${row.step}'`),
+											);
+										const migrated =
+											row.version === built.declaration.version
+												? row.state
+												: built.declaration.migrations === undefined
+													? yield* Effect.fail(
+															new VersionedSchemaError(
+																'MissingMigration',
+																`Missing conversation migration ${row.version}→${built.declaration.version}`,
+															),
+														)
+													: yield* built.declaration.migrations
+															.migrate(row.version, row.state)
+															.pipe(
+																Effect.mapError((cause) =>
+																	cause instanceof VersionedSchemaError
+																		? cause
+																		: invariant(
+																				'Invalid migrated state',
+																				cause,
+																			),
+																),
+															);
+										const state = yield* decodeState(
+											step.state,
+											migrated,
+											`stored state for step '${row.step}'`,
+										);
+										const decoded = yield* Effect.result(
+											ConversationInput.decode(step.input, input),
+										);
+										const transition = yield* (
+											decoded._tag === 'Success'
+												? handlers.onInput(state, decoded.success)
+												: handlers.onInvalid === undefined
+													? Effect.fail(decoded.failure)
+													: handlers.onInvalid(state, decoded.failure)
+										) as Effect.Effect<
+											Transition.Transition<
+												string,
+												unknown,
+												TaggedError,
+												BuiltRequirements<B>
+											>,
+											ConversationServiceError<B>,
+											BuiltRequirements<B>
+										>;
+										if (
+											transition._tag === 'Complete' ||
+											transition._tag === 'Cancelled'
+										)
+											return {
+												value: undefined,
+												mutation: {
+													_tag: 'Delete' as const,
+													...(transition.afterCommit === undefined
+														? {}
+														: { afterCommit: transition.afterCommit }),
+												},
+											};
+										const target =
+											transition._tag === 'Stay'
+												? { step: row.step, state }
+												: { step: transition.step, state: transition.state };
+										const targetDeclaration =
+											built.declaration.steps[target.step];
+										if (targetDeclaration === undefined)
+											return yield* Effect.fail(
+												invariant(`Unknown target step '${target.step}'`),
+											);
+										const normalizedState = yield* decodeState(
+											targetDeclaration.state,
+											target.state,
+											`target state for step '${target.step}'`,
+										);
+										const now = yield* DateTime.now;
+										return {
+											value: undefined,
+											mutation: {
+												_tag: 'Persist' as const,
+												step: target.step,
+												state: normalizedState,
+												version: built.declaration.version,
+												...(built.declaration.idleTimeout === undefined
+													? {}
+													: {
+															expiresAt: DateTime.addDuration(
+																now,
+																built.declaration.idleTimeout,
+															),
+														}),
+												...(transition.afterCommit === undefined
+													? {}
+													: { afterCommit: transition.afterCommit }),
+											},
+										};
+									}) as Effect.Effect<
+										{ readonly value: void; readonly mutation: Mutation },
+										ConversationServiceError<B>,
+										BuiltRequirements<B>
+									>,
+							)
+							.pipe(Effect.withSpan('Conversation.transition'));
+						if (result._tag === 'Applied') {
+							if (result.afterCommit !== undefined)
+								yield* output(result.afterCommit).pipe(
+									Effect.withSpan('Conversation.afterCommit'),
 								);
-							yield* output(handlers.enter(result.row.state));
+							if (result.row !== undefined) {
+								const handlers = built.implementations[result.row.step];
+								if (handlers === undefined)
+									return yield* Effect.fail(
+										invariant(`Missing handlers for step '${result.row.step}'`),
+									);
+								yield* output(handlers.enter(result.row.state)).pipe(
+									Effect.withSpan('Conversation.enter'),
+								);
+							}
 						}
-					}
-					return result;
+						return result;
+					}).pipe(Effect.withSpan('Conversation.resume'));
 				}) as Effect.Effect<
 					TransitionResult<void>,
 					ConversationServiceError<B>,

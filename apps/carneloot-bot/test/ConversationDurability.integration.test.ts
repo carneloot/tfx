@@ -230,6 +230,7 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 			yield* store.create(
 				{
 					scope,
+					originTrace: undefined,
 					conversationId: 'direct',
 					version: 1,
 					step: 'name',

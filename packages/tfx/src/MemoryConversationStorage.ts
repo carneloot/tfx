@@ -74,7 +74,11 @@ export const layer: Layer.Layer<ConversationStorage> = Layer.effect(
 									'Conversation already active',
 								),
 							);
-						const created = Object.freeze({ ...row, revision: 0 });
+						const created = Object.freeze({
+							...row,
+							instanceId: crypto.randomUUID(),
+							revision: 0,
+						});
 						rows.set(k, created);
 						return created;
 					}),

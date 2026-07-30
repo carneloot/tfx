@@ -1,5 +1,6 @@
 import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
+import * as Tracer from 'effect/Tracer';
 
 import type * as Bot from './Bot.js';
 import type * as BotBuilder from './BotBuilder.js';
@@ -262,12 +263,36 @@ export const make = <
 									conversationId: row.conversationId,
 								}),
 							);
+						const links =
+							row.originTrace === undefined
+								? []
+								: [
+										{
+											span: Tracer.externalSpan(row.originTrace),
+											attributes: {},
+										},
+									];
 						yield* provideContexts(
 							update,
 							conversations.resume(built, rawConversationInput(update), {
 								scope,
 								updateId: update.update_id,
 							}),
+						).pipe(
+							Effect.withSpan(
+								`Conversation.${row.conversationId}.${row.step}`,
+								{
+									root: true,
+									links,
+									attributes: {
+										conversationInstanceId: row.instanceId,
+										conversationId: row.conversationId,
+										step: row.step,
+										revision: row.revision,
+										updateId: update.update_id,
+									},
+								},
+							),
 						);
 						return DispatchOutcome.handled;
 					}),

@@ -215,6 +215,7 @@ describe('AddPetConversation', () => {
 			yield* storage.create(
 				{
 					scope,
+					originTrace: undefined,
 					conversationId: AddPetConversation.declaration.id,
 					version: 1,
 					step: 'name',

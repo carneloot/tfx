@@ -70,6 +70,11 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 				name: 'job-state-invariant',
 				checksum: sourceChecksum('Migration0003.ts'),
 			},
+			{
+				version: 4,
+				name: 'conversation-trace-context',
+				checksum: sourceChecksum('Migration0004.ts'),
+			},
 		]);
 		expect(
 			rows.ledger.every((row) => /^[0-9a-f]{64}$/u.test(row.checksum)),
