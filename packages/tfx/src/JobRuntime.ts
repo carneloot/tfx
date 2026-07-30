@@ -148,7 +148,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							: { replacedId: result.replacedId }),
 					};
 				}),
-				runOne: Effect.fn('JobRuntime.runOne')(function* (options = {}) {
+				runOne: Effect.fnUntraced(function* (options = {}) {
 					const leaseDuration = Option.getOrElse(
 						Duration.fromInput(options.leaseDuration ?? Duration.seconds(30)),
 						() => Duration.infinity,
@@ -187,127 +187,111 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 					const claimNow = yield* DateTime.now;
 					const claim = yield* store.claimForMigration(claimNow, leaseDuration);
 					if (claim === undefined) return undefined;
-					yield* Effect.logInfo('tfx.job.claimed').pipe(
-						Effect.annotateLogs({
-							jobId: claim.record.id,
-							jobName: claim.record.name,
-							attempts: claim.record.attempts,
-						}),
-					);
-					const implementation = byName.get(claim.record.name);
-					if (implementation === undefined) {
-						yield* store.quarantineMigration(
-							claim.token,
-							'UnknownDeclaration',
-							yield* DateTime.now,
+					return yield* Effect.gen(function* () {
+						yield* Effect.logInfo('tfx.job.claimed').pipe(
+							Effect.annotateLogs({
+								jobId: claim.record.id,
+								jobName: claim.record.name,
+								attempts: claim.record.attempts,
+							}),
 						);
-						return yield* getLogged(claim.record.id);
-					}
-					const declaration = implementation.declaration;
-					if (
-						claim.record.payloadVersion > declaration.payload.latest.version
-					) {
-						yield* store.quarantineMigration(
-							claim.token,
-							'NewerPayloadVersion',
-							yield* DateTime.now,
-						);
-						return yield* getLogged(claim.record.id);
-					}
-					const migrated = yield* Effect.result(
-						declaration.payload.migrate(
-							claim.record.payloadVersion,
-							claim.record.payload,
-						),
-					);
-					if (migrated._tag === 'Failure') {
-						yield* store.quarantineMigration(
-							claim.token,
-							migrated.failure instanceof VersionedSchemaError
-								? migrated.failure.reason
-								: 'InvalidPayload',
-							yield* DateTime.now,
-						);
-						return yield* getLogged(claim.record.id);
-					}
-					const beforePromotion = yield* store.get(claim.record.id);
-					if (beforePromotion?.status === 'cancelled') {
-						yield* logRunResult(beforePromotion);
-						return beforePromotion;
-					}
-					const running = yield* store.promoteToRunning(
-						claim.token,
-						migrated.success,
-						declaration.payload.latest.version,
-						yield* DateTime.now,
-						leaseDuration,
-					);
-					yield* Effect.logInfo('tfx.job.running').pipe(
-						Effect.annotateLogs({
-							jobId: running.id,
-							jobName: running.name,
-							attempts: running.attempts,
-						}),
-					);
-					if (running.cancellationRequested) {
-						yield* store.finalize(
-							claim.token,
-							JobOutcome.cancelled,
-							yield* DateTime.now,
-						);
-						return yield* getLogged(running.id);
-					}
-					const execution = Effect.provide(
-						implementation.handler(migrated.success),
-						infrastructure,
-					) as Effect.Effect<void, any, never>;
-					const heartbeat = Effect.gen(function* () {
-						const current = yield* store.get(running.id);
-						if (current?.cancellationRequested)
-							return yield* Effect.fail(new CancelSignal());
-						const heartbeatNow = yield* DateTime.now;
-						if (
-							!(yield* store.heartbeat(
+						const implementation = byName.get(claim.record.name);
+						if (implementation === undefined) {
+							yield* store.quarantineMigration(
 								claim.token,
-								heartbeatNow,
-								leaseDuration,
-							))
-						)
-							return yield* Effect.fail(new LeaseSignal());
-					});
-					const monitor: Effect.Effect<
-						never,
-						CancelSignal | LeaseSignal | JobStoreError
-					> = heartbeat.pipe(
-						Effect.repeat(Schedule.spaced(heartbeatInterval)),
-						Effect.delay(heartbeatInterval),
-						Effect.andThen(Effect.never),
-					);
-					const exit = yield* Effect.exit(Effect.raceFirst(execution, monitor));
-					if (Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause))
-						return yield* Effect.failCause(exit.cause);
-					const finishedAt = yield* DateTime.now;
-					const afterExecution = yield* store.get(running.id);
-					if (afterExecution?.cancellationRequested) {
-						yield* store.finalize(
-							claim.token,
-							JobOutcome.cancelled,
-							finishedAt,
-						);
-						return yield* getLogged(running.id);
-					}
-					if (Exit.isSuccess(exit))
-						yield* store.finalize(
-							claim.token,
-							JobOutcome.succeeded,
-							finishedAt,
-						);
-					else {
-						const failure = Cause.findErrorOption(exit.cause);
+								'UnknownDeclaration',
+								yield* DateTime.now,
+							);
+							return yield* getLogged(claim.record.id);
+						}
+						const declaration = implementation.declaration;
 						if (
-							Option.isSome(failure) &&
-							failure.value instanceof CancelSignal
+							claim.record.payloadVersion > declaration.payload.latest.version
 						) {
+							yield* store.quarantineMigration(
+								claim.token,
+								'NewerPayloadVersion',
+								yield* DateTime.now,
+							);
+							return yield* getLogged(claim.record.id);
+						}
+						const migrated = yield* Effect.result(
+							declaration.payload.migrate(
+								claim.record.payloadVersion,
+								claim.record.payload,
+							),
+						);
+						if (migrated._tag === 'Failure') {
+							yield* store.quarantineMigration(
+								claim.token,
+								migrated.failure instanceof VersionedSchemaError
+									? migrated.failure.reason
+									: 'InvalidPayload',
+								yield* DateTime.now,
+							);
+							return yield* getLogged(claim.record.id);
+						}
+						const beforePromotion = yield* store.get(claim.record.id);
+						if (beforePromotion?.status === 'cancelled') {
+							yield* logRunResult(beforePromotion);
+							return beforePromotion;
+						}
+						const running = yield* store.promoteToRunning(
+							claim.token,
+							migrated.success,
+							declaration.payload.latest.version,
+							yield* DateTime.now,
+							leaseDuration,
+						);
+						yield* Effect.logInfo('tfx.job.running').pipe(
+							Effect.annotateLogs({
+								jobId: running.id,
+								jobName: running.name,
+								attempts: running.attempts,
+							}),
+						);
+						if (running.cancellationRequested) {
+							yield* store.finalize(
+								claim.token,
+								JobOutcome.cancelled,
+								yield* DateTime.now,
+							);
+							return yield* getLogged(running.id);
+						}
+						const execution = Effect.provide(
+							implementation.handler(migrated.success),
+							infrastructure,
+						) as Effect.Effect<void, any, never>;
+						const heartbeat = Effect.gen(function* () {
+							const current = yield* store.get(running.id);
+							if (current?.cancellationRequested)
+								return yield* Effect.fail(new CancelSignal());
+							const heartbeatNow = yield* DateTime.now;
+							if (
+								!(yield* store.heartbeat(
+									claim.token,
+									heartbeatNow,
+									leaseDuration,
+								))
+							)
+								return yield* Effect.fail(new LeaseSignal());
+						});
+						const monitor: Effect.Effect<
+							never,
+							CancelSignal | LeaseSignal | JobStoreError
+						> = heartbeat.pipe(
+							Effect.repeat(Schedule.spaced(heartbeatInterval)),
+							Effect.delay(heartbeatInterval),
+							Effect.andThen(Effect.never),
+						);
+						const exit = yield* Effect.exit(
+							Effect.raceFirst(execution, monitor),
+						);
+						if (Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause))
+							return yield* Effect.failCause(exit.cause);
+						const finishedAt = yield* DateTime.now;
+						const afterExecution = yield* store.get(running.id);
+						if (afterExecution?.cancellationRequested) {
 							yield* store.finalize(
 								claim.token,
 								JobOutcome.cancelled,
@@ -315,88 +299,118 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							);
 							return yield* getLogged(running.id);
 						}
-						if (Option.isSome(failure) && failure.value instanceof LeaseSignal)
-							return yield* getLogged(running.id);
-						if (
-							Option.isSome(failure) &&
-							failure.value instanceof JobStoreError
-						)
-							return yield* Effect.fail(failure.value);
-						if (Option.isSome(failure)) {
-							const encoded = yield* Effect.result(
-								Effect.try(() =>
-									Schema.encodeSync(declaration.error)(failure.value),
-								),
+						if (Exit.isSuccess(exit))
+							yield* store.finalize(
+								claim.token,
+								JobOutcome.succeeded,
+								finishedAt,
 							);
-							if (encoded._tag === 'Failure') {
+						else {
+							const failure = Cause.findErrorOption(exit.cause);
+							if (
+								Option.isSome(failure) &&
+								failure.value instanceof CancelSignal
+							) {
 								yield* store.finalize(
 									claim.token,
-									JobOutcome.fatalFailure('Invalid job error encoding'),
+									JobOutcome.cancelled,
 									finishedAt,
 								);
 								return yield* getLogged(running.id);
 							}
-							let decision: Job.RetryDecision | undefined;
-							try {
-								decision = declaration.retry(failure.value);
-							} catch {
-								yield* store.finalize(
-									claim.token,
-									JobOutcome.fatalFailure('Invalid retry policy'),
-									finishedAt,
-								);
+							if (
+								Option.isSome(failure) &&
+								failure.value instanceof LeaseSignal
+							)
 								return yield* getLogged(running.id);
-							}
-							let evaluation: RetryEvaluation;
-							try {
-								if (decision === undefined || decision._tag === 'Permanent')
-									evaluation = { _tag: 'Permanent' };
-								else if (decision._tag === 'Retry') {
-									const delay =
-										decision.retryAfter ??
-										declaration.schedule(running.attempts);
-									const retryAt = DateTime.addDuration(finishedAt, delay);
-									if (
-										!validRetryDuration(delay) ||
-										!Number.isFinite(DateTime.toDateUtc(retryAt).getTime())
-									)
-										throw new TypeError(
-											'Job retry delay must produce a valid instant',
-										);
-									evaluation = { _tag: 'Retry', delay, retryAt };
-								} else throw new TypeError('Invalid job retry decision');
-							} catch {
-								yield* store.finalize(
-									claim.token,
-									JobOutcome.fatalFailure('Invalid retry policy'),
-									finishedAt,
-								);
-								return yield* getLogged(running.id);
-							}
-							if (evaluation._tag === 'Retry') {
-								yield* store.finalize(
-									claim.token,
-									JobOutcome.retryableFailure(
-										encoded.success,
-										evaluation.delay,
+							if (
+								Option.isSome(failure) &&
+								failure.value instanceof JobStoreError
+							)
+								return yield* Effect.fail(failure.value);
+							if (Option.isSome(failure)) {
+								const encoded = yield* Effect.result(
+									Effect.try(() =>
+										Schema.encodeSync(declaration.error)(failure.value),
 									),
-									finishedAt,
-									evaluation.retryAt,
 								);
+								if (encoded._tag === 'Failure') {
+									yield* store.finalize(
+										claim.token,
+										JobOutcome.fatalFailure('Invalid job error encoding'),
+										finishedAt,
+									);
+									return yield* getLogged(running.id);
+								}
+								let decision: Job.RetryDecision | undefined;
+								try {
+									decision = declaration.retry(failure.value);
+								} catch {
+									yield* store.finalize(
+										claim.token,
+										JobOutcome.fatalFailure('Invalid retry policy'),
+										finishedAt,
+									);
+									return yield* getLogged(running.id);
+								}
+								let evaluation: RetryEvaluation;
+								try {
+									if (decision === undefined || decision._tag === 'Permanent')
+										evaluation = { _tag: 'Permanent' };
+									else if (decision._tag === 'Retry') {
+										const delay =
+											decision.retryAfter ??
+											declaration.schedule(running.attempts);
+										const retryAt = DateTime.addDuration(finishedAt, delay);
+										if (
+											!validRetryDuration(delay) ||
+											!Number.isFinite(DateTime.toDateUtc(retryAt).getTime())
+										)
+											throw new TypeError(
+												'Job retry delay must produce a valid instant',
+											);
+										evaluation = { _tag: 'Retry', delay, retryAt };
+									} else throw new TypeError('Invalid job retry decision');
+								} catch {
+									yield* store.finalize(
+										claim.token,
+										JobOutcome.fatalFailure('Invalid retry policy'),
+										finishedAt,
+									);
+									return yield* getLogged(running.id);
+								}
+								if (evaluation._tag === 'Retry') {
+									yield* store.finalize(
+										claim.token,
+										JobOutcome.retryableFailure(
+											encoded.success,
+											evaluation.delay,
+										),
+										finishedAt,
+										evaluation.retryAt,
+									);
+								} else
+									yield* store.finalize(
+										claim.token,
+										JobOutcome.permanentFailure(encoded.success),
+										finishedAt,
+									);
 							} else
 								yield* store.finalize(
 									claim.token,
-									JobOutcome.permanentFailure(encoded.success),
+									JobOutcome.fatalFailure('Job execution defect'),
 									finishedAt,
 								);
-						} else
-							yield* store.finalize(
-								claim.token,
-								JobOutcome.fatalFailure('Job execution defect'),
-								finishedAt,
-							);
-					}
-					return yield* getLogged(running.id);
+						}
+						return yield* getLogged(running.id);
+					}).pipe(
+						Effect.withSpan('JobRuntime.job-execution', {
+							attributes: {
+								jobId: claim.record.id,
+								jobName: claim.record.name,
+							},
+						}),
+					);
 				}),
 				cancel: Effect.fn('JobRuntime.cancel')(function* (id) {
 					const cancelled = yield* Effect.flatMap(DateTime.now, (now) =>

@@ -151,7 +151,6 @@ export const layer = (options: Options) =>
 							'carneloot.worker.persistence_retry_exhausted',
 						).pipe(Effect.annotateLogs({ attempts: 6 }), Effect.as(undefined)),
 				),
-				Effect.withSpan('JobWorker.runOnePass'),
 			);
 			const loopSchedule = Schedule.forever.pipe(
 				Schedule.setInputType<JobRecord | undefined>(),
