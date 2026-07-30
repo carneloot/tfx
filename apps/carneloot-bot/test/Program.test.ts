@@ -61,6 +61,59 @@ describe('Program', () => {
 		});
 	});
 
+	it('releases fromLayer resources in reverse order after worker failure', async () => {
+		const events: Array<string> = [];
+		const managed = <A>(name: string, value: A) =>
+			Effect.acquireRelease(
+				Effect.sync(() => {
+					events.push(`acquire:${name}`);
+					return value;
+				}),
+				() => Effect.sync(() => void events.push(`release:${name}`)),
+			);
+		const botLayer = Layer.effect(BotRuntime, managed('bot', {
+			dispatch: () => Effect.die('unused'),
+			await: Effect.never,
+		}));
+		const workerLayer = Layer.effect(JobWorker, managed('worker', {
+			await: Effect.fail(
+				new JobStoreError('PersistenceFailure', 'worker failed'),
+			),
+			diagnostics: {
+				recoveredDeliveries: 0,
+				startupProblems: [],
+				failedJobIds: [],
+				quarantinedJobIds: [],
+			},
+			problems: Effect.succeed([]),
+		}));
+		const durableLayer = Layer.effect(
+			UpdateDeduplicator.UpdateDeduplicator,
+			managed('deduplication', {
+				diagnostics: { mode: 'durable', backend: 'test' },
+			} as never),
+		);
+
+		const result = await Effect.runPromise(
+			Effect.result(
+				Program.fromLayer(Layer.mergeAll(botLayer, workerLayer, durableLayer)),
+			),
+		);
+
+		expect(result).toMatchObject({
+			_tag: 'Failure',
+			failure: { _tag: 'JobStoreError', reason: 'PersistenceFailure' },
+		});
+		expect(events).toEqual([
+			'acquire:bot',
+			'acquire:worker',
+			'acquire:deduplication',
+			'release:deduplication',
+			'release:worker',
+			'release:bot',
+		]);
+	});
+
 	it('fails fast when either retained lifecycle fails', async () => {
 		const durable = Layer.succeed(UpdateDeduplicator.UpdateDeduplicator, {
 			diagnostics: { mode: 'durable', backend: 'test' },

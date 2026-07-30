@@ -1,4 +1,6 @@
 import * as NodeCrypto from '@effect/platform-node/NodeCrypto';
+import * as Crypto from 'effect/Crypto';
+import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import { describe, expect, it } from 'vitest';
 
@@ -12,6 +14,18 @@ const nodeProductionLayer = Layer.provide(
 );
 
 describe('portable Node composition', () => {
+	it('provides Node Crypto without constructing database-backed application', async () => {
+		const uuid = await Effect.runPromise(
+			Effect.gen(function* () {
+				const crypto = yield* Crypto.Crypto;
+				return yield* crypto.randomUUIDv4;
+			}).pipe(Effect.provide(NodeCrypto.layer)),
+		);
+		expect(uuid).toMatch(
+			/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+		);
+	});
+
 	it('exports complete router metadata and production polling options', () => {
 		expect(nodeProductionLayer).toBeDefined();
 		expect(

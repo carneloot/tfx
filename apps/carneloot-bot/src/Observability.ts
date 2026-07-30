@@ -6,26 +6,28 @@ import * as OtlpLogger from 'effect/unstable/observability/OtlpLogger';
 import * as OtlpSerialization from 'effect/unstable/observability/OtlpSerialization';
 import * as OtlpTracer from 'effect/unstable/observability/OtlpTracer';
 
-const resource = {
+export const otlpResource = Object.freeze({
 	serviceName: 'carneloot-bot',
-};
-
-const defaultOtelUrl = 'http://127.0.0.1:4318';
+});
+export const defaultOtlpEndpoints = Object.freeze({
+	tracesUrl: 'http://127.0.0.1:4318/v1/traces',
+	logsUrl: 'http://127.0.0.1:4318/v1/logs',
+});
 
 export const layer = Layer.unwrap(
 	Effect.map(
 		Config.all({
 			tracesUrl: Config.string('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT').pipe(
-				Config.withDefault(`${defaultOtelUrl}/v1/traces`),
+				Config.withDefault(defaultOtlpEndpoints.tracesUrl),
 			),
 			logsUrl: Config.string('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT').pipe(
-				Config.withDefault(`${defaultOtelUrl}/v1/logs`),
+				Config.withDefault(defaultOtlpEndpoints.logsUrl),
 			),
 		}),
 		({ tracesUrl, logsUrl }) =>
 			Layer.merge(
-				OtlpTracer.layer({ url: tracesUrl, resource }),
-				OtlpLogger.layer({ url: logsUrl, resource }),
+				OtlpTracer.layer({ url: tracesUrl, resource: otlpResource }),
+				OtlpLogger.layer({ url: logsUrl, resource: otlpResource }),
 			).pipe(
 				Layer.provideMerge(OtlpSerialization.layerJson),
 				Layer.provideMerge(FetchHttpClient.layer),
