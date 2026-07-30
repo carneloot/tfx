@@ -107,35 +107,39 @@ const parseNode = (
 		}
 		case 'Repeated': {
 			const parts: Array<Record<string, unknown>> = [];
-			const loop = (): Effect.Effect<
-				Record<string, ReadonlyArray<unknown>>,
+			const pass: Effect.Effect<
+				Record<string, unknown> | undefined,
 				Schema.SchemaError | CommandInputError,
 				any
-			> => {
+			> = Effect.gen(function* () {
 				skipWhitespace(cursor);
 				if (cursor.offset === cursor.source.length) {
-					if (parts.length === 0) return missing(input.input!);
+					if (parts.length === 0) return yield* missing(input.input!);
+					return undefined;
+				}
+				const before = cursor.offset;
+				const part = yield* parseNode(input.input!, cursor);
+				if (cursor.offset === before)
+					return yield* Effect.fail(
+						new CommandInputError(
+							'InvalidSequence',
+							'Repeated input did not consume command text',
+						),
+					);
+				parts.push(part);
+				return part;
+			});
+			return Effect.repeat(pass, {
+				while: (part): part is Record<string, unknown> => part !== undefined,
+			}).pipe(
+				Effect.map(() => {
 					const result: Record<string, Array<unknown>> = {};
 					for (const part of parts)
 						for (const [name, value] of Object.entries(part))
 							(result[name] ??= []).push(value);
-					return Effect.succeed(result);
-				}
-				const before = cursor.offset;
-				return Effect.gen(function* () {
-					const part = yield* parseNode(input.input!, cursor);
-					if (cursor.offset === before)
-						return yield* Effect.fail(
-							new CommandInputError(
-								'InvalidSequence',
-								'Repeated input did not consume command text',
-							),
-						);
-					parts.push(part);
-					return yield* loop();
-				});
-			};
-			return loop();
+					return result;
+				}),
+			);
 		}
 		case 'Optional': {
 			const before = cursor.offset;
