@@ -180,21 +180,21 @@ export const make = (
 				const ordered = [...settled].sort(
 					(a, b) => a.update.update_id - b.update.update_id,
 				);
-								let acknowledged = 0;
-								for (const item of ordered) {
-									if (!DispatchOutcome.isAcknowledgeable(item.outcome)) break;
-									offset = item.update.update_id + 1;
-									acknowledged++;
-								}
-					if (updates.length === 0) return;
-					yield* Effect.logInfo('tfx.polling.batch_acknowledged').pipe(
-						Effect.annotateLogs({
-							received: updates.length,
-							acknowledged,
-							...(offset === undefined ? {} : { nextOffset: offset }),
-						}),
-					);
-				}),
+				let acknowledged = 0;
+				for (const item of ordered) {
+					if (!DispatchOutcome.isAcknowledgeable(item.outcome)) break;
+					offset = item.update.update_id + 1;
+					acknowledged++;
+				}
+				if (updates.length === 0) return;
+				yield* Effect.logInfo('tfx.polling.batch_acknowledged').pipe(
+					Effect.annotateLogs({
+						received: updates.length,
+						acknowledged,
+						...(offset === undefined ? {} : { nextOffset: offset }),
+					}),
+				);
+			}),
 		);
 		return yield* pollOnce.pipe(
 			Effect.repeat(Schedule.forever),

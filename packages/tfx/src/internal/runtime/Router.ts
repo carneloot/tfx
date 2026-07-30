@@ -71,7 +71,9 @@ export const make = (options: RouterOptions = {}): Router => ({
 			if (value.callback_query !== undefined) {
 				const callback =
 					options.callback?.(update) ??
-					Effect.succeed(DispatchOutcome.permanentInvalid('Unhandled callback'));
+					Effect.succeed(
+						DispatchOutcome.permanentInvalid('Unhandled callback'),
+					);
 				return yield* callback;
 			}
 

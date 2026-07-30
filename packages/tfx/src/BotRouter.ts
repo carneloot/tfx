@@ -328,7 +328,7 @@ export const make = <
 					| {
 							readonly _tag: 'Stop';
 							readonly outcome: DispatchOutcome.DispatchOutcome | undefined;
-						};
+					  };
 				const isContinue = (
 					result: PassResult,
 				): result is Extract<PassResult, { readonly _tag: 'Continue' }> =>
@@ -336,8 +336,7 @@ export const make = <
 				let index = 0;
 				const pass: Effect.Effect<PassResult, never> = Effect.gen(function* () {
 					const entry = messageEntries[index++];
-					if (entry === undefined)
-						return { _tag: 'Stop', outcome: undefined };
+					if (entry === undefined) return { _tag: 'Stop', outcome: undefined };
 					const group = (options.bot.groups as any)[entry.groupId];
 					const declaration = group?.messageHandlers[entry.messageHandlerId];
 					const decoded =

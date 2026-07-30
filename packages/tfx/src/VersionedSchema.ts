@@ -83,9 +83,9 @@ const build = <V extends ReadonlyArray<Version<number, any>>>(
 				new VersionedSchemaError('MissingMigration', `Unknown version ${from}`),
 			);
 		return Effect.gen(function* () {
-			const decoded = yield* (Schema.decodeUnknownEffect(source.schema)(
+			const decoded = yield* Schema.decodeUnknownEffect(source.schema)(
 				value,
-			) as Effect.Effect<any, Schema.SchemaError, never>);
+			) as Effect.Effect<any, Schema.SchemaError, never>;
 			let current = decoded;
 			for (let v = from; v < latest.version; v++) {
 				const migration = migrations.find(
