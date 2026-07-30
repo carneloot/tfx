@@ -323,41 +323,49 @@ export const make = <
 			callback: () =>
 				Effect.succeed(DispatchOutcome.permanentInvalid('Unhandled callback')),
 			message: (update) => {
-				const run = (
-					index: number,
-				): Effect.Effect<
-					DispatchOutcome.DispatchOutcome | undefined,
-					never
-				> => {
-					const entry = messageEntries[index];
-					if (entry === undefined) return Effect.succeed(undefined);
+				type PassResult =
+					| { readonly _tag: 'Continue' }
+					| {
+							readonly _tag: 'Stop';
+							readonly outcome: DispatchOutcome.DispatchOutcome | undefined;
+						};
+				const isContinue = (
+					result: PassResult,
+				): result is Extract<PassResult, { readonly _tag: 'Continue' }> =>
+					result._tag === 'Continue';
+				let index = 0;
+				const pass: Effect.Effect<PassResult, never> = Effect.gen(function* () {
+					const entry = messageEntries[index++];
+					if (entry === undefined)
+						return { _tag: 'Stop', outcome: undefined };
 					const group = (options.bot.groups as any)[entry.groupId];
 					const declaration = group?.messageHandlers[entry.messageHandlerId];
 					const decoded =
 						declaration === undefined
 							? undefined
 							: MessageInput.decode(declaration.input, update);
-					if (decoded === undefined) return run(index + 1);
-					return Effect.gen(function* () {
-						const decodedResult = yield* Effect.result(
-							provideContexts(update, decoded),
-						);
-						if (decodedResult._tag === 'Failure') return yield* run(index + 1);
+					if (decoded === undefined) return { _tag: 'Continue' };
 
-						const handlerResult = yield* Effect.result(
-							provideContexts(
-								update,
-								entry.invoke(middleware, decodedResult.success),
-							),
-						);
-						if (handlerResult._tag === 'Failure')
-							return mapError(handlerResult.failure);
-						if (handlerResult.success._tag === 'Handled')
-							return DispatchOutcome.handled;
-						return yield* run(index + 1);
-					});
-				};
-				return run(0);
+					const decodedResult = yield* Effect.result(
+						provideContexts(update, decoded),
+					);
+					if (decodedResult._tag === 'Failure') return { _tag: 'Continue' };
+
+					const handlerResult = yield* Effect.result(
+						provideContexts(
+							update,
+							entry.invoke(middleware, decodedResult.success),
+						),
+					);
+					if (handlerResult._tag === 'Failure')
+						return { _tag: 'Stop', outcome: mapError(handlerResult.failure) };
+					return handlerResult.success._tag === 'Handled'
+						? { _tag: 'Stop', outcome: DispatchOutcome.handled }
+						: { _tag: 'Continue' };
+				});
+				return Effect.repeat(pass, { while: isContinue }).pipe(
+					Effect.map((result) => result.outcome),
+				);
 			},
 			fallback: () => Effect.succeed(DispatchOutcome.handled),
 		});
