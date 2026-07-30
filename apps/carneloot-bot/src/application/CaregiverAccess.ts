@@ -10,16 +10,18 @@ export const displayName = (registered: RegisteredUser): string =>
 		.filter((part): part is string => part !== null && part.length > 0)
 		.join(' ');
 
-export const currentActor = (actor: CaregiverActor) =>
-	Effect.gen(function* () {
-		const users = yield* UserRepository;
-		const current = yield* users.findByTelegram(
-			actor.botId,
-			actor.telegramUserId,
-		);
-		if (current.user.id !== actor.actorId)
-			return yield* Effect.fail(
-				new CaregiverAccessLost({ message: 'Actor identity changed' }),
+export const currentActor = Effect.fn('CaregiverAccess.currentActor')(
+	(actor: CaregiverActor) =>
+		Effect.gen(function* () {
+			const users = yield* UserRepository;
+			const current = yield* users.findByTelegram(
+				actor.botId,
+				actor.telegramUserId,
 			);
-		return current;
-	});
+			if (current.user.id !== actor.actorId)
+				return yield* Effect.fail(
+					new CaregiverAccessLost({ message: 'Actor identity changed' }),
+				);
+			return current;
+		}),
+);

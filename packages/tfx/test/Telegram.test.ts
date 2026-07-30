@@ -103,6 +103,16 @@ describe('Telegram', () => {
 			'Telegram.sendDocument',
 			'Telegram.sendMessage',
 		]);
+		expect(spans.filter((span) => span.name.startsWith('http.client'))).toEqual(
+			[],
+		);
+		for (const span of spans) {
+			for (const attribute of span.attributes) {
+				const text = JSON.stringify(attribute) ?? String(attribute);
+				expect(text).not.toContain(token);
+				expect(text).not.toContain(payload.text);
+			}
+		}
 		for (const span of telegramSpans) {
 			expect([...span.attributes]).toEqual([
 				['method', span.name.replace('Telegram.', '')],

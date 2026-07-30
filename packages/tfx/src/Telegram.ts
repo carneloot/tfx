@@ -99,7 +99,12 @@ export const make = (
 					payload: unknown;
 				}) => Effect.Effect<unknown, unknown>;
 				return (payload: unknown = {}) =>
-					operation({ payload }).pipe(
+					Effect.provideService(
+						operation({ payload }),
+						HttpClient.TracerDisabledWhen,
+						// Telegram token is part of API path; standard HTTP tracing records full URL.
+						() => true,
+					).pipe(
 						Effect.map((envelope) => (envelope as { result: unknown }).result),
 						Effect.mapError((cause) => mapGeneratedError(property, cause)),
 						Effect.tap(() =>
