@@ -162,9 +162,13 @@ export const addFoodToAll = (input: {
 			lines.push(`Ignorados: ${duplicates} (registro duplicado).`);
 		const accessLost = names('AccessLost');
 		if (accessLost !== '') lines.push(`Acesso perdido: ${accessLost}.`);
-		yield* context.reply(lines.join('\n'));
-		if (successful.length > 0)
-			yield* context.react([{ type: 'emoji', emoji: '👍' }]);
+		yield* Effect.all(
+			[
+				context.reply(lines.join('\n')),
+				context.react([{ type: 'emoji', emoji: '👍' }]),
+			],
+			{ concurrency: 'unbounded' },
+		);
 	});
 
 const startFoodMutation = (
