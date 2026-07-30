@@ -1,11 +1,19 @@
+import * as NodeCrypto from '@effect/platform-node/NodeCrypto';
+import * as Layer from 'effect/Layer';
 import { describe, expect, it } from 'vitest';
 
 import * as Production from '../src/Production.js';
 import * as Router from '../src/Router.js';
 import { testConfig } from './internal/TestConfig.js';
 
+const nodeProductionLayer = Layer.provide(
+	Production.appLayer,
+	NodeCrypto.layer,
+);
+
 describe('portable Node composition', () => {
 	it('exports complete router metadata and production polling options', () => {
+		expect(nodeProductionLayer).toBeDefined();
 		expect(
 			[
 				Router.accountHandlers,
