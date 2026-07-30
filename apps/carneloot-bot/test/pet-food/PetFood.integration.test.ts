@@ -34,6 +34,7 @@ import * as PetCaregiverRepositoryLive from '../../src/postgres/PetCaregiverRepo
 import * as PetFoodRepositoryLive from '../../src/postgres/PetFoodRepositoryLive.js';
 import * as PetRepositoryLive from '../../src/postgres/PetRepositoryLive.js';
 import * as UserRepositoryLive from '../../src/postgres/UserRepositoryLive.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 import * as RecordingScheduler from './internal/RecordingReminderScheduler.js';
 
@@ -88,7 +89,7 @@ const dependencies = (
 				scheduleAdded: () => Effect.void,
 			}),
 		),
-		PostgresTestLayer.layer,
+		Layer.merge(PostgresTestLayer.layer, DeterministicCrypto.layer()),
 	);
 const setup = Effect.gen(function* () {
 	yield* AppMigrator.migrate;

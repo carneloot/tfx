@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Crypto from 'effect/Crypto';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
@@ -79,7 +80,9 @@ const persistenceOnly = (cause: unknown) =>
 
 export const layer = Layer.effect(
 	PetRepository,
-	Effect.map(PgClient.PgClient, (sql) => {
+	Effect.gen(function* () {
+		const crypto = yield* Crypto.Crypto;
+		const sql = yield* PgClient.PgClient;
 		const assertOwner = (ownerId: UserId) =>
 			Effect.andThen(
 				Schema.decodeUnknownEffect(UserId)(ownerId).pipe(
@@ -130,9 +133,12 @@ export const layer = Layer.effect(
 							yield* assertOwner(ownerId);
 							const now = yield* DateTime.now;
 							const timestamp = DateTime.toDateUtc(now);
+							const id = Schema.decodeUnknownSync(PetId)(
+								yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+							);
 							const rows = yield* sql<
 								Record<string, unknown>
-							>`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${ownerId}::uuid,${name},${petNameKey(name)},${timestamp},${timestamp}) RETURNING *`;
+							>`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${id}::uuid,${ownerId}::uuid,${name},${petNameKey(name)},${timestamp},${timestamp}) RETURNING *`;
 							return yield* decode(rows[0]);
 						}),
 					)

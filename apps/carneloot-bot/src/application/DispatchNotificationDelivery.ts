@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Crypto from 'effect/Crypto';
 import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
@@ -221,6 +222,7 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 			return;
 		}
 		const recipients = yield* NotificationRecipients;
+		const crypto = yield* Crypto.Crypto;
 		const sql = yield* PgClient.PgClient;
 		const materialized = yield* sql.withTransaction(
 			Effect.gen(function* () {
@@ -231,14 +233,15 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 					locked.botId,
 					payload.petId,
 				);
-				yield* notifications.materializeRecipients(
-					locked.id,
-					resolved.map(({ resolution }) => ({
-						...resolution,
-						id: Schema.decodeUnknownSync(DeliveryId)(crypto.randomUUID()),
-					})),
-					now,
+				const inputs = yield* Effect.forEach(resolved, ({ resolution }) =>
+					Effect.gen(function* () {
+						const id = Schema.decodeUnknownSync(DeliveryId)(
+							yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+						);
+						return { ...resolution, id };
+					}),
 				);
+				yield* notifications.materializeRecipients(locked.id, inputs, now);
 				return yield* notifications.markRecipientsMaterialized(locked.id, now);
 			}),
 		);

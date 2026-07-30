@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Crypto from 'effect/Crypto';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
@@ -66,6 +67,7 @@ const required = <A, E extends TaggedError, R>(
 ) =>
 	Effect.gen(function* () {
 		yield* PgClient.PgClient;
+		yield* Crypto.Crypto;
 		yield* UpdateContext.UpdateContext;
 		yield* PetFoodRepository;
 		yield* PetRepository;

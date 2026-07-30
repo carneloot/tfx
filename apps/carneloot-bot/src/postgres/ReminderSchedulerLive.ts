@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Crypto from 'effect/Crypto';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
@@ -54,6 +55,7 @@ export const layer = Layer.effect(
 		const notifications = yield* NotificationRepository;
 		const food = yield* PetFoodRepository;
 		const jobs = yield* JobRuntime;
+		const crypto = yield* Crypto.Crypto;
 		const cancelJobs = (
 			events: ReadonlyArray<{ readonly jobId: string | null }>,
 		) =>
@@ -129,7 +131,9 @@ export const layer = Layer.effect(
 							yield* cancelJobs(cancelled);
 							const runAtMillis = DateTime.toEpochMillis(request.runAt);
 							const baseDedupe = `feeding-reminder:${request.botId}:${request.petId}:${request.foodEntryId}:${runAtMillis}`;
-							const id = Schema.decodeUnknownSync(EventId)(crypto.randomUUID());
+							const id = Schema.decodeUnknownSync(EventId)(
+								yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+							);
 							let event = yield* notifications.createEvent({
 								id,
 								botId: request.botId,
@@ -162,7 +166,7 @@ export const layer = Layer.effect(
 									event = restored;
 								} else {
 									const generationId = Schema.decodeUnknownSync(EventId)(
-										crypto.randomUUID(),
+										yield* crypto.randomUUIDv4.pipe(Effect.orDie),
 									);
 									event = yield* notifications.createEvent({
 										id: generationId,
@@ -179,7 +183,7 @@ export const layer = Layer.effect(
 								}
 							} else if (event.status === 'completed') {
 								const generationId = Schema.decodeUnknownSync(EventId)(
-									crypto.randomUUID(),
+									yield* crypto.randomUUIDv4.pipe(Effect.orDie),
 								);
 								event = yield* notifications.createEvent({
 									id: generationId,

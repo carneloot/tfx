@@ -15,6 +15,7 @@ import {
 	NotificationRepositoryError,
 } from '../../src/ports/NotificationRepository.js';
 import * as FoodNotificationSchedulerLive from '../../src/postgres/FoodNotificationSchedulerLive.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 
 describe('FoodAddedNotificationJob declaration', () => {
 	it('renders actor, pet, amount, and optional localized timestamp', () => {
@@ -129,7 +130,12 @@ describe('FoodAddedNotificationJob declaration', () => {
 			} as never);
 			const layer = Layer.provide(
 				FoodNotificationSchedulerLive.layer,
-				Layer.mergeAll(recipients, repository, Layer.succeed(JobRuntime, jobs)),
+				Layer.mergeAll(
+					recipients,
+					repository,
+					Layer.succeed(JobRuntime, jobs),
+					DeterministicCrypto.layer(),
+				),
 			);
 			const result = await Effect.runPromise(
 				Effect.result(

@@ -12,6 +12,7 @@ import { migrate } from '../../src/postgres/AppMigrator.js';
 import * as PetCaregiverRepositoryLive from '../../src/postgres/PetCaregiverRepositoryLive.js';
 import * as PetRepositoryLive from '../../src/postgres/PetRepositoryLive.js';
 import * as UserRepositoryLive from '../../src/postgres/UserRepositoryLive.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 
 const enabled =
@@ -21,7 +22,11 @@ const adapters = Layer.mergeAll(
 	UserRepositoryLive.layer,
 	PetRepositoryLive.layer,
 	PetCaregiverRepositoryLive.layer,
-).pipe(Layer.provideMerge(PostgresTestLayer.layer));
+).pipe(
+	Layer.provideMerge(
+		Layer.merge(PostgresTestLayer.layer, DeterministicCrypto.layer()),
+	),
+);
 const botId = Schema.decodeUnknownSync(BotId)('caregiver-tests');
 const otherBotId = Schema.decodeUnknownSync(BotId)('caregiver-tests-other');
 const profile = (bot: BotId, telegramId: number, username: string) => ({

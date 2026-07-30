@@ -11,6 +11,7 @@ import * as RecipientRole from '../../src/domain/notifications/RecipientRole.js'
 import { NotificationRepository } from '../../src/ports/NotificationRepository.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
 import * as RepositoriesLive from '../../src/postgres/RepositoriesLive.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 
 const enabled =
@@ -18,7 +19,7 @@ const enabled =
 	process.env.RUN_TESTCONTAINERS === 'true';
 const layer = Layer.provideMerge(
 	RepositoriesLive.layer,
-	PostgresTestLayer.layer,
+	Layer.merge(PostgresTestLayer.layer, DeterministicCrypto.layer()),
 );
 const eventId = () => Schema.decodeUnknownSync(EventId)(crypto.randomUUID());
 const deliveryId = () =>

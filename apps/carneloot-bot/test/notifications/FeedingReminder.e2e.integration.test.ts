@@ -34,6 +34,7 @@ import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
 import * as ReminderSchedulerLive from '../../src/postgres/ReminderSchedulerLive.js';
 import * as RepositoriesLive from '../../src/postgres/RepositoriesLive.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 
 const enabled =
@@ -111,7 +112,7 @@ const stores = Layer.provideMerge(
 		RepositoriesLive.layer,
 		TfxPostgres.layer({ schema: 'tfx_feeding_e2e', tablePrefix: 'case_' }),
 	),
-	pg,
+	Layer.merge(pg, DeterministicCrypto.layer()),
 );
 const runtime = Layer.provideMerge(
 	JobRuntimeLive.layer(FeedingReminderJobLive.implementation),

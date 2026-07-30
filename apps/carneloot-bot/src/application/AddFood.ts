@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Crypto from 'effect/Crypto';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
@@ -80,6 +81,7 @@ export const execute = (
 		const repository = yield* PetFoodRepository;
 		const scheduler = yield* ReminderScheduler;
 		const foodNotifications = yield* FoodNotificationScheduler;
+		const crypto = yield* Crypto.Crypto;
 		const result = yield* sql.withTransaction(
 			Effect.gen(function* () {
 				const authorized = yield* authorize(access);
@@ -128,7 +130,9 @@ export const execute = (
 							message: 'A food entry already exists within one minute',
 						}),
 					);
-				const id = Schema.decodeUnknownSync(FoodEntryId)(crypto.randomUUID());
+				const id = Schema.decodeUnknownSync(FoodEntryId)(
+					yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+				);
 				const entry = yield* repository.insert({
 					id,
 					petId: access.petId,

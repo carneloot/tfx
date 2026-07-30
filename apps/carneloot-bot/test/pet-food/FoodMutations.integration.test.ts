@@ -19,6 +19,7 @@ import * as AppMigrator from '../../src/postgres/AppMigrator.js';
 import * as PetFoodRepositoryLive from '../../src/postgres/PetFoodRepositoryLive.js';
 import * as PetRepositoryLive from '../../src/postgres/PetRepositoryLive.js';
 import * as UserRepositoryLive from '../../src/postgres/UserRepositoryLive.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 
 const enabled =
@@ -30,7 +31,7 @@ const layer = Layer.provideMerge(
 		PetRepositoryLive.layer,
 		PetFoodRepositoryLive.layer,
 	),
-	PostgresTestLayer.layer,
+	Layer.merge(PostgresTestLayer.layer, DeterministicCrypto.layer()),
 );
 const utc = (value: string) => DateTime.makeUnsafe(value);
 const amount = (value: string) => Schema.decodeUnknownSync(FoodAmount)(value);
