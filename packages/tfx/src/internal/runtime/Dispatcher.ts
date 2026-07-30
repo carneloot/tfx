@@ -67,6 +67,7 @@ export const make = (options: {
 				)
 				.pipe(
 					Effect.withSpan('Dispatcher.dispatch', {
+						root: true,
 						attributes: { botId: options.botId, updateId: update.update_id },
 					}),
 					Effect.tap((outcome) => {
