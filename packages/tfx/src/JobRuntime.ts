@@ -185,7 +185,9 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 							}),
 						);
 					const claimNow = yield* DateTime.now;
-					const claim = yield* store.claimForMigration(claimNow, leaseDuration);
+					const claim = yield* store
+						.claimForMigration(claimNow, leaseDuration)
+						.pipe(Effect.withTracerEnabled(false));
 					if (claim === undefined) return undefined;
 					return yield* Effect.gen(function* () {
 						yield* Effect.logInfo('tfx.job.claimed').pipe(
