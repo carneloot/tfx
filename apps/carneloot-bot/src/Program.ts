@@ -65,7 +65,7 @@ export const run = Effect.gen(function* () {
 	return yield* Effect.raceFirst(botAwait, workerAwait).pipe(
 		Effect.ensuring(Effect.logInfo('carneloot.application.stopped')),
 	);
-}).pipe(Effect.withSpan('Program.run'));
+});
 
 /** Portable scoped factory; platform-specific entry points provide one graph. */
 export const fromLayer = <E extends TaggedError, R>(
