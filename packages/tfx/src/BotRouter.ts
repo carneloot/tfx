@@ -310,11 +310,9 @@ export const make = <
 							onSuccess: (input) =>
 								Effect.matchEffect(
 									provideContexts(update, entry.invoke(middleware, input)).pipe(
-										Effect.withSpan('BotRouter.command', {
-											attributes: {
-												command: declaration.command.name,
-												updateId: update.update_id,
-											},
+										Effect.withSpan(`Command.${declaration.command.name}`, {
+											root: true,
+											attributes: { updateId: update.update_id },
 										}),
 									),
 									{
@@ -362,11 +360,9 @@ export const make = <
 							update,
 							entry.invoke(middleware, decodedResult.success),
 						).pipe(
-							Effect.withSpan('BotRouter.message', {
-								attributes: {
-									messageHandler: entry.messageHandlerId,
-									updateId: update.update_id,
-								},
+							Effect.withSpan(`Message.${entry.messageHandlerId}`, {
+								root: true,
+								attributes: { updateId: update.update_id },
 							}),
 						),
 					);
