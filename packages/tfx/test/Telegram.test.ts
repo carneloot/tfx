@@ -1,5 +1,6 @@
 import * as Effect from 'effect/Effect';
 import * as Redacted from 'effect/Redacted';
+import * as Tracer from 'effect/Tracer';
 import * as HttpClient from 'effect/unstable/http/HttpClient';
 import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest';
 import * as HttpClientResponse from 'effect/unstable/http/HttpClientResponse';
@@ -46,6 +47,20 @@ const expectJson =
 			);
 	};
 
+const makeSpanCollector = () => {
+	const spans: Array<Tracer.Span> = [];
+	return {
+		spans,
+		tracer: Tracer.make({
+			span: (options) => {
+				const span = new Tracer.NativeSpan(options);
+				spans.push(span);
+				return span;
+			},
+		}),
+	};
+};
+
 describe('Telegram', () => {
 	it('sends sendMessage as JSON and strips successful envelope', async () => {
 		const payload = { chat_id: 42, text: 'oi' };
@@ -62,6 +77,36 @@ describe('Telegram', () => {
 				),
 			),
 		).resolves.toMatchObject({ message_id: 7 });
+	});
+	it('traces generated operations without sensitive annotations', async () => {
+		const token = '123456:secret-token';
+		const payload = { chat_id: 42, text: 'raw payload body' };
+		const { spans, tracer } = makeSpanCollector();
+		const execute = run(success);
+		await execute(
+			Effect.provideService(
+				Effect.flatMap(make(Redacted.make(token)), (telegram) =>
+					Effect.all([
+						telegram.sendMessage(payload),
+						telegram.sendDocument({ chat_id: 42, document: 'file-id' }),
+					]),
+				),
+				Tracer.Tracer,
+				tracer,
+			),
+		);
+
+		const telegramSpans = spans.filter((span) =>
+			span.name.startsWith('Telegram.'),
+		);
+		expect(telegramSpans.map((span) => span.name).sort()).toEqual([
+			'Telegram.sendDocument',
+			'Telegram.sendMessage',
+		]);
+		for (const span of telegramSpans) {
+			expect([...span.attributes]).toEqual([]);
+			expect(span.annotations.mapUnsafe.size).toBe(0);
+		}
 	});
 	it.each(['file-id', 'https://example.com/document.pdf'])(
 		'sends document string %s as JSON',

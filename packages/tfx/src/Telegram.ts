@@ -119,6 +119,7 @@ export const make = (
 								}),
 							);
 						}),
+						Effect.withSpan(`Telegram.${property}`),
 					);
 			},
 		});
