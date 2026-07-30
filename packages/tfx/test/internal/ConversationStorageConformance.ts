@@ -30,11 +30,29 @@ export const conversationStorageConformance = (
 					);
 					expect(yield* storage.load(scope)).toEqual(created);
 					expect(
-						(yield* storage.transition(scope, 1, 0, () =>
-							Effect.succeed({
-								value: 1,
-								mutation: { _tag: 'Persist' as const, step: 'two', state: 1 },
-							}),
+						(yield* storage.transition(
+							scope,
+							1,
+							0,
+							() => Effect.die('stale instance'),
+							'other-instance',
+						))._tag,
+					).toBe('Stale');
+					expect(
+						(yield* storage.transition(
+							scope,
+							1,
+							0,
+							() =>
+								Effect.succeed({
+									value: 1,
+									mutation: {
+										_tag: 'Persist' as const,
+										step: 'two',
+										state: 1,
+									},
+								}),
+							created.instanceId,
 						))._tag,
 					).toBe('Applied');
 					expect(

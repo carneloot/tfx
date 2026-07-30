@@ -503,10 +503,12 @@ describe('public BotRouter', () => {
 			(span) => span.name === 'Conversation.counter.count',
 		);
 		expect(command).toBeDefined();
+		expect(command?.parent._tag).toBe('None');
 		expect(start?.parent._tag).toBe('Some');
 		expect(start?.parent._tag === 'Some' ? start.parent.value : undefined).toBe(
 			command,
 		);
+		expect(resume?.parent._tag).toBe('None');
 		expect(resume?.links).toHaveLength(1);
 		expect(resume?.links[0]?.span).toMatchObject({
 			traceId: start?.traceId,

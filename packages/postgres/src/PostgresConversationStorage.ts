@@ -143,6 +143,7 @@ export const layer = (
 				updateId,
 				expectedRevision,
 				handler,
+				expectedInstanceId,
 			) =>
 				unwrapHandlerFailure(
 					sql
@@ -158,7 +159,11 @@ export const layer = (
 								const current = yield* decodeRow(raw);
 								if (current.lastUpdateId === updateId)
 									return { _tag: 'Duplicate' as const, row: current };
-								if (current.revision !== expectedRevision)
+								if (
+									current.revision !== expectedRevision ||
+									(expectedInstanceId !== undefined &&
+										current.instanceId !== expectedInstanceId)
+								)
 									return { _tag: 'Stale' as const, row: current };
 								const now = yield* DateTime.now;
 								if (

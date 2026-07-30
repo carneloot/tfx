@@ -277,6 +277,7 @@ export const make = <
 							conversations.resume(built, rawConversationInput(update), {
 								scope,
 								updateId: update.update_id,
+								row,
 							}),
 						).pipe(
 							Effect.withSpan(

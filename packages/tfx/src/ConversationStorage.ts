@@ -79,6 +79,7 @@ export interface ConversationStorageService {
 			E,
 			R
 		>,
+		expectedInstanceId?: string,
 	) => Effect.Effect<TransitionResult<A>, E | ConversationStorageError, R>;
 	readonly cancel: (
 		scope: Scope,

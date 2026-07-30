@@ -10,6 +10,7 @@ import * as ConversationInput from './ConversationInput.js';
 import {
 	ConversationStorage,
 	ConversationStorageError,
+	type ConversationRow,
 	type Mutation,
 	type Scope,
 	type TransitionResult,
@@ -63,7 +64,11 @@ export interface ConversationsService {
 	readonly resume: <B extends BuiltConversation<any, any>>(
 		built: B,
 		input: unknown,
-		options: { readonly scope?: Scope; readonly updateId: number },
+		options: {
+			readonly scope?: Scope;
+			readonly updateId: number;
+			readonly row?: ConversationRow;
+		},
 	) => Effect.Effect<
 		TransitionResult<void>,
 		ConversationServiceError<B>,
@@ -179,12 +184,16 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 			const resume = <B extends BuiltConversation<any, any>>(
 				built: B,
 				input: unknown,
-				options: { readonly scope?: Scope; readonly updateId: number },
+				options: {
+					readonly scope?: Scope;
+					readonly updateId: number;
+					readonly row?: ConversationRow;
+				},
 			) =>
 				Effect.gen(function* () {
 					return yield* Effect.gen(function* () {
 						const scope = yield* requireScope(options.scope);
-						const loaded = yield* storage.load(scope);
+						const loaded = options.row ?? (yield* storage.load(scope));
 						if (loaded === undefined) return { _tag: 'Missing' as const };
 						const result = yield* storage
 							.transition<
@@ -309,6 +318,7 @@ export const layer: Layer.Layer<Conversations, never, ConversationStorage> =
 										ConversationServiceError<B>,
 										BuiltRequirements<B>
 									>,
+								loaded.instanceId,
 							)
 							.pipe(Effect.withSpan('Conversation.transition'));
 						if (result._tag === 'Applied') {

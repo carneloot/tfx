@@ -204,6 +204,54 @@ describe('Conversation', () => {
 		expect(error).toMatchObject({ reason: 'InvariantViolation' });
 	});
 
+	it('returns stale for replaced preloaded conversations', async () => {
+		let handled = 0;
+		const built = ConversationBuilder.done(
+			ConversationBuilder.make(declaration).step('count', {
+				enter: () => Effect.void,
+				onInput: () =>
+					Effect.sync(() => {
+						handled++;
+						return ConversationBuilder.complete();
+					}),
+			}),
+		);
+		const program = Effect.gen(function* () {
+			const conversations = yield* Conversations;
+			const storage = yield* ConversationStorage;
+			yield* conversations.start(built, 0, { scope });
+			const preloaded = yield* storage.load(scope);
+			if (preloaded === undefined) throw new Error('expected conversation');
+			yield* storage.cancel(scope);
+			yield* storage.create(
+				{
+					scope,
+					originTrace: undefined,
+					conversationId: 'replacement',
+					version: 1,
+					step: 'count',
+					state: 0,
+					lastUpdateId: undefined,
+					expiresAt: undefined,
+				},
+				'fail',
+			);
+			const result = yield* conversations.resume(built, '1', {
+				scope,
+				updateId: 1,
+				row: preloaded,
+			});
+			expect(result._tag).toBe('Stale');
+			expect(handled).toBe(0);
+		});
+		await Effect.runPromise(
+			Effect.provide(
+				Effect.provide(program, ConversationsLive.layer),
+				MemoryConversationStorage.layer,
+			) as Effect.Effect<void, unknown>,
+		);
+	});
+
 	it('requires explicit normalized scope', async () => {
 		const built = ConversationBuilder.done(
 			ConversationBuilder.make(declaration).step('count', {
