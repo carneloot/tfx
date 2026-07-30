@@ -159,8 +159,7 @@ export const make = (botUsername: string) => {
 	const beforeConversation = (
 		update: Parameters<BotRouter.BeforeConversationEffect>[0],
 	) => {
-		const text = (update as { readonly message?: { readonly text?: unknown } })
-			.message?.text;
+		const text = update.message?.text;
 		return typeof text === 'string' && isCancelCommand(text, botUsername)
 			? Effect.as(CancelConversation.cancelCurrent, DispatchOutcome.handled)
 			: Effect.succeed(undefined);
