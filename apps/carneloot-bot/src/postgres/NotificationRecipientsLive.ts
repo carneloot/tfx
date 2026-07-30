@@ -55,6 +55,26 @@ const decodePetRecipient = (input: unknown): PetNotificationRecipient => {
 	return { userId: row.user_id, role: row.role, resolution };
 };
 
+const traceService = <Service extends object>(
+	prefix: string,
+	service: Service,
+): Service => {
+	Object.assign(
+		service,
+		Object.fromEntries(
+			Object.entries(service).map(([method, operation]) => [
+				method,
+				typeof operation === 'function'
+					? (...args: Array<never>) =>
+							operation(...args).pipe(Effect.withSpan(`${prefix}.${method}`))
+					: operation,
+			]),
+		),
+	);
+
+	return service;
+};
+
 export const layer = Layer.effect(
 	NotificationRecipients,
 	Effect.map(PgClient.PgClient, (sql) => {
@@ -142,6 +162,6 @@ export const layer = Layer.effect(
 				);
 			},
 		} satisfies NotificationRecipientsService;
-		return service;
+		return traceService('NotificationRecipients', service);
 	}),
 );

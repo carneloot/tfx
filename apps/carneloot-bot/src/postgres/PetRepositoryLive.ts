@@ -78,6 +78,26 @@ const persistenceOnly = (cause: unknown) =>
 				cause,
 			});
 
+const traceService = <Service extends object>(
+	prefix: string,
+	service: Service,
+): Service => {
+	Object.assign(
+		service,
+		Object.fromEntries(
+			Object.entries(service).map(([method, operation]) => [
+				method,
+				typeof operation === 'function'
+					? (...args: Array<never>) =>
+							operation(...args).pipe(Effect.withSpan(`${prefix}.${method}`))
+					: operation,
+			]),
+		),
+	);
+
+	return service;
+};
+
 export const layer = Layer.effect(
 	PetRepository,
 	Effect.gen(function* () {
@@ -187,6 +207,6 @@ export const layer = Layer.effect(
 					.pipe(Effect.withSpan('PetRepository.transaction'))
 					.pipe(Effect.mapError(persistence)),
 		} satisfies PetRepositoryService;
-		return service;
+		return traceService('PetRepository', service);
 	}),
 );

@@ -88,6 +88,26 @@ const select = (
 	FROM carneloot.telegram_identities i JOIN carneloot.users u ON u.id=i.user_id
 	WHERE i.bot_id=${botId} AND i.telegram_user_id=${telegramUserId}`;
 
+const traceService = <Service extends object>(
+	prefix: string,
+	service: Service,
+): Service => {
+	Object.assign(
+		service,
+		Object.fromEntries(
+			Object.entries(service).map(([method, operation]) => [
+				method,
+				typeof operation === 'function'
+					? (...args: Array<never>) =>
+							operation(...args).pipe(Effect.withSpan(`${prefix}.${method}`))
+					: operation,
+			]),
+		),
+	);
+
+	return service;
+};
+
 export const layer = Layer.effect(
 	UserRepository,
 	Effect.gen(function* () {
@@ -198,6 +218,6 @@ export const layer = Layer.effect(
 					return yield* decode(rows[0]);
 				}),
 		} satisfies UserRepositoryService;
-		return service;
+		return traceService('UserRepository', service);
 	}),
 );

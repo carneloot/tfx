@@ -47,6 +47,26 @@ const schedulerError = (
 		...(cause === undefined ? {} : { cause: safeCause(cause) }),
 	});
 
+const traceService = <Service extends object>(
+	prefix: string,
+	service: Service,
+): Service => {
+	Object.assign(
+		service,
+		Object.fromEntries(
+			Object.entries(service).map(([method, operation]) => [
+				method,
+				typeof operation === 'function'
+					? (...args: Array<never>) =>
+							operation(...args).pipe(Effect.withSpan(`${prefix}.${method}`))
+					: operation,
+			]),
+		),
+	);
+
+	return service;
+};
+
 export const layer = Layer.effect(
 	FoodNotificationScheduler,
 	Effect.gen(function* () {
@@ -142,6 +162,6 @@ export const layer = Layer.effect(
 					),
 				),
 		} satisfies FoodNotificationSchedulerService;
-		return service;
+		return traceService('FoodNotificationScheduler', service);
 	}),
 );

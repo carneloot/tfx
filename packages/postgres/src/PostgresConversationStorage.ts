@@ -99,6 +99,26 @@ const decodeRow = (
 		};
 	});
 
+const traceService = <Service extends object>(
+	prefix: string,
+	service: Service,
+): Service => {
+	Object.assign(
+		service,
+		Object.fromEntries(
+			Object.entries(service).map(([method, operation]) => [
+				method,
+				typeof operation === 'function'
+					? (...args: Array<never>) =>
+							operation(...args).pipe(Effect.withSpan(`${prefix}.${method}`))
+					: operation,
+			]),
+		),
+	);
+
+	return service;
+};
+
 export const layer = (
 	options: Options = {},
 ): Layer.Layer<
@@ -242,6 +262,6 @@ export const layer = (
 						}),
 					),
 			} satisfies ConversationStorageService;
-			return service;
+			return traceService('PostgresConversationStorage', service);
 		}),
 	);
