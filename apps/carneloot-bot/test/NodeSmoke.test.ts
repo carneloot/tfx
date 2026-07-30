@@ -4,17 +4,26 @@ import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import { describe, expect, it } from 'vitest';
 
+import * as AppLive from '../src/AppLive.js';
 import * as Production from '../src/Production.js';
 import * as Router from '../src/Router.js';
+import * as UpdateDelivery from 'tfx/UpdateDelivery';
 import { testConfig } from './internal/TestConfig.js';
 
-const nodeProductionLayer = Layer.provide(
-	Production.appLayer,
+type Assert<T extends true> = T;
+type IsNever<T> = [T] extends [never] ? true : false;
+
+const nodePortableApplicationLayer = Layer.provide(
+	AppLive.layer(() => UpdateDelivery.manual),
 	NodeCrypto.layer,
 );
 
+type NodePortableApplicationExcludesCrypto = Assert<
+	IsNever<Extract<Layer.Services<typeof nodePortableApplicationLayer>, Crypto.Crypto>>
+>;
+
 describe('portable Node composition', () => {
-	it('provides Node Crypto without constructing database-backed application', async () => {
+	it('provides Node Crypto without building portable application', async () => {
 		const uuid = await Effect.runPromise(
 			Effect.gen(function* () {
 				const crypto = yield* Crypto.Crypto;
@@ -27,7 +36,6 @@ describe('portable Node composition', () => {
 	});
 
 	it('exports complete router metadata and production polling options', () => {
-		expect(nodeProductionLayer).toBeDefined();
 		expect(
 			[
 				Router.accountHandlers,

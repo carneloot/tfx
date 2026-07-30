@@ -1,3 +1,4 @@
+import * as BunCrypto from '@effect/platform-bun/BunCrypto';
 import * as BunHttpClient from '@effect/platform-bun/BunHttpClient';
 import * as PgClient from '@effect/sql-pg/PgClient';
 import * as Effect from 'effect/Effect';
@@ -33,9 +34,10 @@ export const pollingOptions = (config: AppConfigService) =>
 
 const infrastructure = Layer.unwrap(
 	Effect.map(AppConfig, (config) =>
-		Layer.merge(
+		Layer.mergeAll(
 			PgClient.layer({ url: config.databaseUrl }),
 			Layer.provide(Telegram.layer(config.botToken), BunHttpClient.layer),
+			BunCrypto.layer,
 		),
 	),
 );

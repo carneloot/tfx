@@ -1,4 +1,3 @@
-import type * as Crypto from 'effect/Crypto';
 import type * as Layer from 'effect/Layer';
 import { BotRuntime } from 'tfx/BotRuntime';
 import { UpdateDeduplicator } from 'tfx/UpdateDeduplicator';
@@ -19,8 +18,8 @@ type IsUnknown<T> = unknown extends T
 		: false
 	: false;
 
-export type AppLayerRequiresCrypto = Assert<
-	Equal<Layer.Services<typeof appLayer>, Crypto.Crypto>
+export type AppLayerClosesRequirements = Assert<
+	Equal<Layer.Services<typeof appLayer>, never>
 >;
 export type AppLayerErrorsAreTagged = Assert<
 	IsTagged<Layer.Error<typeof appLayer>>
