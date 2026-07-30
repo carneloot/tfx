@@ -1,7 +1,10 @@
 import * as BunRuntime from '@effect/platform-bun/BunRuntime';
-import * as Effect from 'effect/Effect';
+import * as Layer from 'effect/Layer';
 
+import * as Observability from './Observability.js';
 import * as Production from './Production.js';
 import * as Program from './Program.js';
 
-BunRuntime.runMain(Effect.provide(Program.run, Production.appLayer));
+BunRuntime.runMain(
+	Program.fromLayer(Layer.merge(Production.appLayer, Observability.layer)),
+);
