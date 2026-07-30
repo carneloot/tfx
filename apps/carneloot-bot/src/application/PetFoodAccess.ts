@@ -22,7 +22,8 @@ export interface AuthorizedPetFoodAccess {
 
 const denied = (message: string) => new PetAccessDenied({ message });
 
-export const authorize = (access: PetFoodAccess) =>
+export const authorize = Effect.fn('PetFoodAccess.authorize')
+	((access: PetFoodAccess) =>
 	Effect.gen(function* () {
 		const users = yield* UserRepository;
 		const current = yield* users.findByTelegram(
@@ -56,4 +57,4 @@ export const authorize = (access: PetFoodAccess) =>
 			pet,
 			role: 'caregiver',
 		};
-	});
+	}));

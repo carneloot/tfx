@@ -231,7 +231,7 @@ export const layer = Layer.effect(
 									: schedulerError('Failed to replace feeding reminder', cause),
 							),
 						),
-					)
+					).pipe(Effect.withSpan('ReminderScheduler.transaction'))
 					.pipe(
 						Effect.mapError((cause) =>
 							cause instanceof ReminderSchedulerError
@@ -252,7 +252,7 @@ export const layer = Layer.effect(
 								schedulerError('Failed to cancel feeding reminder', cause),
 							),
 						),
-					)
+					).pipe(Effect.withSpan('ReminderScheduler.transaction'))
 					.pipe(
 						Effect.mapError((cause) =>
 							cause instanceof ReminderSchedulerError

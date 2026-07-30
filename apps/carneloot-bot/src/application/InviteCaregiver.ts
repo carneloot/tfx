@@ -15,7 +15,8 @@ import { UserRepository } from '../ports/UserRepository.js';
 import { currentActor, displayName } from './CaregiverAccess.js';
 import type { CaregiverActor, MutationResult } from './CaregiverResult.js';
 
-export const execute = (
+export const execute = Effect.fn('InviteCaregiver.execute')
+	((
 	actor: CaregiverActor,
 	petId: PetId,
 	username: string,
@@ -82,4 +83,4 @@ export const execute = (
 				} satisfies MutationResult<typeof relation>;
 			}),
 		);
-	});
+	}));

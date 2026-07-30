@@ -22,7 +22,8 @@ export interface AddFoodToAllResult {
 	readonly items: ReadonlyArray<AddFoodToAllItem>;
 }
 
-export const execute = (
+export const execute = Effect.fn('AddFoodToAll.execute')
+	((
 	access: Omit<PetFoodAccess, 'petId'>,
 	input: ParsedFoodInput,
 	source: SourceInput,
@@ -51,4 +52,4 @@ export const execute = (
 			{ concurrency: 4 },
 		);
 		return { items } satisfies AddFoodToAllResult;
-	});
+	}));

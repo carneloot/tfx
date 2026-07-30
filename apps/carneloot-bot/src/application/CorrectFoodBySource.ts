@@ -37,7 +37,8 @@ export type CorrectFoodBySourceResult =
 	  };
 
 /** Corrects every currently accessible entry correlated to one exact Telegram message. */
-export const execute = (input: CorrectFoodBySourceInput) =>
+export const execute = Effect.fn('CorrectFoodBySource.execute')
+	((input: CorrectFoodBySourceInput) =>
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
 		const repository = yield* PetFoodRepository;
@@ -135,4 +136,4 @@ export const execute = (input: CorrectFoodBySourceInput) =>
 				return { _tag: 'Corrected', entries: updated } as const;
 			}),
 		);
-	});
+	}));

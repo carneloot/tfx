@@ -16,7 +16,8 @@ const notFound = () =>
 	new FoodEntryNotFound({ message: 'Food entry was not found' });
 
 /** Deletes one current-day entry atomically with reminder reconciliation. */
-export const execute = (access: PetFoodAccess, entryId: FoodEntryId) =>
+export const execute = Effect.fn('DeleteFood.execute')
+	((access: PetFoodAccess, entryId: FoodEntryId) =>
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
 		const repository = yield* PetFoodRepository;
@@ -65,4 +66,4 @@ export const execute = (access: PetFoodAccess, entryId: FoodEntryId) =>
 				return deleted;
 			}),
 		);
-	});
+	}));

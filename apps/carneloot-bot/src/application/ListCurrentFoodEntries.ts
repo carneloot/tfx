@@ -25,7 +25,8 @@ const formatLocalTimestamp = (
 };
 
 /** Enriches current-day entries for display without exposing Telegram profiles. */
-export const execute = (
+export const execute = Effect.fn('ListCurrentFoodEntries.execute')
+	((
 	botId: BotId,
 	timeZone: IanaTimeZone,
 	entries: ReadonlyArray<PetFoodEntry>,
@@ -60,4 +61,4 @@ export const execute = (
 				};
 			}),
 		);
-	});
+	}));

@@ -14,7 +14,8 @@ import { UserRepository } from '../ports/UserRepository.js';
 import { currentActor, displayName } from './CaregiverAccess.js';
 import type { CaregiverActor } from './CaregiverResult.js';
 
-export const execute = (
+export const execute = Effect.fn('RespondPetInvitation.execute')
+	((
 	actor: CaregiverActor,
 	petId: PetId,
 	response: 'accepted' | 'rejected',
@@ -64,4 +65,4 @@ export const execute = (
 				};
 			}),
 		);
-	});
+	}));

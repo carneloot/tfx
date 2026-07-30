@@ -39,7 +39,8 @@ const safeMessageId = Schema.Number.check(
 const invalid = (message: string, cause: unknown) =>
 	new InvalidDomainInput({ message, cause });
 
-export const execute = (
+export const execute = Effect.fn('AddFood.execute')
+	((
 	access: PetFoodAccess,
 	input: ParsedFoodInput,
 	sourceInput: SourceInput,
@@ -168,7 +169,7 @@ export const execute = (
 					timeZone: settings.timeZone,
 				};
 			}),
-		);
+		).pipe(Effect.withSpan('AddFood.transaction'));
 		yield* Effect.logInfo(
 			result.replayed ? 'carneloot.food.replayed' : 'carneloot.food.recorded',
 		).pipe(
@@ -180,4 +181,4 @@ export const execute = (
 			}),
 		);
 		return result;
-	});
+	}));

@@ -175,7 +175,8 @@ const route = (input: RouteFoodReplyInput) =>
 	);
 
 /** Routes and durably records one reply mutation in the same SQL transaction. */
-export const execute = (input: RouteFoodReplyInput) =>
+export const execute = Effect.fn('RouteFoodReply.execute')
+	((input: RouteFoodReplyInput) =>
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
 		return yield* sql.withTransaction(
@@ -197,4 +198,4 @@ export const execute = (input: RouteFoodReplyInput) =>
 				return result;
 			}),
 		);
-	});
+	}));

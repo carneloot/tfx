@@ -24,7 +24,8 @@ const notFound = () =>
 	new FoodEntryNotFound({ message: 'Food entry was not found' });
 
 /** Corrects one current-day entry atomically with reminder reconciliation. */
-export const execute = (
+export const execute = Effect.fn('CorrectFood.execute')
+	((
 	access: PetFoodAccess,
 	entryId: FoodEntryId,
 	input: CorrectFoodInput,
@@ -102,4 +103,4 @@ export const execute = (
 				return { entry: updated, timeZone: settings.timeZone };
 			}),
 		);
-	});
+	}));

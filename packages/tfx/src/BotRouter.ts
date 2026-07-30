@@ -309,7 +309,14 @@ export const make = <
 								),
 							onSuccess: (input) =>
 								Effect.matchEffect(
-									provideContexts(update, entry.invoke(middleware, input)),
+									provideContexts(update, entry.invoke(middleware, input)).pipe(
+										Effect.withSpan('BotRouter.command', {
+											attributes: {
+												command: declaration.command.name,
+												updateId: update.update_id,
+											},
+										}),
+									),
 									{
 										onSuccess: () => Effect.succeed(DispatchOutcome.handled),
 										onFailure: (error) => Effect.succeed(mapError(error)),
@@ -354,6 +361,13 @@ export const make = <
 						provideContexts(
 							update,
 							entry.invoke(middleware, decodedResult.success),
+						).pipe(
+							Effect.withSpan('BotRouter.message', {
+								attributes: {
+									messageHandler: entry.messageHandlerId,
+									updateId: update.update_id,
+								},
+							}),
 						),
 					);
 					if (handlerResult._tag === 'Failure')
@@ -369,11 +383,17 @@ export const make = <
 			fallback: () => Effect.succeed(DispatchOutcome.handled),
 		});
 		return Object.freeze({
-			route: (update: Update) =>
-				safeIds(update)
+			route: Effect.fn('BotRouter.route')((update: Update) =>
+				(safeIds(update)
 					? router.route(update)
 					: Effect.succeed(
 							DispatchOutcome.permanentInvalid('Unsafe Telegram identifier'),
-						),
+						)
+				).pipe(
+					Effect.withSpan('BotRouter.dispatch', {
+						attributes: { botId: options.bot.name, updateId: update.update_id },
+					}),
+				),
+			),
 		});
 	});

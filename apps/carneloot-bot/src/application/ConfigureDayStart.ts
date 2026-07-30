@@ -9,7 +9,8 @@ import { PetAccessDenied } from '../domain/pet-food/PetFoodError.js';
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { authorize, type PetFoodAccess } from './PetFoodAccess.js';
 
-export const execute = (
+export const execute = Effect.fn('ConfigureDayStart.execute')
+	((
 	access: PetFoodAccess,
 	dayStartInput: unknown,
 	timeZoneInput: unknown,
@@ -63,4 +64,4 @@ export const execute = (
 			}),
 		);
 		return settings;
-	});
+	}));

@@ -29,7 +29,8 @@ const snapshotsEqual = (
 				DateTime.toEpochMillis(right.fedAt)));
 
 /** Reconciles persistence-only scheduling within the caller's ambient transaction. */
-export const reconcile = (request: ReconcileFoodReminderRequest) =>
+export const reconcile = Effect.fn('ReconcileFoodReminder.reconcile')
+	((request: ReconcileFoodReminderRequest) =>
 	Effect.gen(function* () {
 		const repository = yield* PetFoodRepository;
 		const scheduler = yield* ReminderScheduler;
@@ -55,4 +56,4 @@ export const reconcile = (request: ReconcileFoodReminderRequest) =>
 			foodEntryId: latest.id,
 			runAt: DateTime.addDuration(latest.fedAt, settings.reminderDelay),
 		});
-	});
+	}));

@@ -13,7 +13,8 @@ import { UserRepository } from '../ports/UserRepository.js';
 import { currentActor, displayName } from './CaregiverAccess.js';
 import type { CaregiverActor } from './CaregiverResult.js';
 
-export const execute = (actor: CaregiverActor, petId: PetId) =>
+export const execute = Effect.fn('StopCaring.execute')
+	((actor: CaregiverActor, petId: PetId) =>
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
 		const caregivers = yield* PetCaregiverRepository;
@@ -58,4 +59,4 @@ export const execute = (actor: CaregiverActor, petId: PetId) =>
 				};
 			}),
 		);
-	});
+	}));

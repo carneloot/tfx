@@ -11,7 +11,8 @@ import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { ReminderScheduler } from '../ports/ReminderScheduler.js';
 import { authorize, type PetFoodAccess } from './PetFoodAccess.js';
 
-export const set = (access: PetFoodAccess, delayInput: unknown) =>
+export const set = Effect.fn('ConfigureReminderDelay.set')
+	((access: PetFoodAccess, delayInput: unknown) =>
 	Effect.gen(function* () {
 		const delay = yield* Schema.decodeUnknownEffect(ReminderDelay)(
 			delayInput,
@@ -63,9 +64,10 @@ export const set = (access: PetFoodAccess, delayInput: unknown) =>
 			}),
 		);
 		return result.settings;
-	});
+	}));
 
-export const remove = (access: PetFoodAccess) =>
+export const remove = Effect.fn('ConfigureReminderDelay.remove')
+	((access: PetFoodAccess) =>
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
 		const repository = yield* PetFoodRepository;
@@ -98,4 +100,4 @@ export const remove = (access: PetFoodAccess) =>
 			}),
 		);
 		return settings;
-	});
+	}));

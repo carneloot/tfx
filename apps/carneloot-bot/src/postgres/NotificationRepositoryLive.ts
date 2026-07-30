@@ -224,7 +224,7 @@ export const layer = Layer.effect(
 								);
 							return existing;
 						}),
-					),
+					).pipe(Effect.withSpan('NotificationRepository.transaction')),
 				),
 			cancelActiveForPet: (botId, petId, now) =>
 				protect(
@@ -241,7 +241,7 @@ export const layer = Layer.effect(
 								jobId: row.job_id,
 							}));
 						}),
-					),
+					).pipe(Effect.withSpan('NotificationRepository.transaction')),
 				),
 			reviveCancelledEvent: (id, now) =>
 				protect(
@@ -354,7 +354,7 @@ export const layer = Layer.effect(
 								},
 							};
 						}),
-					),
+					).pipe(Effect.withSpan('NotificationRepository.transaction')),
 				),
 			finalizeSent: (token, botId, messageId, now) =>
 				protect(
@@ -464,7 +464,7 @@ export const layer = Layer.effect(
 											),
 							};
 						}),
-					),
+					).pipe(Effect.withSpan('NotificationRepository.transaction')),
 				),
 		} satisfies NotificationRepositoryService;
 		return service;

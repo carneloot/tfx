@@ -11,7 +11,8 @@ import type { CaregiverActor } from './CaregiverResult.js';
 const denied = () =>
 	new PetAccessDenied({ message: 'Pet is not owned by actor' });
 
-export const execute = (actor: CaregiverActor, petId: PetId) =>
+export const execute = Effect.fn('DeletePet.execute')
+	((actor: CaregiverActor, petId: PetId) =>
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
 		const users = yield* UserRepository;
@@ -41,4 +42,4 @@ export const execute = (actor: CaregiverActor, petId: PetId) =>
 				return pet;
 			}),
 		);
-	});
+	}));

@@ -2,7 +2,8 @@ import * as Effect from 'effect/Effect';
 
 import type { TelegramProfile } from '../domain/User.js';
 import { UserRepository } from '../ports/UserRepository.js';
-export const execute = (profile: TelegramProfile) =>
+export const execute = Effect.fn('RegisterUser.execute')
+	((profile: TelegramProfile) =>
 	Effect.gen(function* () {
 		const repository = yield* UserRepository;
 		const registered = yield* repository.registerTelegramProfile(profile);
@@ -13,4 +14,4 @@ export const execute = (profile: TelegramProfile) =>
 			}),
 		);
 		return registered;
-	});
+	}));

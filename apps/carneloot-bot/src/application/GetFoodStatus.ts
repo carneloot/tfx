@@ -25,7 +25,8 @@ export type PetFoodStatus = Data.TaggedEnum<{
 	};
 }>;
 const PetFoodStatus = Data.taggedEnum<PetFoodStatus>();
-export const execute = (identity: Identity) =>
+export const execute = Effect.fn('GetFoodStatus.execute')
+	((identity: Identity) =>
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
 		const food = yield* PetFoodRepository;
@@ -61,4 +62,4 @@ export const execute = (identity: Identity) =>
 				);
 			}),
 		);
-	});
+	}));

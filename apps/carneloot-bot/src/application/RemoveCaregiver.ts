@@ -12,7 +12,8 @@ import { UserRepository } from '../ports/UserRepository.js';
 import { currentActor } from './CaregiverAccess.js';
 import type { CaregiverActor } from './CaregiverResult.js';
 
-export const execute = (
+export const execute = Effect.fn('RemoveCaregiver.execute')
+	((
 	actor: CaregiverActor,
 	petId: PetId,
 	caregiverUserId: UserId,
@@ -55,4 +56,4 @@ export const execute = (
 				};
 			}),
 		);
-	});
+	}));
