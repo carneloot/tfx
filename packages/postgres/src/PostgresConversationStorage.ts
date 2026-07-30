@@ -11,6 +11,7 @@ import {
 	type Mutation,
 	type Scope,
 } from 'tfx/ConversationStorage';
+import { traceService } from 'tfx/TraceService';
 
 import {
 	decode,
@@ -98,26 +99,6 @@ const decodeRow = (
 			expiresAt,
 		};
 	});
-
-const traceService = <Service extends object>(
-	prefix: string,
-	service: Service,
-): Service => {
-	Object.assign(
-		service,
-		Object.fromEntries(
-			Object.entries(service).map(([method, operation]) => [
-				method,
-				typeof operation === 'function'
-					? (...args: Array<never>) =>
-							operation(...args).pipe(Effect.withSpan(`${prefix}.${method}`))
-					: operation,
-			]),
-		),
-	);
-
-	return service;
-};
 
 export const layer = (
 	options: Options = {},

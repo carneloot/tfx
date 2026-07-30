@@ -4,6 +4,7 @@ import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
+import { traceService } from 'tfx/TraceService';
 
 const Timestamp = Schema.Union([
 	Schema.DateTimeUtcFromDate,
@@ -87,26 +88,6 @@ const select = (
 	>`SELECT u.id,i.bot_id,i.telegram_user_id,i.username,i.first_name,i.last_name,i.private_chat_id,u.created_at,u.updated_at
 	FROM carneloot.telegram_identities i JOIN carneloot.users u ON u.id=i.user_id
 	WHERE i.bot_id=${botId} AND i.telegram_user_id=${telegramUserId}`;
-
-const traceService = <Service extends object>(
-	prefix: string,
-	service: Service,
-): Service => {
-	Object.assign(
-		service,
-		Object.fromEntries(
-			Object.entries(service).map(([method, operation]) => [
-				method,
-				typeof operation === 'function'
-					? (...args: Array<never>) =>
-							operation(...args).pipe(Effect.withSpan(`${prefix}.${method}`))
-					: operation,
-			]),
-		),
-	);
-
-	return service;
-};
 
 export const layer = Layer.effect(
 	UserRepository,

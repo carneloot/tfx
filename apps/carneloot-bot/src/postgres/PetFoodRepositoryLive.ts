@@ -4,6 +4,7 @@ import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
+import { traceService } from 'tfx/TraceService';
 
 import { DomainPersistenceError } from '../domain/DomainError.js';
 import { BotId, PetId, TelegramChatId, UserId } from '../domain/Ids.js';
@@ -148,26 +149,6 @@ const decodeOne = <A>(
 	if (rows.length !== 1 || rows[0] === undefined)
 		throw new Error('Expected one row');
 	return decode(rows[0]);
-};
-
-const traceService = <Service extends object>(
-	prefix: string,
-	service: Service,
-): Service => {
-	Object.assign(
-		service,
-		Object.fromEntries(
-			Object.entries(service).map(([method, operation]) => [
-				method,
-				typeof operation === 'function'
-					? (...args: Array<never>) =>
-							operation(...args).pipe(Effect.withSpan(`${prefix}.${method}`))
-					: operation,
-			]),
-		),
-	);
-
-	return service;
 };
 
 export const layer = Layer.effect(
