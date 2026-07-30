@@ -30,7 +30,7 @@ export const layer = Layer.unwrap(
 				OtlpLogger.layer({ url: logsUrl, resource: otlpResource }),
 			).pipe(
 				Layer.provideMerge(OtlpSerialization.layerJson),
-				Layer.provideMerge(FetchHttpClient.layer),
+				Layer.provide(FetchHttpClient.layer),
 			),
 	),
 );

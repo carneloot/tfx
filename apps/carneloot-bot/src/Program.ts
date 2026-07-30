@@ -20,7 +20,7 @@ export const releaseSmokeHealth = Effect.gen(function* () {
 		return yield* Effect.fail(
 			new ReleaseSmokeHealthError({ quarantinedJobIds: quarantined }),
 		);
-});
+}).pipe(Effect.withSpan('Program.releaseSmokeHealth'));
 
 export const run = Effect.gen(function* () {
 	const dedup = yield* UpdateDeduplicator;
@@ -62,8 +62,10 @@ export const run = Effect.gen(function* () {
 			),
 		),
 	);
-	return yield* Effect.raceFirst(botAwait, workerAwait);
-}).pipe(Effect.ensuring(Effect.logInfo('carneloot.application.stopped')));
+	return yield* Effect.raceFirst(botAwait, workerAwait).pipe(
+		Effect.ensuring(Effect.logInfo('carneloot.application.stopped')),
+	);
+}).pipe(Effect.withSpan('Program.run'));
 
 /** Portable scoped factory; platform-specific entry points provide one graph. */
 export const fromLayer = <E extends TaggedError, R>(

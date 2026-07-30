@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Tracer } from 'effect';
 import { BotRuntime, type BotRuntimeSourceError } from 'tfx/BotRuntime';
 import { JobStoreError } from 'tfx/JobStore';
 import * as UpdateDeduplicator from 'tfx/UpdateDeduplicator';
@@ -23,6 +23,19 @@ const worker = (awaitEffect: Effect.Effect<void, JobWorkerError>) =>
 		},
 		problems: Effect.succeed([]),
 	});
+const makeSpanCollector = () => {
+	const spans: Array<Tracer.Span> = [];
+	return {
+		spans,
+		tracer: Tracer.make({
+			span: (options) => {
+				const span = new Tracer.NativeSpan(options);
+				spans.push(span);
+				return span;
+			},
+		}),
+	};
+};
 describe('Program', () => {
 	it('refuses non-durable deduplication', async () => {
 		const exit = await Effect.runPromiseExit(
@@ -71,22 +84,28 @@ describe('Program', () => {
 				}),
 				() => Effect.sync(() => void events.push(`release:${name}`)),
 			);
-		const botLayer = Layer.effect(BotRuntime, managed('bot', {
-			dispatch: () => Effect.die('unused'),
-			await: Effect.never,
-		}));
-		const workerLayer = Layer.effect(JobWorker, managed('worker', {
-			await: Effect.fail(
-				new JobStoreError('PersistenceFailure', 'worker failed'),
-			),
-			diagnostics: {
-				recoveredDeliveries: 0,
-				startupProblems: [],
-				failedJobIds: [],
-				quarantinedJobIds: [],
-			},
-			problems: Effect.succeed([]),
-		}));
+		const botLayer = Layer.effect(
+			BotRuntime,
+			managed('bot', {
+				dispatch: () => Effect.die('unused'),
+				await: Effect.never,
+			}),
+		);
+		const workerLayer = Layer.effect(
+			JobWorker,
+			managed('worker', {
+				await: Effect.fail(
+					new JobStoreError('PersistenceFailure', 'worker failed'),
+				),
+				diagnostics: {
+					recoveredDeliveries: 0,
+					startupProblems: [],
+					failedJobIds: [],
+					quarantinedJobIds: [],
+				},
+				problems: Effect.succeed([]),
+			}),
+		);
 		const durableLayer = Layer.effect(
 			UpdateDeduplicator.UpdateDeduplicator,
 			managed('deduplication', {
@@ -112,6 +131,34 @@ describe('Program', () => {
 			'release:worker',
 			'release:bot',
 		]);
+	});
+
+	it('traces retained lifecycle failures', async () => {
+		const { spans, tracer } = makeSpanCollector();
+		const durable = Layer.succeed(UpdateDeduplicator.UpdateDeduplicator, {
+			diagnostics: { mode: 'durable', backend: 'test' },
+		} as never);
+		await Effect.runPromise(
+			Effect.result(
+				Effect.provideService(
+					Effect.provide(
+						Program.run,
+						Layer.mergeAll(
+							bot(Effect.never),
+							worker(
+								Effect.fail(
+									new JobStoreError('PersistenceFailure', 'worker failed'),
+								),
+							),
+							durable,
+						),
+					),
+					Tracer.Tracer,
+					tracer,
+				),
+			),
+		);
+		expect(spans.map((span) => span.name)).toContain('Program.run');
 	});
 
 	it('fails fast when either retained lifecycle fails', async () => {
