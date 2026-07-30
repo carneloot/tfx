@@ -104,7 +104,9 @@ describe('Telegram', () => {
 			'Telegram.sendMessage',
 		]);
 		for (const span of telegramSpans) {
-			expect([...span.attributes]).toEqual([]);
+			expect([...span.attributes]).toEqual([
+				['method', span.name.replace('Telegram.', '')],
+			]);
 			expect(span.annotations.mapUnsafe.size).toBe(0);
 		}
 	});
