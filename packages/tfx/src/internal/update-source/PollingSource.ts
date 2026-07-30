@@ -6,7 +6,6 @@ import * as Schedule from 'effect/Schedule';
 import * as DispatchOutcome from '../../DispatchOutcome.js';
 import { Telegram, type TelegramService } from '../../Telegram.js';
 import type { TelegramError } from '../../TelegramError.js';
-import type { Update } from '../telegram/generated/TelegramApi.types.js';
 import type { UpdateSourceService } from './UpdateSource.js';
 
 export class FatalPollingDispatchError extends Data.TaggedError(
