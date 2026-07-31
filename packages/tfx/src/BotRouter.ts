@@ -274,11 +274,16 @@ export const make = <
 									];
 						yield* provideContexts(
 							update,
-							conversations.resume(built, rawConversationInput(update), {
-								scope,
-								updateId: update.update_id,
-								row,
-							}),
+							middleware.run(
+								built.declaration.middleware.map(
+									(item: { readonly id: string }) => item.id,
+								),
+								conversations.resume(built, rawConversationInput(update), {
+									scope,
+									updateId: update.update_id,
+									row,
+								}),
+							),
 						).pipe(
 							Effect.withSpan(
 								`Conversation.${row.conversationId}.${row.step}`,

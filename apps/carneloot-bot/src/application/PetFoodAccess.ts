@@ -1,11 +1,11 @@
 import * as Effect from 'effect/Effect';
 
+import { CurrentUser } from '../bot/CurrentUser.js';
 import type { BotId, PetId, TelegramUserId, UserId } from '../domain/Ids.js';
 import { PetAccessDenied } from '../domain/pet-food/PetFoodError.js';
 import type { Pet } from '../domain/Pet.js';
 import { PetCaregiverRepository } from '../ports/PetCaregiverRepository.js';
 import { PetRepository } from '../ports/PetRepository.js';
-import { UserRepository } from '../ports/UserRepository.js';
 
 export interface PetFoodAccess {
 	readonly actorId: UserId;
@@ -25,11 +25,7 @@ const denied = (message: string) => new PetAccessDenied({ message });
 export const authorize = Effect.fn('PetFoodAccess.authorize')(
 	(access: PetFoodAccess) =>
 		Effect.gen(function* () {
-			const users = yield* UserRepository;
-			const current = yield* users.findByTelegram(
-				access.botId,
-				access.telegramUserId,
-			);
+			const current = yield* CurrentUser;
 			if (current.user.id !== access.actorId)
 				return yield* Effect.fail(
 					denied('Telegram identity no longer matches actor'),

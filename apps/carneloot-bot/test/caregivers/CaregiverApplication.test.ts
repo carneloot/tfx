@@ -8,6 +8,7 @@ import * as ListPetInvitations from '../../src/application/ListPetInvitations.js
 import * as RemoveCaregiver from '../../src/application/RemoveCaregiver.js';
 import * as RespondPetInvitation from '../../src/application/RespondPetInvitation.js';
 import * as StopCaring from '../../src/application/StopCaring.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
 import {
 	CaregiverAccessLost,
 	CaregiverInvitationNotPending,
@@ -151,6 +152,7 @@ const fixture = (options: FixtureOptions = {}) => {
 		listAcceptedForUser: () => Effect.succeed(options.listed ?? []),
 	};
 	const layer = Layer.mergeAll(
+		Layer.succeed(CurrentUser, current),
 		Layer.succeed(UserRepository, users),
 		Layer.succeed(PetRepository, pets),
 		Layer.succeed(PetCaregiverRepository, caregivers),
@@ -173,7 +175,11 @@ const failure = async <A, E>(effect: Effect.Effect<A, E>) => {
 
 describe('caregiver application', () => {
 	it('invites normalized username and rejects missing, ambiguous, or self targets', async () => {
-		const success = fixture({ pet, usernameMatches: [caregiver] });
+		const success = fixture({
+			pet,
+			current: owner,
+			usernameMatches: [caregiver],
+		});
 		const result = await Effect.runPromise(
 			success.provide(
 				InviteCaregiver.execute(ownerActor, petId, ' @CaReGiVeR '),
@@ -189,7 +195,7 @@ describe('caregiver application', () => {
 		] as const) {
 			expect(
 				await failure(
-					fixture({ pet, usernameMatches: matches }).provide(
+					fixture({ pet, current: owner, usernameMatches: matches }).provide(
 						InviteCaregiver.execute(ownerActor, petId, '@target'),
 					),
 				),
@@ -224,7 +230,7 @@ describe('caregiver application', () => {
 		'owner removes %s relationship',
 		async (status) => {
 			const result = await Effect.runPromise(
-				fixture({ pet, locked: relation(status) }).provide(
+				fixture({ pet, current: owner, locked: relation(status) }).provide(
 					RemoveCaregiver.execute(ownerActor, petId, caregiverId),
 				),
 			);
@@ -240,7 +246,7 @@ describe('caregiver application', () => {
 			relation('rejected'),
 		];
 		const result = await Effect.runPromise(
-			fixture({ pet, listed }).provide(
+			fixture({ pet, current: owner, listed }).provide(
 				ListCaregivers.execute(ownerActor, petId),
 			),
 		);
