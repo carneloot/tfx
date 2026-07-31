@@ -8,9 +8,17 @@ import { describe, expect, it } from 'vitest';
 
 import * as AddFood from '../../src/application/AddFood.js';
 import * as DispatchNotificationDelivery from '../../src/application/DispatchNotificationDelivery.js';
-import { BotId, PetId, TelegramUserId, UserId } from '../../src/domain/Ids.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
+import {
+	BotId,
+	PetId,
+	TelegramChatId,
+	TelegramUserId,
+	UserId,
+} from '../../src/domain/Ids.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import { FoodAmount } from '../../src/domain/pet-food/FoodAmount.js';
+import type { RegisteredUser } from '../../src/domain/User.js';
 import * as FoodAddedNotificationJobLive from '../../src/jobs/FoodAddedNotificationJobLive.js';
 import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
 import * as FoodNotificationSchedulerLive from '../../src/postgres/FoodNotificationSchedulerLive.js';
@@ -93,19 +101,42 @@ const setup = (options: { readonly ownerIdentity?: boolean } = {}) =>
 			},
 		};
 	});
+const currentUser = (access: Parameters<typeof AddFood.execute>[0]) => {
+	const now = DateTime.makeUnsafe(0);
+	return Layer.succeed(CurrentUser, {
+		user: {
+			id: access.actorId,
+			createdAt: now,
+			updatedAt: now,
+		},
+		profile: {
+			botId: access.botId,
+			telegramUserId: access.telegramUserId,
+			username: null,
+			firstName: 'Test User',
+			lastName: null,
+			privateChatId: Schema.decodeUnknownSync(TelegramChatId)(
+				access.telegramUserId,
+			),
+		},
+	} satisfies RegisteredUser);
+};
 const add = (
 	access: Parameters<typeof AddFood.execute>[0],
 	updateId: number,
 	when = '',
 ) =>
-	AddFood.execute(
-		access,
-		{
-			amountMg: Schema.decodeUnknownSync(FoodAmount)('50g'),
-			when,
-			messageDate: DateTime.makeUnsafe('2026-07-16T11:30:00Z'),
-		},
-		{ botId: access.botId, updateId },
+	Effect.provide(
+		AddFood.execute(
+			access,
+			{
+				amountMg: Schema.decodeUnknownSync(FoodAmount)('50g'),
+				when,
+				messageDate: DateTime.makeUnsafe('2026-07-16T11:30:00Z'),
+			},
+			{ botId: access.botId, updateId },
+		),
+		currentUser(access),
 	);
 
 if (!enabled)

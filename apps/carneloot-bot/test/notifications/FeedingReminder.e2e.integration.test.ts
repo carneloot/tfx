@@ -11,6 +11,7 @@ import { NetworkError, RateLimitError, TelegramError } from 'tfx/TelegramError';
 import { describe, expect, it } from 'vitest';
 
 import * as ConfigureReminderDelay from '../../src/application/ConfigureReminderDelay.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
 import {
 	BotId,
 	PetId,
@@ -385,14 +386,18 @@ else
 				const fixture = yield* scheduleFixture;
 				yield* TestClock.setTime(3_000);
 				expect(yield* runFresh).toMatchObject({ status: 'completed' });
-				yield* ConfigureReminderDelay.set(
-					{
-						actorId: fixture.user.user.id,
-						botId,
-						telegramUserId: fixture.user.profile.telegramUserId,
-						petId: fixture.pet.id,
-					},
-					Duration.seconds(2),
+				yield* Effect.provideService(
+					ConfigureReminderDelay.set(
+						{
+							actorId: fixture.user.user.id,
+							botId,
+							telegramUserId: fixture.user.profile.telegramUserId,
+							petId: fixture.pet.id,
+						},
+						Duration.seconds(2),
+					),
+					CurrentUser,
+					fixture.user,
 				);
 				yield* TestClock.setTime(4_000);
 				expect(yield* runFresh).toBeUndefined();
@@ -418,14 +423,18 @@ else
 				yield* TestClock.setTime(3_000);
 				const send = yield* Effect.forkChild(runFresh);
 				yield* Deferred.await(control.started!);
-				yield* ConfigureReminderDelay.set(
-					{
-						actorId: fixture.user.user.id,
-						botId,
-						telegramUserId: fixture.user.profile.telegramUserId,
-						petId: fixture.pet.id,
-					},
-					Duration.seconds(2),
+				yield* Effect.provideService(
+					ConfigureReminderDelay.set(
+						{
+							actorId: fixture.user.user.id,
+							botId,
+							telegramUserId: fixture.user.profile.telegramUserId,
+							petId: fixture.pet.id,
+						},
+						Duration.seconds(2),
+					),
+					CurrentUser,
+					fixture.user,
 				);
 				yield* Deferred.succeed(control.release!, undefined);
 				expect(yield* Fiber.join(send)).toMatchObject({ status: 'completed' });
