@@ -3,7 +3,10 @@ import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
+import * as Request from 'effect/Request';
+import * as RequestResolver from 'effect/RequestResolver';
 import * as Schema from 'effect/Schema';
+import * as SqlClient from 'effect/unstable/sql/SqlClient';
 import { traceService } from 'tfx/TraceService';
 
 import { DomainPersistenceError } from '../domain/DomainError.js';
@@ -15,6 +18,7 @@ import { PetAccessDenied } from '../domain/pet-food/PetFoodError.js';
 import { PetName, type Pet } from '../domain/Pet.js';
 import {
 	PetFoodRepository,
+	type PetFoodRepositoryError,
 	type PetFoodRepositoryService,
 } from '../ports/PetFoodRepository.js';
 
@@ -116,6 +120,29 @@ const decodeSettings = (raw: unknown) => {
 	};
 	return Schema.decodeUnknownSync(PetFoodSettings)(value);
 };
+interface GetPetFoodSettings extends Request.Request<
+	PetFoodSettings | undefined,
+	PetFoodRepositoryError
+> {
+	readonly _tag: 'GetPetFoodSettings';
+	readonly petId: PetId;
+}
+const GetPetFoodSettings =
+	Request.tagged<GetPetFoodSettings>('GetPetFoodSettings');
+const noTransactionKey = {};
+const transactionKeys = new WeakMap<object, object>();
+const transactionKey = (entry: Request.Entry<GetPetFoodSettings>) => {
+	const client = entry.context.mapUnsafe.get(SqlClient.SqlClient.key);
+	if (client === undefined) return noTransactionKey;
+	const connection = entry.context.mapUnsafe.get(client.transactionService.key);
+	if (connection === undefined) return noTransactionKey;
+	const key = transactionKeys.get(connection);
+	if (key !== undefined) return key;
+	const next = {};
+	transactionKeys.set(connection, next);
+	return next;
+};
+
 const decodeEntry = (raw: unknown) => {
 	const row = Schema.decodeUnknownSync(EntryRow)(raw);
 	return {
@@ -154,10 +181,34 @@ const decodeOne = <A>(
 export const layer = Layer.effect(
 	PetFoodRepository,
 	Effect.map(PgClient.PgClient, (sql) => {
-		const settings = (petId: string) =>
+		const settings = (petIds: ReadonlyArray<PetId>) =>
 			sql<
 				Record<string, unknown>
-			>`SELECT pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at FROM carneloot.pet_food_settings WHERE pet_id=${petId}::uuid`;
+			>`SELECT pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at FROM carneloot.pet_food_settings WHERE pet_id IN ${sql.in(petIds)}`;
+		const settingsResolver = RequestResolver.makeWith<GetPetFoodSettings>({
+			batchKey: transactionKey,
+			delay: Effect.yieldNow,
+			collectWhile: () => true,
+			runAll: (requests) =>
+				Effect.gen(function* () {
+					const rows = yield* protect(
+						settings(requests.map(({ request }) => request.petId)),
+						'Settings query failed',
+					).pipe(Effect.provideContext(requests[0].context));
+					const byPetId = yield* Effect.try({
+						try: () =>
+							new Map(
+								rows.map((row) => {
+									const value = decodeSettings(row);
+									return [value.petId, value] as const;
+								}),
+							),
+						catch: (cause) => invariant('Malformed settings row', cause),
+					});
+					for (const request of requests)
+						yield* Request.succeed(request, byPetId.get(request.request.petId));
+				}),
+		});
 		const entries = <E>(
 			fragment: Effect.Effect<ReadonlyArray<Record<string, unknown>>, E>,
 		) =>
@@ -191,16 +242,7 @@ export const layer = Layer.effect(
 					'Pet ownership query failed',
 				),
 			getSettings: (petId) =>
-				protect(settings(petId), 'Settings query failed').pipe(
-					Effect.flatMap((rows) =>
-						rows[0] === undefined
-							? Effect.succeed(undefined)
-							: Effect.try({
-									try: () => decodeSettings(rows[0]),
-									catch: (cause) => invariant('Malformed settings row', cause),
-								}),
-					),
-				),
+				Effect.request(GetPetFoodSettings({ petId }), settingsResolver),
 			setDayStart: (petId, dayStart, timeZone, now) =>
 				protect(
 					Effect.flatMap(

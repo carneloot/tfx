@@ -33,20 +33,26 @@ export const execute = Effect.fn('GetFoodStatus.execute')(
 			return yield* sql.withTransaction(
 				Effect.gen(function* () {
 					const accessible = yield* ListPets.execute(identity.actorId);
-					const now = yield* DateTime.now;
-					return yield* Effect.forEach(accessible, ({ pet }) =>
+					for (const { pet } of accessible)
+						yield* authorize({ ...identity, petId: pet.id });
+					const [now, settings] = yield* Effect.all([
+						DateTime.now,
+						Effect.forEach(accessible, ({ pet }) => food.getSettings(pet.id), {
+							concurrency: 'unbounded',
+						}),
+					]);
+					return yield* Effect.forEach(accessible, ({ pet }, index) =>
 						Effect.gen(function* () {
-							yield* authorize({ ...identity, petId: pet.id });
-							const settings = yield* food.getSettings(pet.id);
+							const setting = settings[index];
 							if (
-								settings === undefined ||
-								settings.dayStart === null ||
-								settings.timeZone === null
+								setting === undefined ||
+								setting.dayStart === null ||
+								setting.timeZone === null
 							)
 								return PetFoodStatus.MissingDayStart({ pet });
 							const window = DayBoundary.current(now, {
-								localTime: settings.dayStart,
-								timeZone: settings.timeZone,
+								localTime: setting.dayStart,
+								timeZone: setting.timeZone,
 							});
 							const summary = yield* food.status(
 								pet.id,

@@ -535,6 +535,16 @@ else
 					{ _tag: 'Configured', totalMg: 0, latestFedAt: null },
 				]);
 				yield* ConfigureDayStart.execute(first.access, '23:00', 'UTC');
+				const pets = yield* PetRepository;
+				const companion = yield* pets.addOwned(
+					first.access.actorId,
+					Schema.decodeUnknownSync(PetName)('Milo'),
+				);
+				yield* ConfigureDayStart.execute(
+					{ ...first.access, petId: companion.id },
+					'00:00',
+					'UTC',
+				);
 				const windowStart = new Date('2024-01-01T23:00:00Z').getTime();
 				const windowEnd = new Date('2024-01-02T23:00:00Z').getTime();
 				for (const [fedAt, amount, update] of [
@@ -549,15 +559,27 @@ else
 					botId: first.access.botId,
 					telegramUserId: first.access.telegramUserId,
 				});
-				expect(status[0]).toMatchObject({
-					_tag: 'Configured',
-					totalMg: 5_000,
-					latestFedAt: DateTime.makeUnsafe(windowEnd - 1),
-					window: {
-						start: DateTime.makeUnsafe(windowStart),
-						end: DateTime.makeUnsafe(windowEnd),
-					},
-				});
+				expect(status).toHaveLength(2);
+				expect(status).toEqual(
+					expect.arrayContaining([
+						expect.objectContaining({
+							_tag: 'Configured',
+							pet: expect.objectContaining({ id: first.pet.id }),
+							totalMg: 5_000,
+							latestFedAt: DateTime.makeUnsafe(windowEnd - 1),
+							window: {
+								start: DateTime.makeUnsafe(windowStart),
+								end: DateTime.makeUnsafe(windowEnd),
+							},
+						}),
+						expect.objectContaining({
+							_tag: 'Configured',
+							pet: expect.objectContaining({ id: companion.id }),
+							totalMg: 0,
+							latestFedAt: null,
+						}),
+					]),
+				);
 			});
 			await Effect.runPromise(
 				Effect.provide(
