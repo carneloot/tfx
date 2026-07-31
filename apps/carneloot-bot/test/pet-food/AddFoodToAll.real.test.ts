@@ -3,6 +3,7 @@ import { DateTime, Effect, Layer, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import * as AddFoodToAll from '../../src/application/AddFoodToAll.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
 import { DomainPersistenceError } from '../../src/domain/DomainError.js';
 import {
 	BotId,
@@ -83,6 +84,17 @@ const fixture = (options: FixtureOptions) => {
 		Layer.succeed(PgClient.PgClient, {
 			withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
 		} as unknown as PgClient.PgClient),
+		Layer.succeed(CurrentUser, {
+			user: { id: actorId, createdAt: messageDate, updatedAt: messageDate },
+			profile: {
+				botId,
+				telegramUserId,
+				username: null,
+				firstName: 'Actor',
+				lastName: null,
+				privateChatId: Schema.decodeUnknownSync(TelegramChatId)(42),
+			},
+		}),
 		Layer.succeed(UserRepository, {
 			registerTelegramProfile: unused,
 			findById: unused,

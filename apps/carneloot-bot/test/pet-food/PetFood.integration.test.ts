@@ -17,9 +17,16 @@ import * as AddFood from '../../src/application/AddFood.js';
 import * as ConfigureDayStart from '../../src/application/ConfigureDayStart.js';
 import * as ConfigureReminderDelay from '../../src/application/ConfigureReminderDelay.js';
 import * as GetFoodStatus from '../../src/application/GetFoodStatus.js';
-import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
+import {
+	BotId,
+	TelegramChatId,
+	TelegramUserId,
+	UserId,
+} from '../../src/domain/Ids.js';
 import { FoodAmount } from '../../src/domain/pet-food/FoodAmount.js';
 import { PetName } from '../../src/domain/Pet.js';
+import type { RegisteredUser } from '../../src/domain/User.js';
 import { FoodNotificationScheduler } from '../../src/ports/FoodNotificationScheduler.js';
 import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import { PetRepository } from '../../src/ports/PetRepository.js';
@@ -41,20 +48,53 @@ import * as RecordingScheduler from './internal/RecordingReminderScheduler.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
+type UserAccess = Pick<
+	Parameters<typeof AddFood.execute>[0],
+	'actorId' | 'botId' | 'telegramUserId'
+>;
+const currentUser = (access: UserAccess): RegisteredUser => ({
+	user: {
+		id: access.actorId,
+		createdAt: DateTime.makeUnsafe(0),
+		updatedAt: DateTime.makeUnsafe(0),
+	},
+	profile: {
+		botId: access.botId,
+		telegramUserId: access.telegramUserId,
+		username: null,
+		firstName: 'Ana',
+		lastName: null,
+		privateChatId: Schema.decodeUnknownSync(TelegramChatId)(
+			access.telegramUserId,
+		),
+	},
+});
+const asCurrentUser = <A, E, R>(
+	current: RegisteredUser,
+	effect: Effect.Effect<A, E, R>,
+) => Effect.provideService(effect, CurrentUser, current);
+const asAccessUser = <A, E, R>(
+	access: UserAccess,
+	effect: Effect.Effect<A, E, R>,
+) => asCurrentUser(currentUser(access), effect);
 const executeAddFood = (
 	access: Parameters<typeof AddFood.execute>[0],
 	amount: string,
 	when: string,
 	source: AddFood.SourceInput,
+	current = currentUser(access),
 ) =>
-	AddFood.execute(
-		access,
-		{
-			amountMg: Schema.decodeUnknownSync(FoodAmount)(amount),
-			when,
-			messageDate: DateTime.makeUnsafe('2024-01-02T12:00:00Z'),
-		},
-		source,
+	asCurrentUser(
+		current,
+		AddFood.execute(
+			access,
+			{
+				amountMg: Schema.decodeUnknownSync(FoodAmount)(amount),
+				when,
+				messageDate: DateTime.makeUnsafe('2024-01-02T12:00:00Z'),
+			},
+			source,
+		),
 	);
 const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
 	const logs: Array<{
@@ -170,8 +210,14 @@ else
 			const program = Effect.gen(function* () {
 				yield* TestClock.setTime(new Date('2024-01-02T12:00:00Z').getTime());
 				const { sql, access, pet } = yield* setup;
-				yield* ConfigureDayStart.execute(access, '00:00', 'UTC');
-				yield* ConfigureReminderDelay.set(access, Duration.millis(60_000));
+				yield* asAccessUser(
+					access,
+					ConfigureDayStart.execute(access, '00:00', 'UTC'),
+				);
+				yield* asAccessUser(
+					access,
+					ConfigureReminderDelay.set(access, Duration.millis(60_000)),
+				);
 				const first = yield* executeAddFood(
 					access,
 					'50g',
@@ -211,11 +257,14 @@ else
 					kind: string;
 				}>`SELECT kind FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid ORDER BY id`;
 				expect(actions.map((row) => row.kind)).toEqual(['replace', 'replace']);
-				const status = yield* GetFoodStatus.execute({
-					actorId: access.actorId,
-					botId: access.botId,
-					telegramUserId: access.telegramUserId,
-				});
+				const status = yield* asAccessUser(
+					access,
+					GetFoodStatus.execute({
+						actorId: access.actorId,
+						botId: access.botId,
+						telegramUserId: access.telegramUserId,
+					}),
+				);
 				expect(status[0]).toMatchObject({
 					_tag: 'Configured',
 					totalMg: 65_000,
@@ -271,8 +320,14 @@ else
 					access: ownerAccess,
 				} = yield* setup;
 				yield* sql`ALTER TABLE carneloot.test_reminder_actions ADD COLUMN IF NOT EXISTS owner_user_id uuid`;
-				yield* ConfigureDayStart.execute(ownerAccess, '00:00', 'UTC');
-				yield* ConfigureReminderDelay.set(ownerAccess, Duration.millis(60_000));
+				yield* asAccessUser(
+					ownerAccess,
+					ConfigureDayStart.execute(ownerAccess, '00:00', 'UTC'),
+				);
+				yield* asAccessUser(
+					ownerAccess,
+					ConfigureReminderDelay.set(ownerAccess, Duration.millis(60_000)),
+				);
 				const users = yield* UserRepository;
 				const caregivers = yield* PetCaregiverRepository;
 				const register = (telegramUserId: number, firstName: string) =>
@@ -353,6 +408,7 @@ else
 						'1g',
 						'11:00',
 						source(owner.profile.botId, 404),
+						pending,
 					),
 				);
 				expect(mismatch).toMatchObject({
@@ -369,6 +425,13 @@ else
 						'1g',
 						'11:00',
 						source(owner.profile.botId, 405),
+						{
+							...accepted,
+							user: {
+								...accepted.user,
+								id: Schema.decodeUnknownSync(UserId)(reassignedUserId),
+							},
+						},
 					),
 				);
 				expect(reassigned).toMatchObject({
@@ -453,11 +516,20 @@ else
 			const program = Effect.gen(function* () {
 				yield* TestClock.setTime(new Date('2024-01-02T12:00:00Z').getTime());
 				const { sql, access, pet } = yield* setup;
-				yield* ConfigureDayStart.execute(access, '23:00', 'UTC');
-				yield* ConfigureReminderDelay.set(access, Duration.millis(60_000));
+				yield* asAccessUser(
+					access,
+					ConfigureDayStart.execute(access, '23:00', 'UTC'),
+				);
+				yield* asAccessUser(
+					access,
+					ConfigureReminderDelay.set(access, Duration.millis(60_000)),
+				);
 				yield* sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${pet.id}::uuid,${access.actorId}::uuid,1000,${new Date('2024-01-02T09:00:00Z')},${access.botId},9,${new Date('2024-01-02T09:00:00Z')},${new Date('2024-01-02T09:00:00Z')})`;
 				const setDelay = yield* Effect.result(
-					ConfigureReminderDelay.set(access, Duration.millis(120_000)),
+					asAccessUser(
+						access,
+						ConfigureReminderDelay.set(access, Duration.millis(120_000)),
+					),
 				);
 				expect(setDelay).toMatchObject({
 					_tag: 'Failure',
@@ -477,7 +549,7 @@ else
 					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
 				).toHaveLength(0);
 				const remove = yield* Effect.result(
-					ConfigureReminderDelay.remove(access),
+					asAccessUser(access, ConfigureReminderDelay.remove(access)),
 				);
 				expect(remove._tag).toBe('Failure');
 				const settings = yield* sql<{
@@ -508,33 +580,45 @@ else
 				yield* TestClock.setTime(new Date('2024-01-02T12:00:00Z').getTime());
 				const first = yield* setup;
 				const second = yield* setup;
+				const deniedAccess = { ...second.access, petId: first.pet.id };
 				const denied = yield* Effect.result(
-					ConfigureDayStart.execute(
-						{ ...second.access, petId: first.pet.id },
-						'23:00',
-						'UTC',
+					asAccessUser(
+						deniedAccess,
+						ConfigureDayStart.execute(deniedAccess, '23:00', 'UTC'),
 					),
 				);
 				expect(denied).toMatchObject({
 					_tag: 'Failure',
 					failure: { _tag: 'PetAccessDenied' },
 				});
-				const missing = yield* GetFoodStatus.execute({
-					actorId: first.access.actorId,
-					botId: first.access.botId,
-					telegramUserId: first.access.telegramUserId,
-				});
+				const missing = yield* asAccessUser(
+					first.access,
+					GetFoodStatus.execute({
+						actorId: first.access.actorId,
+						botId: first.access.botId,
+						telegramUserId: first.access.telegramUserId,
+					}),
+				);
 				expect(missing).toMatchObject([{ _tag: 'MissingDayStart' }]);
-				yield* ConfigureDayStart.execute(second.access, '00:00', 'UTC');
-				const zero = yield* GetFoodStatus.execute({
-					actorId: second.access.actorId,
-					botId: second.access.botId,
-					telegramUserId: second.access.telegramUserId,
-				});
+				yield* asAccessUser(
+					second.access,
+					ConfigureDayStart.execute(second.access, '00:00', 'UTC'),
+				);
+				const zero = yield* asAccessUser(
+					second.access,
+					GetFoodStatus.execute({
+						actorId: second.access.actorId,
+						botId: second.access.botId,
+						telegramUserId: second.access.telegramUserId,
+					}),
+				);
 				expect(zero).toMatchObject([
 					{ _tag: 'Configured', totalMg: 0, latestFedAt: null },
 				]);
-				yield* ConfigureDayStart.execute(first.access, '23:00', 'UTC');
+				yield* asAccessUser(
+					first.access,
+					ConfigureDayStart.execute(first.access, '23:00', 'UTC'),
+				);
 				const windowStart = new Date('2024-01-01T23:00:00Z').getTime();
 				const windowEnd = new Date('2024-01-02T23:00:00Z').getTime();
 				for (const [fedAt, amount, update] of [
@@ -544,11 +628,14 @@ else
 					[windowEnd, 4_000, 104],
 				] as const)
 					yield* first.sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${first.pet.id}::uuid,${first.access.actorId}::uuid,${amount},${new Date(fedAt)},${first.access.botId},${update},${new Date(fedAt)},${new Date(fedAt)})`;
-				const status = yield* GetFoodStatus.execute({
-					actorId: first.access.actorId,
-					botId: first.access.botId,
-					telegramUserId: first.access.telegramUserId,
-				});
+				const status = yield* asAccessUser(
+					first.access,
+					GetFoodStatus.execute({
+						actorId: first.access.actorId,
+						botId: first.access.botId,
+						telegramUserId: first.access.telegramUserId,
+					}),
+				);
 				expect(status[0]).toMatchObject({
 					_tag: 'Configured',
 					totalMg: 5_000,
@@ -574,7 +661,10 @@ else
 			const program = Effect.gen(function* () {
 				yield* TestClock.setTime(new Date('2024-01-02T12:00:00Z').getTime());
 				const { sql, access, pet } = yield* setup;
-				yield* ConfigureDayStart.execute(access, '00:00', 'UTC');
+				yield* asAccessUser(
+					access,
+					ConfigureDayStart.execute(access, '00:00', 'UTC'),
+				);
 				// No delay: a successful insertion emits no scheduler action.
 				const noDelay = yield* executeAddFood(
 					access,
@@ -586,7 +676,10 @@ else
 				expect(
 					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
 				).toHaveLength(0);
-				yield* ConfigureReminderDelay.set(access, Duration.millis(120_000));
+				yield* asAccessUser(
+					access,
+					ConfigureReminderDelay.set(access, Duration.millis(120_000)),
+				);
 				const sourceGate = yield* Deferred.make<void>();
 				const sourceFiber = yield* Effect.forkChild(
 					Effect.all(
@@ -663,7 +756,10 @@ else
 			const program = Effect.gen(function* () {
 				yield* TestClock.setTime(new Date('2024-01-02T12:00:00Z').getTime());
 				const { sql, access, pet } = yield* setup;
-				yield* ConfigureDayStart.execute(access, '00:00', 'UTC');
+				yield* asAccessUser(
+					access,
+					ConfigureDayStart.execute(access, '00:00', 'UTC'),
+				);
 				const seed = (fedAt: number, updateId: number) =>
 					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${pet.id}::uuid,${access.actorId}::uuid,1000,${new Date(fedAt)},${access.botId},${updateId},${new Date(fedAt)},${new Date(fedAt)})`;
 				yield* seed(new Date('2024-01-02T10:00:00.001Z').getTime(), 300);
@@ -675,7 +771,10 @@ else
 					failure: { _tag: 'DuplicateFoodEntry' },
 				});
 				const exactFixture = yield* setup;
-				yield* ConfigureDayStart.execute(exactFixture.access, '00:00', 'UTC');
+				yield* asAccessUser(
+					exactFixture.access,
+					ConfigureDayStart.execute(exactFixture.access, '00:00', 'UTC'),
+				);
 				yield* exactFixture.sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${exactFixture.pet.id}::uuid,${exactFixture.access.actorId}::uuid,1000,${new Date('2024-01-02T10:00:00Z')},${exactFixture.access.botId},302,${new Date('2024-01-02T10:00:00Z')},${new Date('2024-01-02T10:00:00Z')})`;
 				const exact = yield* executeAddFood(
 					exactFixture.access,
