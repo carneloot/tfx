@@ -3,6 +3,7 @@ import type * as Effect from 'effect/Effect';
 import type * as Conversation from './Conversation.js';
 import type * as ConversationInput from './ConversationInput.js';
 import type * as Transition from './internal/conversation/Transition.js';
+import type * as Middleware from './Middleware.js';
 import type { TaggedError } from './TaggedError.js';
 import type * as UpdateContext from './UpdateContext.js';
 export {
@@ -17,6 +18,10 @@ type StepsOf<C> =
 		? S
 		: never;
 type ErrorOf<C> = Conversation.ErrorOf<C>;
+type ProvidedBy<C> =
+	C extends Conversation.Conversation<any, any, any, any, any, infer M>
+		? Middleware.ProvidedBy<M>
+		: never;
 type AnyTransition<S extends Readonly<Record<string, Conversation.AnyStep>>> =
 	| {
 			[K in keyof S & string]: Transition.Transition<
@@ -32,16 +37,19 @@ export interface StepHandlers<
 	Steps extends Readonly<Record<string, Conversation.AnyStep>>,
 	E extends TaggedError,
 	R,
+	Available = any,
 > {
-	readonly enter: (state: Conversation.StateOf<S>) => Effect.Effect<void, E, R>;
+	readonly enter: (
+		state: Conversation.StateOf<S>,
+	) => Effect.Effect<void, E, R | Available>;
 	readonly onInput: (
 		state: Conversation.StateOf<S>,
 		input: Conversation.InputOf<S>,
-	) => Effect.Effect<AnyTransition<Steps>, E, R>;
+	) => Effect.Effect<AnyTransition<Steps>, E, R | Available>;
 	readonly onInvalid?: (
 		state: Conversation.StateOf<S>,
 		error: unknown,
-	) => Effect.Effect<AnyTransition<Steps>, E, R>;
+	) => Effect.Effect<AnyTransition<Steps>, E, R | Available>;
 }
 export interface Builder<
 	C extends Conversation.Conversation<any, any, any, any, any, any>,
@@ -57,7 +65,13 @@ export interface Builder<
 	readonly _requirements: R;
 	step<const Id extends Remaining, SR>(
 		id: Id,
-		handlers: StepHandlers<StepsOf<C>[Id], StepsOf<C>, ErrorOf<C>, SR>,
+		handlers: StepHandlers<
+			StepsOf<C>[Id],
+			StepsOf<C>,
+			ErrorOf<C>,
+			SR,
+			ProvidedBy<C>
+		>,
 	): Builder<
 		C,
 		Exclude<Remaining, Id>,
@@ -66,6 +80,7 @@ export interface Builder<
 				SR,
 				| ConversationInput.ContextService<StepsOf<C>[Id]['input']>
 				| UpdateContext.UpdateContext
+				| ProvidedBy<C>
 		  >
 		| ConversationInput.Requirements<StepsOf<C>[Id]['input']>,
 		Implementations & { readonly [K in Id]: typeof handlers }

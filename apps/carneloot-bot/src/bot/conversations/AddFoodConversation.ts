@@ -34,6 +34,7 @@ import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
 import { PetRepository } from '../../ports/PetRepository.js';
 import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
 import { UserRepository } from '../../ports/UserRepository.js';
+import { RegisteredUser } from '../Declaration.js';
 import * as ConversationUi from './ConversationUi.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
@@ -124,6 +125,7 @@ export const declaration = Conversation.make('add-pet-food', {
 		pet: Conversation.step('pet', { state: PetState, input: Text }),
 		amount: Conversation.step('amount', { state: AmountState, input: Text }),
 	},
+	middleware: [RegisteredUser],
 	idleTimeout: 15 * 60 * 1_000,
 	error: ApplicationError,
 });

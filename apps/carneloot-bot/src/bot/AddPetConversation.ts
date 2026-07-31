@@ -9,6 +9,7 @@ import { PetName } from '../domain/Pet.js';
 import { PetRepository } from '../ports/PetRepository.js';
 import { UserRepository } from '../ports/UserRepository.js';
 import * as ConversationUi from './conversations/ConversationUi.js';
+import { RegisteredUser } from './Declaration.js';
 
 const State = Schema.Struct({
 	ownerId: UserId,
@@ -26,6 +27,7 @@ export const declaration = Conversation.make('add-owned-pet', {
 			input: ConversationInput.text(PetName),
 		}),
 	},
+	middleware: [RegisteredUser],
 	idleTimeout: 15 * 60 * 1000,
 	error: ApplicationError,
 });

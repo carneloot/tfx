@@ -1,8 +1,8 @@
 import * as Effect from 'effect/Effect';
 
+import { CurrentUser } from '../bot/CurrentUser.js';
 import { CaregiverAccessLost } from '../domain/caregivers/CaregiverError.js';
 import type { RegisteredUser } from '../domain/User.js';
-import { UserRepository } from '../ports/UserRepository.js';
 import type { CaregiverActor } from './CaregiverResult.js';
 
 export const displayName = (registered: RegisteredUser): string =>
@@ -13,11 +13,7 @@ export const displayName = (registered: RegisteredUser): string =>
 export const currentActor = Effect.fn('CaregiverAccess.currentActor')(
 	(actor: CaregiverActor) =>
 		Effect.gen(function* () {
-			const users = yield* UserRepository;
-			const current = yield* users.findByTelegram(
-				actor.botId,
-				actor.telegramUserId,
-			);
+			const current = yield* CurrentUser;
 			if (current.user.id !== actor.actorId)
 				return yield* Effect.fail(
 					new CaregiverAccessLost({ message: 'Actor identity changed' }),
