@@ -72,71 +72,103 @@ export const layer = Layer.effect(
 			);
 		const service = {
 			replaceForLatest: (request) =>
-				sql
-					.withTransaction(
-						Effect.gen(function* () {
-							const now = yield* DateTime.now;
-							const lockKey = JSON.stringify([request.botId, request.petId]);
-							yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
-							const settings = yield* food.getSettings(request.petId);
-							const latest = yield* food.latestEntry(request.petId);
-							const valid =
-								settings?.reminderDelay !== null &&
-								settings?.reminderDelay !== undefined &&
-								latest?.id === request.foodEntryId &&
-								DateTime.Equivalence(
-									DateTime.addDuration(latest.fedAt, settings.reminderDelay),
-									request.runAt,
+				Effect.gen(function* () {
+					const now = yield* DateTime.now;
+					const lockKey = JSON.stringify([request.botId, request.petId]);
+					yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+					const settings = yield* food.getSettings(request.petId);
+					const latest = yield* food.latestEntry(request.petId);
+					const valid =
+						settings?.reminderDelay !== null &&
+						settings?.reminderDelay !== undefined &&
+						latest?.id === request.foodEntryId &&
+						DateTime.Equivalence(
+							DateTime.addDuration(latest.fedAt, settings.reminderDelay),
+							request.runAt,
+						);
+					if (!valid) {
+						yield* cancelLocked(request.botId, request.petId, now);
+						return;
+					}
+					const sent =
+						yield* sql`SELECT 1 FROM carneloot.notification_events e JOIN carneloot.notification_deliveries d ON d.event_id=e.id WHERE e.bot_id=${request.botId} AND e.owner_user_id=${request.ownerUserId}::uuid AND e.pet_id=${request.petId}::uuid AND e.food_entry_id=${request.foodEntryId}::uuid AND e.kind='feeding-reminder' AND d.status='sent' LIMIT 1`;
+					if (sent.length > 0) {
+						yield* cancelLocked(request.botId, request.petId, now);
+						return;
+					}
+					const active = yield* sql<{
+						id: string;
+						food_entry_id: string | null;
+						scheduled_for: Date | string | null;
+						job_id: string | null;
+						status: 'scheduled' | 'dispatching';
+					}>`SELECT id,food_entry_id,scheduled_for,job_id,status FROM carneloot.notification_events WHERE bot_id=${request.botId} AND pet_id=${request.petId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`;
+					if (
+						active.some(
+							(event) =>
+								event.food_entry_id === request.foodEntryId &&
+								event.status === 'dispatching',
+						)
+					)
+						return;
+					const matching = active.find(
+						(event) =>
+							event.food_entry_id === request.foodEntryId &&
+							event.scheduled_for !== null &&
+							DateTime.Equivalence(
+								Schema.decodeUnknownSync(Timestamp)(event.scheduled_for),
+								request.runAt,
+							) &&
+							event.job_id !== null,
+					);
+					if (matching !== undefined && active.length === 1) return;
+					const cancelled = yield* notifications.cancelActiveForPet(
+						request.botId,
+						request.petId,
+						now,
+					);
+					yield* cancelJobs(cancelled);
+					const runAtMillis = DateTime.toEpochMillis(request.runAt);
+					const baseDedupe = `feeding-reminder:${request.botId}:${request.petId}:${request.foodEntryId}:${runAtMillis}`;
+					const id = Schema.decodeUnknownSync(EventId)(
+						yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+					);
+					let event = yield* notifications.createEvent({
+						id,
+						botId: request.botId,
+						kind: 'feeding-reminder',
+						ownerUserId: request.ownerUserId,
+						petId: request.petId,
+						foodEntryId: request.foodEntryId,
+						scheduledFor: request.runAt,
+						foodTimestampExplicit: false,
+						dedupeKey: baseDedupe,
+						now,
+					});
+					if (event.status === 'cancelled') {
+						const revived = yield* notifications.reviveCancelledEvent(
+							event.id,
+							now,
+						);
+						if (revived) {
+							const restored = yield* notifications.getDispatchContext(
+								event.id,
+							);
+							if (restored === undefined)
+								return yield* Effect.fail(
+									schedulerError(
+										'Revived reminder event disappeared',
+										undefined,
+										'InvariantViolation',
+									),
 								);
-							if (!valid) {
-								yield* cancelLocked(request.botId, request.petId, now);
-								return;
-							}
-							const sent =
-								yield* sql`SELECT 1 FROM carneloot.notification_events e JOIN carneloot.notification_deliveries d ON d.event_id=e.id WHERE e.bot_id=${request.botId} AND e.owner_user_id=${request.ownerUserId}::uuid AND e.pet_id=${request.petId}::uuid AND e.food_entry_id=${request.foodEntryId}::uuid AND e.kind='feeding-reminder' AND d.status='sent' LIMIT 1`;
-							if (sent.length > 0) {
-								yield* cancelLocked(request.botId, request.petId, now);
-								return;
-							}
-							const active = yield* sql<{
-								id: string;
-								food_entry_id: string | null;
-								scheduled_for: Date | string | null;
-								job_id: string | null;
-								status: 'scheduled' | 'dispatching';
-							}>`SELECT id,food_entry_id,scheduled_for,job_id,status FROM carneloot.notification_events WHERE bot_id=${request.botId} AND pet_id=${request.petId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`;
-							if (
-								active.some(
-									(event) =>
-										event.food_entry_id === request.foodEntryId &&
-										event.status === 'dispatching',
-								)
-							)
-								return;
-							const matching = active.find(
-								(event) =>
-									event.food_entry_id === request.foodEntryId &&
-									event.scheduled_for !== null &&
-									DateTime.Equivalence(
-										Schema.decodeUnknownSync(Timestamp)(event.scheduled_for),
-										request.runAt,
-									) &&
-									event.job_id !== null,
-							);
-							if (matching !== undefined && active.length === 1) return;
-							const cancelled = yield* notifications.cancelActiveForPet(
-								request.botId,
-								request.petId,
-								now,
-							);
-							yield* cancelJobs(cancelled);
-							const runAtMillis = DateTime.toEpochMillis(request.runAt);
-							const baseDedupe = `feeding-reminder:${request.botId}:${request.petId}:${request.foodEntryId}:${runAtMillis}`;
-							const id = Schema.decodeUnknownSync(EventId)(
+							event = restored;
+						} else {
+							const generationId = Schema.decodeUnknownSync(EventId)(
 								yield* crypto.randomUUIDv4.pipe(Effect.orDie),
 							);
-							let event = yield* notifications.createEvent({
-								id,
+							event = yield* notifications.createEvent({
+								id: generationId,
 								botId: request.botId,
 								kind: 'feeding-reminder',
 								ownerUserId: request.ownerUserId,
@@ -144,125 +176,75 @@ export const layer = Layer.effect(
 								foodEntryId: request.foodEntryId,
 								scheduledFor: request.runAt,
 								foodTimestampExplicit: false,
-								dedupeKey: baseDedupe,
+								dedupeKey: `${baseDedupe}:${generationId}`,
 								now,
 							});
-							if (event.status === 'cancelled') {
-								const revived = yield* notifications.reviveCancelledEvent(
-									event.id,
-									now,
-								);
-								if (revived) {
-									const restored = yield* notifications.getDispatchContext(
-										event.id,
-									);
-									if (restored === undefined)
-										return yield* Effect.fail(
-											schedulerError(
-												'Revived reminder event disappeared',
-												undefined,
-												'InvariantViolation',
-											),
-										);
-									event = restored;
-								} else {
-									const generationId = Schema.decodeUnknownSync(EventId)(
-										yield* crypto.randomUUIDv4.pipe(Effect.orDie),
-									);
-									event = yield* notifications.createEvent({
-										id: generationId,
-										botId: request.botId,
-										kind: 'feeding-reminder',
-										ownerUserId: request.ownerUserId,
-										petId: request.petId,
-										foodEntryId: request.foodEntryId,
-										scheduledFor: request.runAt,
-										foodTimestampExplicit: false,
-										dedupeKey: `${baseDedupe}:${generationId}`,
-										now,
-									});
-								}
-							} else if (event.status === 'completed') {
-								const generationId = Schema.decodeUnknownSync(EventId)(
-									yield* crypto.randomUUIDv4.pipe(Effect.orDie),
-								);
-								event = yield* notifications.createEvent({
-									id: generationId,
-									botId: request.botId,
-									kind: 'feeding-reminder',
-									ownerUserId: request.ownerUserId,
-									petId: request.petId,
-									foodEntryId: request.foodEntryId,
-									scheduledFor: request.runAt,
-									foodTimestampExplicit: false,
-									dedupeKey: `${baseDedupe}:${generationId}`,
-									now,
-								});
-							}
-							const scheduled = yield* jobs.schedule(
-								FeedingReminderJob.declaration,
-								{
-									eventId: event.id,
-									botId: request.botId,
-									petId: request.petId,
-									foodEntryId: request.foodEntryId,
-								},
-								{
-									runAt: request.runAt,
-									conflictKey: `feeding-reminder:${request.botId}:${request.petId}`,
-								},
-							);
-							const attached = yield* notifications.attachJob(
-								event.id,
-								scheduled.id,
-								now,
-							);
-							if (!attached)
-								return yield* Effect.fail(
-									schedulerError(
-										'Failed to attach feeding reminder job',
-										undefined,
-										'InvariantViolation',
-									),
-								);
-						}).pipe(
-							Effect.mapError((cause) =>
-								cause instanceof ReminderSchedulerError
-									? cause
-									: schedulerError('Failed to replace feeding reminder', cause),
+						}
+					} else if (event.status === 'completed') {
+						const generationId = Schema.decodeUnknownSync(EventId)(
+							yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+						);
+						event = yield* notifications.createEvent({
+							id: generationId,
+							botId: request.botId,
+							kind: 'feeding-reminder',
+							ownerUserId: request.ownerUserId,
+							petId: request.petId,
+							foodEntryId: request.foodEntryId,
+							scheduledFor: request.runAt,
+							foodTimestampExplicit: false,
+							dedupeKey: `${baseDedupe}:${generationId}`,
+							now,
+						});
+					}
+					const scheduled = yield* jobs.schedule(
+						FeedingReminderJob.declaration,
+						{
+							eventId: event.id,
+							botId: request.botId,
+							petId: request.petId,
+							foodEntryId: request.foodEntryId,
+						},
+						{
+							runAt: request.runAt,
+							conflictKey: `feeding-reminder:${request.botId}:${request.petId}`,
+						},
+					);
+					const attached = yield* notifications.attachJob(
+						event.id,
+						scheduled.id,
+						now,
+					);
+					if (!attached)
+						return yield* Effect.fail(
+							schedulerError(
+								'Failed to attach feeding reminder job',
+								undefined,
+								'InvariantViolation',
 							),
-						),
-					)
-					.pipe(Effect.withSpan('ReminderScheduler.transaction'))
-					.pipe(
-						Effect.mapError((cause) =>
-							cause instanceof ReminderSchedulerError
-								? cause
-								: schedulerError('Failed to replace feeding reminder', cause),
-						),
+						);
+				}).pipe(
+					sql.withTransaction,
+					Effect.withSpan('ReminderScheduler.transaction'),
+					Effect.mapError((cause) =>
+						cause instanceof ReminderSchedulerError
+							? cause
+							: schedulerError('Failed to replace feeding reminder', cause),
 					),
+				),
 			cancelForPet: (request) =>
-				sql
-					.withTransaction(
-						Effect.gen(function* () {
-							const now = yield* DateTime.now;
-							const lockKey = JSON.stringify([request.botId, request.petId]);
-							yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
-							yield* cancelLocked(request.botId, request.petId, now);
-						}).pipe(
-							Effect.mapError((cause) =>
-								schedulerError('Failed to cancel feeding reminder', cause),
-							),
-						),
-					)
-					.pipe(Effect.withSpan('ReminderScheduler.transaction'))
-					.pipe(
-						Effect.mapError((cause) =>
-							cause instanceof ReminderSchedulerError
-								? cause
-								: schedulerError('Failed to cancel feeding reminder', cause),
-						),
+				Effect.gen(function* () {
+					const now = yield* DateTime.now;
+					const lockKey = JSON.stringify([request.botId, request.petId]);
+					yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+					yield* cancelLocked(request.botId, request.petId, now);
+				}).pipe(
+					sql.withTransaction,
+					Effect.withSpan('ReminderScheduler.transaction'),
+					Effect.mapError((cause) =>
+						schedulerError('Failed to cancel feeding reminder', cause),
 					),
+				),
 		} satisfies ReminderSchedulerService;
 		return traceService('ReminderScheduler', service);
 	}),

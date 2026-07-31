@@ -41,8 +41,10 @@ export const execute = Effect.fn('ListCurrentFoodEntries.execute')(
 				return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 			});
 			const actorIds = [...new Set(ordered.map((entry) => entry.recordedBy))];
-			const actors = yield* Effect.forEach(actorIds, (actorId) =>
-				users.findById(botId, actorId),
+			const actors = yield* Effect.forEach(
+				actorIds,
+				(actorId) => users.findById(botId, actorId),
+				{ concurrency: 4 },
 			);
 			const actorsById = new Map(
 				actors.map((actor) => [actor.user.id, actor] as const),

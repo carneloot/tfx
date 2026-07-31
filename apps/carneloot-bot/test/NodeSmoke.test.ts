@@ -18,11 +18,11 @@ const nodePortableApplicationLayer = Layer.provide(
 	NodeCrypto.layer,
 );
 
-type NodePortableApplicationExcludesCrypto = Assert<
+const nodePortableApplicationExcludesCrypto: Assert<
 	IsNever<
 		Extract<Layer.Services<typeof nodePortableApplicationLayer>, Crypto.Crypto>
 	>
->;
+> = true;
 
 describe('portable Node composition', () => {
 	it('provides Node Crypto without building portable application', async () => {
@@ -38,6 +38,7 @@ describe('portable Node composition', () => {
 	});
 
 	it('exports complete router metadata and production polling options', () => {
+		expect(nodePortableApplicationExcludesCrypto).toBe(true);
 		expect(
 			[
 				Router.accountHandlers,

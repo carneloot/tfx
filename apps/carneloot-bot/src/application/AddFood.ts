@@ -88,8 +88,8 @@ export const execute = Effect.fn('AddFood.execute')(
 							source.botId,
 							source.updateId,
 						);
+						const settings = yield* repository.getSettings(access.petId);
 						if (replay !== undefined) {
-							const settings = yield* repository.getSettings(access.petId);
 							const latest = yield* repository.latestEntry(access.petId);
 							return {
 								entry: replay,
@@ -98,17 +98,15 @@ export const execute = Effect.fn('AddFood.execute')(
 								timeZone: settings?.timeZone ?? null,
 							};
 						}
-						const settings = yield* repository.getSettings(access.petId);
 						if (
 							settings === undefined ||
 							settings.dayStart === null ||
 							settings.timeZone === null
 						)
-							return yield* Effect.fail(
-								new PetFoodSetupMissing({
-									message: 'Pet day start is not configured',
-								}),
-							);
+							return yield* new PetFoodSetupMissing({
+								message: 'Pet day start is not configured',
+							});
+
 						const now = yield* DateTime.now;
 						const fedAt =
 							input.when.length === 0
@@ -122,15 +120,16 @@ export const execute = Effect.fn('AddFood.execute')(
 							access.petId,
 							fedAt,
 						);
+
 						if (duplicate !== undefined)
-							return yield* Effect.fail(
-								new DuplicateFoodEntry({
-									message: 'A food entry already exists within one minute',
-								}),
-							);
+							return yield* new DuplicateFoodEntry({
+								message: 'A food entry already exists within one minute',
+							});
+
 						const id = Schema.decodeUnknownSync(FoodEntryId)(
 							yield* crypto.randomUUIDv4.pipe(Effect.orDie),
 						);
+
 						const entry = yield* repository.insert({
 							id,
 							petId: access.petId,
@@ -141,8 +140,9 @@ export const execute = Effect.fn('AddFood.execute')(
 							now,
 						});
 						const latest = yield* repository.latestEntry(access.petId);
+
 						const isLatest = latest?.id === entry.id;
-						if (isLatest && settings.reminderDelay !== null)
+						if (isLatest && settings.reminderDelay !== null) {
 							yield* scheduler.replaceForLatest({
 								botId: access.botId,
 								ownerUserId: authorized.ownerId,
@@ -153,6 +153,7 @@ export const execute = Effect.fn('AddFood.execute')(
 									settings.reminderDelay,
 								),
 							});
+						}
 						yield* foodNotifications.scheduleAdded({
 							botId: access.botId,
 							ownerUserId: authorized.ownerId,
