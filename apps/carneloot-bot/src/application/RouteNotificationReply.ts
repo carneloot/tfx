@@ -57,7 +57,7 @@ export const execute = Effect.fn('RouteNotificationReply.execute')(
 			owner.recipientChatId === null ||
 			owner.telegramMessageId === null
 		)
-			return yield* RouteFoodReply.execute(input);
+			return { _tag: 'Unrelated' } as const;
 		const telegram = yield* Telegram;
 		yield* telegram.sendMessage({
 			chat_id: owner.recipientChatId,

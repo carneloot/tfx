@@ -1,4 +1,3 @@
-import { Data } from 'effect';
 import * as Schema from 'effect/Schema';
 
 import { SafeError } from './DeliveryOutcome.js';
@@ -10,26 +9,25 @@ export interface ExternalNotificationInput {
 	readonly variables: Readonly<Record<string, string | number>>;
 }
 
-export class InvalidApiKey extends Data.TaggedError('InvalidApiKey')<{
-	readonly message: string;
-}> {}
+export class InvalidApiKey extends Schema.TaggedErrorClass<InvalidApiKey>()(
+	'InvalidApiKey',
+	{ message: Schema.String },
+) {}
 
-export class TemplateNotFound extends Data.TaggedError('TemplateNotFound')<{
-	readonly message: string;
-}> {}
+export class TemplateNotFound extends Schema.TaggedErrorClass<TemplateNotFound>()(
+	'TemplateNotFound',
+	{ message: Schema.String },
+) {}
 
-export class MissingTemplateVariables extends Data.TaggedError(
+export class MissingTemplateVariables extends Schema.TaggedErrorClass<MissingTemplateVariables>()(
 	'MissingTemplateVariables',
-)<{
-	readonly names: ReadonlyArray<string>;
-	readonly message: string;
-}> {}
+	{ names: Schema.Array(Schema.String), message: Schema.String },
+) {}
 
-export class InitialNotificationPersistenceUnavailable extends Data.TaggedError(
+export class InitialNotificationPersistenceUnavailable extends Schema.TaggedErrorClass<InitialNotificationPersistenceUnavailable>()(
 	'InitialNotificationPersistenceUnavailable',
-)<{
-	readonly message: string;
-}> {}
+	{ message: Schema.String },
+) {}
 
 export interface DeliveryCounts {
 	readonly sent: number;

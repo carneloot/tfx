@@ -196,6 +196,7 @@ const harness = (
 	} as const;
 	const repository: NotificationRepositoryService = {
 		createEvent: () => Effect.die('unused'),
+		createExternalEvent: () => Effect.die('unused'),
 		cancelActiveForPet: () => Effect.die('unused'),
 		reviveCancelledEvent: () => Effect.die('unused'),
 		cancelEvent: () =>
@@ -291,8 +292,10 @@ const harness = (
 				state = 'unknown';
 				return true;
 			}),
+		finalizeUnattempted: () => Effect.die('unused'),
 		reconcileUnknownAsSent: () => Effect.die('unused'),
 		findSentByTelegramMessage: () => unused(),
+		findSentOwnerByEvent: () => unused(),
 		summarizeAndComplete: () =>
 			Effect.succeed({
 				pending: state === 'pending' ? 1 : 0,
@@ -302,6 +305,10 @@ const harness = (
 					state === 'sent' || state === 'unknown' || state === 'permanent'
 						? 1
 						: 0,
+				sent: state === 'sent' ? 1 : 0,
+				failed: state === 'permanent' ? 1 : 0,
+				unknown: state === 'unknown' ? 1 : 0,
+				failures: [],
 				completed:
 					state === 'sent' || state === 'unknown' || state === 'permanent',
 				earliestRetryAt:
@@ -360,6 +367,7 @@ const harness = (
 	const layer = Layer.mergeAll(
 		Layer.succeed(NotificationRepository, repository),
 		Layer.succeed(NotificationRecipients, {
+			resolveUser: () => unused(),
 			resolvePetRecipients: () =>
 				Effect.succeed([
 					{
@@ -762,5 +770,27 @@ describe('generic external delivery', () => {
 		);
 		expect(result).toBe('sent');
 		expect(h.state()).toBe('sent');
+	});
+
+	it('records rate limit as terminal generic failure', async () => {
+		const h = harness(
+			Effect.fail(
+				telegramError(
+					new RateLimitError({
+						errorCode: 429,
+						description: 'later',
+						retryAfterSeconds: 2,
+					}),
+				),
+			),
+		);
+		const result = await Effect.runPromise(
+			Effect.provide(
+				Dispatch.executeGeneric({ eventId, botId, text: 'Frozen external text' }),
+				h.layer,
+			),
+		);
+		expect(result).toBe('failed');
+		expect(h.state()).toBe('permanent');
 	});
 });

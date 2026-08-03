@@ -30,6 +30,31 @@ import * as DispatchNotificationDelivery from './DispatchNotificationDelivery.js
 const encoder = new TextEncoder();
 const directConcurrency = 4;
 
+type GenericDispatchOutcome = 'sent' | 'failed' | 'unknown';
+
+export const fallbackCounts = (
+	deliveries: ReadonlyArray<{ readonly status: string }>,
+	reachable: ReadonlyArray<unknown>,
+	outcomes: ReadonlyArray<GenericDispatchOutcome>,
+) => {
+	const counts = { sent: 0, failed: 0, unknown: 0 };
+	for (const delivery of deliveries)
+		if (!reachable.includes(delivery)) {
+			if (delivery.status === 'sent') counts.sent++;
+			else if (delivery.status === 'failed') counts.failed++;
+			else counts.unknown++;
+		}
+	for (const outcome of outcomes) counts[outcome]++;
+
+	if (counts.unknown === 0) {
+		if (counts.sent > 0) counts.sent--;
+		else if (counts.failed > 0) counts.failed--;
+		else return counts;
+		counts.unknown++;
+	}
+	return counts;
+};
+
 export const execute = Effect.fn('SendExternalNotification.execute')(
 	function* (input: ExternalNotificationInput) {
 		const crypto = yield* Crypto.Crypto;
@@ -142,14 +167,7 @@ export const execute = Effect.fn('SendExternalNotification.execute')(
 			.summarizeAndComplete(created.event.id, finalizedAt)
 			.pipe(Effect.orElseSucceed(() => undefined));
 		if (summary === undefined) {
-			const counts = {
-				sent: outcomes.filter((outcome) => outcome === 'sent').length,
-				failed:
-					created.deliveries.filter((delivery) => delivery.status === 'failed')
-						.length + outcomes.filter((outcome) => outcome === 'failed').length,
-				unknown:
-					outcomes.filter((outcome) => outcome === 'unknown').length + 1,
-			};
+			const counts = fallbackCounts(created.deliveries, reachable, outcomes);
 			return {
 				eventId: created.event.id,
 				...classifyOutcome(counts),

@@ -87,14 +87,18 @@ const delivery = (recipientUserId: typeof UserId.Type, role: 'owner' | 'subscrib
 	updatedAt: DateTime.makeUnsafe(0),
 });
 
-const run = (context: { readonly delivery: ReturnType<typeof delivery>; readonly event: typeof event } | undefined, sent: unknown[]) =>
+const run = (
+	context: { readonly delivery: ReturnType<typeof delivery>; readonly event: typeof event } | undefined,
+	sent: unknown[],
+	owner: ReturnType<typeof delivery> | null = delivery(ownerId, 'owner'),
+) =>
 	Effect.runPromise(
 		RouteNotificationReply.execute(input).pipe(
 			Effect.provide(
 				Layer.merge(
 					Layer.succeed(NotificationRepository, {
 						findSentByTelegramMessage: () => Effect.succeed(context),
-						findSentOwnerByEvent: () => Effect.succeed(delivery(ownerId, 'owner')),
+						findSentOwnerByEvent: () => Effect.succeed(owner ?? undefined),
 					} as never),
 					Layer.succeed(Telegram, {
 						sendMessage: (message: unknown) => {
@@ -104,7 +108,7 @@ const run = (context: { readonly delivery: ReturnType<typeof delivery>; readonly
 					} as never),
 				),
 			),
-		),
+		) as never,
 	);
 
 describe('RouteNotificationReply', () => {
@@ -122,6 +126,14 @@ describe('RouteNotificationReply', () => {
 		]);
 	});
 
+	it('returns Unrelated when external subscriber reply has no sent owner', async () => {
+		const sent: unknown[] = [];
+		await expect(
+			run({ delivery: delivery(subscriberId, 'subscriber'), event }, sent, null),
+		).resolves.toEqual({ _tag: 'Unrelated' });
+		expect(sent).toEqual([]);
+	});
+
 	it('returns typed permanent rejection for owner self-reply', async () => {
 		const sent: unknown[] = [];
 		const result = await Effect.runPromise(
@@ -137,7 +149,7 @@ describe('RouteNotificationReply', () => {
 						),
 					),
 				),
-			),
+			) as never,
 		);
 		expect(result).toMatchObject({
 			_tag: 'NotificationReplyRejected',
