@@ -107,6 +107,76 @@ describe('legacy mapping', () => {
 		);
 	});
 
+	it('maps notification provisioning with stable ownership and subscriptions', async () => {
+		const snapshot = empty() as any;
+		snapshot.users = [
+			{
+				id: 'owner',
+				telegram_id: '41',
+				username: null,
+				first_name: 'Owner',
+				last_name: null,
+			},
+			{
+				id: 'subscriber',
+				telegram_id: '42',
+				username: null,
+				first_name: 'Subscriber',
+				last_name: null,
+			},
+		];
+		snapshot.api_keys = [
+			{
+				id: 'key',
+				user_id: 'owner',
+				key: 'a'.repeat(64),
+				created_at: 1_700_000_000,
+			},
+		];
+		snapshot.notifications = [
+			{
+				id: 'template',
+				owner_id: 'owner',
+				keyword: 'meal',
+				message: 'Hello {{name}}',
+			},
+		];
+		snapshot.users_to_notify = [
+			{
+				id: 'subscription',
+				notification_id: 'template',
+				user_id: 'subscriber',
+			},
+		];
+		const mapped = await Effect.runPromise(
+			mapLegacySnapshot(
+				snapshot,
+				'sha256:test',
+				'bot',
+				new Date('2026-01-01'),
+			).pipe(Effect.provide(NodeCrypto.layer)),
+		);
+		const apiKey = mapped.rows.find((row) => row.targetTable === 'api_keys')!;
+		const template = mapped.rows.find(
+			(row) => row.targetTable === 'notification_templates',
+		)!;
+		const subscription = mapped.rows.find(
+			(row) => row.targetTable === 'notification_subscriptions',
+		)!;
+		expect(apiKey.value).toMatchObject({ key_hash: 'a'.repeat(64) });
+		expect(template.value).toMatchObject({
+			keyword: 'meal',
+			message: 'Hello {{name}}',
+			owner_user_id: apiKey.value.user_id,
+		});
+		expect(subscription.value).toMatchObject({
+			template_id: template.value.id,
+		});
+		expect(subscription.targetKey).toBe(
+			`${template.value.id}:${subscription.value.user_id}`,
+		);
+	});
+
 	it('preserves food timestamp and reports exact rounding', async () => {
 		const snapshot = empty() as any;
 		snapshot.users = [

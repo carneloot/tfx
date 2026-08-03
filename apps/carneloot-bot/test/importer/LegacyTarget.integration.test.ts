@@ -1,13 +1,31 @@
+import * as NodeCrypto from '@effect/platform-node/NodeCrypto';
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { Effect, Layer } from 'effect';
-import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { createHash, randomUUID } from 'node:crypto';
+import { Telegram } from 'tfx/Telegram';
+import { describe, expect, it, vi } from 'vitest';
 
-import type { MappedLegacy } from '../../src/importer/LegacyMapping.js';
+vi.mock('../../src/bot/Declaration.js', () => ({ botId: 'carneloot' }));
+
+import * as SendExternalNotification from '../../src/application/SendExternalNotification.js';
+import {
+	mapLegacySnapshot,
+	type MappedLegacy,
+} from '../../src/importer/LegacyMapping.js';
+import {
+	legacyTables,
+	type LegacySnapshot,
+} from '../../src/importer/LegacySchemas.js';
 import { LegacyTarget } from '../../src/importer/LegacyTarget.js';
 import * as LegacyTargetLive from '../../src/importer/LegacyTargetLive.js';
 import { migrate } from '../../src/postgres/AppMigrator.js';
+import * as RepositoriesLive from '../../src/postgres/RepositoriesLive.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
+
+const emptySnapshot = () =>
+	Object.fromEntries(
+		legacyTables.map((table) => [table, []]),
+	) as unknown as LegacySnapshot;
 
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -197,6 +215,121 @@ describe.skipIf(!enabled)('legacy target dry run', () => {
 		});
 		expect(result.users).toBe(1);
 		expect(result.ledgers).toBe(501);
+	});
+
+	it('promotes imported notification provisioning idempotently for external delivery', async () => {
+		const apiKey = `legacy-key-${randomUUID()}`;
+		const keyHash = createHash('sha256').update(apiKey).digest('hex');
+		const snapshot = emptySnapshot() as any;
+		snapshot.users = [
+			{
+				id: 'owner',
+				telegram_id: '41',
+				username: null,
+				first_name: 'Owner',
+				last_name: null,
+			},
+			{
+				id: 'subscriber',
+				telegram_id: '42',
+				username: null,
+				first_name: 'Subscriber',
+				last_name: null,
+			},
+		];
+		snapshot.api_keys = [
+			{ id: 'key', user_id: 'owner', key: keyHash, created_at: 1_700_000_000 },
+		];
+		snapshot.notifications = [
+			{
+				id: 'template',
+				owner_id: 'owner',
+				keyword: 'meal',
+				message: 'Hello {{name}}',
+			},
+		];
+		snapshot.users_to_notify = [
+			{
+				id: 'subscription',
+				notification_id: 'template',
+				user_id: 'subscriber',
+			},
+		];
+		const mapped = await Effect.runPromise(
+			mapLegacySnapshot(
+				snapshot,
+				`notifications-${randomUUID()}`,
+				'carneloot',
+				new Date('2026-01-01T00:00:00.000Z'),
+			).pipe(Effect.provide(NodeCrypto.layer)),
+		);
+		const sent: Array<Record<string, unknown>> = [];
+		const telegram = Layer.succeed(Telegram, {
+			sendMessage: (request: Record<string, unknown>) =>
+				Effect.sync(() => {
+					sent.push(request);
+					return { message_id: sent.length };
+				}),
+		} as never);
+		const services = Layer.provideMerge(
+			Layer.merge(LegacyTargetLive.layer, RepositoriesLive.layer),
+			Layer.mergeAll(PostgresTestLayer.layer, NodeCrypto.layer, telegram),
+		);
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const sql = yield* PgClient.PgClient;
+				const target = yield* LegacyTarget;
+				const first = yield* target.promote(mapped, { dryRun: false });
+				const second = yield* target.promote(mapped, { dryRun: false });
+				const key = yield* sql<{
+					readonly key_hash: string;
+					readonly user_id: string;
+				}>`SELECT key_hash,user_id FROM carneloot.api_keys WHERE id=${mapped.rows.find((row) => row.targetTable === 'api_keys')!.value.id}`;
+				const template = yield* sql<{
+					readonly owner_user_id: string;
+					readonly keyword: string;
+					readonly message: string;
+				}>`SELECT owner_user_id,keyword,message FROM carneloot.notification_templates WHERE id=${mapped.rows.find((row) => row.targetTable === 'notification_templates')!.value.id}`;
+				const subscriptions = yield* sql<{
+					readonly count: number;
+				}>`SELECT count(*)::int count FROM carneloot.notification_subscriptions WHERE template_id=${mapped.rows.find((row) => row.targetTable === 'notification_templates')!.value.id}`;
+				const delivery = yield* SendExternalNotification.execute({
+					apiKey,
+					keyword: 'meal',
+					variables: { name: 'Mimo' },
+				});
+				return {
+					first,
+					second,
+					key: key[0],
+					template: template[0],
+					subscriptions: subscriptions[0]?.count,
+					delivery,
+				};
+			}).pipe(Effect.provide(services)),
+		);
+		expect(result.first.inserted).toMatchObject({
+			users: 4,
+			api_keys: 1,
+			notifications: 1,
+			users_to_notify: 1,
+		});
+		expect(result.second.existing).toMatchObject(result.first.inserted);
+		expect(result.key?.key_hash).toBe(keyHash);
+		expect(result.template?.owner_user_id).toBe(result.key?.user_id);
+		expect(result.template).toMatchObject({
+			keyword: 'meal',
+			message: 'Hello {{name}}',
+		});
+		expect(result.subscriptions).toBe(1);
+		expect(result.delivery).toMatchObject({
+			status: 'sent',
+			counts: { sent: 2, failed: 0, unknown: 0 },
+		});
+		expect(sent).toEqual([
+			{ chat_id: 41, text: 'Hello Mimo' },
+			{ chat_id: 42, text: 'Hello Mimo' },
+		]);
 	});
 
 	it('adopts preexisting composite targets through typed probes', async () => {
