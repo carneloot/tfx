@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeTargetForComparison } from '../../src/importer/LegacyTargetLive.js';
+import {
+	normalizeMappedForComparison,
+	normalizeTargetForComparison,
+} from '../../src/importer/LegacyTargetLive.js';
 
 describe('normalizeTargetForComparison', () => {
 	it('normalizes mapped timestamps to ISO instants', () => {
@@ -19,6 +22,15 @@ describe('normalizeTargetForComparison', () => {
 			created_at: '2026-01-01T00:00:00.000Z',
 			message: 'Hello',
 		});
+	});
+
+	it('compares mapped UTC milliseconds and target UTC offset equally', () => {
+		const mapped = { created_at: '2026-01-01T00:00:00.000Z' };
+		const target = { created_at: '2026-01-01T00:00:00+00:00' };
+
+		expect(normalizeMappedForComparison(mapped)).toEqual(
+			normalizeTargetForComparison(mapped, target),
+		);
 	});
 
 	it('preserves non-timestamp values exactly', () => {

@@ -50,21 +50,32 @@ const mappedTimestampFields = new Set([
 	'unknown_at',
 ]);
 
+const normalizeTimestamp = (key: string, value: unknown) => {
+	if (!mappedTimestampFields.has(key) || typeof value !== 'string')
+		return value;
+	const timestamp = new Date(value);
+	return Number.isNaN(timestamp.valueOf()) ? value : timestamp.toISOString();
+};
+
+export const normalizeMappedForComparison = (
+	mapped: Readonly<Record<string, unknown>>,
+) =>
+	Object.fromEntries(
+		Object.entries(mapped).map(([key, value]) => [
+			key,
+			normalizeTimestamp(key, value),
+		]),
+	);
+
 export const normalizeTargetForComparison = (
 	mapped: Readonly<Record<string, unknown>>,
 	target: Readonly<Record<string, unknown>>,
 ) =>
 	Object.fromEntries(
-		Object.keys(mapped).map((key) => {
-			const value = target[key];
-			if (!mappedTimestampFields.has(key) || typeof value !== 'string')
-				return [key, value];
-			const timestamp = new Date(value);
-			return [
-				key,
-				Number.isNaN(timestamp.valueOf()) ? value : timestamp.toISOString(),
-			];
-		}),
+		Object.keys(mapped).map((key) => [
+			key,
+			normalizeTimestamp(key, target[key]),
+		]),
 	);
 
 const chunks = <A>(rows: ReadonlyArray<A>) =>
@@ -255,7 +266,9 @@ export const layer = Layer.effect(
 											for (const row of sourceBatch)
 												prepared.push({
 													row,
-													digest: yield* canonicalDigest(row.value),
+													digest: yield* canonicalDigest(
+														normalizeMappedForComparison(row.value),
+													),
 												});
 											const ledgers =
 												yield* sql<LedgerRow>`SELECT source_key,row_digest,target_table,target_key FROM carneloot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint} AND source_table=${sourceTable} AND target_table=${targetTable} AND source_key IN ${sql.in(sourceBatch.map((row) => row.sourceKey))} FOR UPDATE`;
