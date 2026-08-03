@@ -16,6 +16,7 @@
 - TFX conversation rows use `(bot_id, chat_id, user_id)` rather than a generic `id` column. Update-deduplication rows use `(bot_id, update_id)`, and the prefixed table name is `<prefix>update_deduplication`.
 - When adding an application migration, update every test that asserts exact migration ledger versions, names, or checksums.
 - In non-interactive environments, reinstall dependencies with `CI=true pnpm install --frozen-lockfile`.
+- Before each commit, run `pnpm lint` and `pnpm format`. Fix all failures before you commit.
 
 ## Conversation Tests
 
