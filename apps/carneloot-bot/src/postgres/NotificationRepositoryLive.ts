@@ -463,6 +463,16 @@ export const layer = Layer.effect(
 								};
 							}),
 						),
+			findSentOwnerByEvent: (eventId) =>
+				protect(
+					Effect.flatMap(
+						sql<Record<string, unknown>>`SELECT * FROM carneloot.notification_deliveries WHERE event_id=${eventId}::uuid AND recipient_role='owner' AND status='sent' AND telegram_bot_id IS NOT NULL AND telegram_message_id IS NOT NULL LIMIT 1`,
+						(rows) =>
+							rows[0] === undefined
+								? Effect.succeed(undefined)
+								: decodeDelivery(rows[0]),
+					),
+				),
 			summarizeAndComplete: (eventId, now) =>
 				protect(
 					sql

@@ -3,7 +3,7 @@ import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
 import { MessageContext, MessageHandlerResult, UpdateContext } from 'tfx';
 
-import * as RouteFoodReply from '../application/RouteFoodReply.js';
+import * as RouteNotificationReply from '../application/RouteNotificationReply.js';
 import { InvalidDomainInput } from '../domain/DomainError.js';
 import { TelegramChatId } from '../domain/Ids.js';
 import { CurrentUser } from './CurrentUser.js';
@@ -27,7 +27,7 @@ export const handle = (input: {
 					}),
 			),
 		);
-		const result = yield* RouteFoodReply.execute({
+		const result = yield* RouteNotificationReply.execute({
 			actorId: current.user.id,
 			botId: current.profile.botId,
 			telegramUserId: current.profile.telegramUserId,
@@ -41,6 +41,8 @@ export const handle = (input: {
 		switch (result._tag) {
 			case 'Unrelated':
 				return MessageHandlerResult.unmatched;
+			case 'NotificationForwarded':
+				return MessageHandlerResult.handled;
 			case 'ReminderFoodAdded':
 				yield* context.reply(`Ração registrada para ${result.pet.name}.`);
 				yield* context.react([{ type: 'emoji', emoji: '👍' }]);

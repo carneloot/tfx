@@ -199,6 +199,12 @@ export interface NotificationRepositoryService {
 		NotificationReplyContext | undefined,
 		NotificationRepositoryError
 	>;
+	readonly findSentOwnerByEvent: (
+		eventId: EventId,
+	) => Effect.Effect<
+		NotificationDelivery | undefined,
+		NotificationRepositoryError
+	>;
 	readonly summarizeAndComplete: (
 		eventId: EventId,
 		now: DateTime.Utc,

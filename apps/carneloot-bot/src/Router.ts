@@ -133,6 +133,8 @@ export const classifyError = (
 				: DispatchOutcome.fatal('reminder-scheduler-invariant');
 		case 'FoodReplyLedgerError':
 			return DispatchOutcome.fatal('food-reply-ledger-invalid');
+		case 'NotificationReplyRejected':
+			return DispatchOutcome.permanentInvalid('notification-owner-self-reply');
 		case 'FoodNotificationSchedulerError':
 			return isRetryableError(error)
 				? DispatchOutcome.retryableFailure(

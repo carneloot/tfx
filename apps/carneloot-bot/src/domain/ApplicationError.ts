@@ -3,6 +3,7 @@ import { SqlError } from 'effect/unstable/sql/SqlError';
 import { TelegramError } from 'tfx/TelegramError';
 
 import { FoodReplyLedgerError } from '../application/RouteFoodReply.js';
+import { NotificationReplyRejected } from './notifications/NotificationReplyError.js';
 import { FoodNotificationSchedulerError } from '../ports/FoodNotificationScheduler.js';
 import { ReminderSchedulerError } from '../ports/ReminderScheduler.js';
 import {
@@ -59,6 +60,7 @@ export const ApplicationError = Schema.Union([
 	ReminderSchedulerError,
 	FoodNotificationSchedulerError,
 	FoodReplyLedgerError,
+	NotificationReplyRejected,
 	ConversationOperationError,
 	InvalidApiKey,
 	TemplateNotFound,
