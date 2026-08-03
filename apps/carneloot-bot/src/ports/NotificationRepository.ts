@@ -58,7 +58,7 @@ export type RecipientInput =
 			readonly error: SafeError;
 	  });
 export interface ExternalEventPayload {
-	readonly templateId: Uuid | null;
+	readonly templateId: typeof Uuid.Type | null;
 	readonly renderedMessage: string;
 }
 export interface DeliveryToken {
@@ -82,6 +82,10 @@ export interface EventSummary {
 	readonly sending: number;
 	readonly retryableFailed: number;
 	readonly terminal: number;
+	readonly sent: number;
+	readonly failed: number;
+	readonly unknown: number;
+	readonly failures: ReadonlyArray<SafeError>;
 	readonly completed: boolean;
 	readonly earliestRetryAt: DateTime.Utc | null;
 	readonly earliestSendingLeaseExpiry: DateTime.Utc | null;
@@ -176,6 +180,11 @@ export interface NotificationRepositoryService {
 		error: SafeError,
 		now: DateTime.Utc,
 	) => Effect.Effect<boolean, NotificationRepositoryError>;
+	readonly finalizeUnattempted: (
+		eventId: EventId,
+		error: SafeError,
+		now: DateTime.Utc,
+	) => Effect.Effect<number, NotificationRepositoryError>;
 	readonly reconcileUnknownAsSent: (
 		token: DeliveryToken,
 		botId: BotId,

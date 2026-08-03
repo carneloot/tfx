@@ -750,3 +750,17 @@ describe('delivery dispatcher', () => {
 		expect(h.state()).toBe('sending');
 	});
 });
+
+describe('generic external delivery', () => {
+	it('sends immutable text and records sent outcome', async () => {
+		const h = harness(Effect.succeed({ message_id: 91 }));
+		const result = await Effect.runPromise(
+			Effect.provide(
+				Dispatch.executeGeneric({ eventId, botId, text: 'Frozen external text' }),
+				h.layer,
+			),
+		);
+		expect(result).toBe('sent');
+		expect(h.state()).toBe('sent');
+	});
+});

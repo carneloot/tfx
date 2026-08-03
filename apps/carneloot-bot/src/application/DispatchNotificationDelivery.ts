@@ -120,6 +120,61 @@ export interface DispatchPayload {
 	readonly petId: PetId;
 	readonly foodEntryId: FoodEntryId;
 }
+export interface GenericDispatchPayload {
+	readonly eventId: EventId;
+	readonly botId: BotId;
+	readonly text: string;
+}
+
+/** Claims and dispatches one immutable external-notification delivery. */
+export const executeGeneric = Effect.fn(
+	'DispatchNotificationDelivery.executeGeneric',
+)(function* (payload: GenericDispatchPayload) {
+	const notifications = yield* NotificationRepository;
+	const now = yield* DateTime.now;
+	const claim = yield* notifications.claimNext(
+		payload.eventId,
+		now,
+		Duration.seconds(30),
+	);
+	if (claim === undefined) return 'unknown' as const;
+	if (claim.delivery.recipientChatId === null) return 'failed' as const;
+	const telegram = yield* Telegram;
+	const sent = yield* Effect.result(
+		telegram.sendMessage({
+			chat_id: claim.delivery.recipientChatId,
+			text: payload.text,
+		}),
+	);
+	const completedAt = yield* DateTime.now;
+	if (sent._tag === 'Success') {
+		const finalized = yield* notifications.finalizeSent(
+			claim.token,
+			payload.botId,
+			sent.success.message_id,
+			completedAt,
+		);
+		return finalized ? ('sent' as const) : ('unknown' as const);
+	}
+	const disposition = classifyTelegramError(sent.failure);
+	if (disposition._tag === 'Unknown') {
+		const finalized = yield* notifications.finalizeUnknown(
+			claim.token,
+			disposition.error,
+			completedAt,
+		);
+		return finalized ? ('unknown' as const) : ('unknown' as const);
+	}
+	const finalized = yield* notifications.finalizeFailed(
+		claim.token,
+		disposition.error,
+		false,
+		null,
+		completedAt,
+	);
+	return finalized ? ('failed' as const) : ('unknown' as const);
+});
+
 const mapRepositoryError = (
 	error: NotificationRepositoryError,
 ): FeedingReminderRetryError | FeedingReminderPermanentError =>

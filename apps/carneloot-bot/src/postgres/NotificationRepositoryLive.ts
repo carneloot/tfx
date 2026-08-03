@@ -429,6 +429,13 @@ export const layer = Layer.effect(
 						(rows) => rows.length > 0,
 					),
 				),
+			finalizeUnattempted: (eventId, safeError, now) =>
+				protect(
+					Effect.map(
+						sql`UPDATE carneloot.notification_deliveries SET status='failed',sending_lease_expires_at=NULL,retryable=false,retry_at=NULL,safe_error_json=${sql.json(safeError)},failed_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE event_id=${eventId}::uuid AND (status='pending' OR (status='failed' AND retryable=true)) RETURNING id`,
+						(rows) => rows.length,
+					),
+				),
 			reconcileUnknownAsSent: (token, botId, messageId, now) =>
 				protect(
 					Effect.map(
@@ -478,9 +485,13 @@ export const layer = Layer.effect(
 									sending: number;
 									retryable_failed: number;
 									terminal: number;
+									sent: number;
+									failed: number;
+									unknown: number;
+									failures: unknown;
 									earliest_retry_at: Date | null;
 									earliest_sending_lease_expiry: Date | null;
-								}>`SELECT count(*) FILTER (WHERE status='pending')::int pending,count(*) FILTER (WHERE status='sending')::int sending,count(*) FILTER (WHERE status='failed' AND retryable=true)::int retryable_failed,count(*) FILTER (WHERE status='sent' OR status='unknown' OR (status='failed' AND retryable=false))::int terminal,min(retry_at) FILTER (WHERE status='failed' AND retryable=true) earliest_retry_at,min(sending_lease_expires_at) FILTER (WHERE status='sending') earliest_sending_lease_expiry FROM carneloot.notification_deliveries WHERE event_id=${eventId}::uuid`;
+								}>`SELECT count(*) FILTER (WHERE status='pending')::int pending,count(*) FILTER (WHERE status='sending')::int sending,count(*) FILTER (WHERE status='failed' AND retryable=true)::int retryable_failed,count(*) FILTER (WHERE status='sent' OR status='unknown' OR (status='failed' AND retryable=false))::int terminal,count(*) FILTER (WHERE status='sent')::int sent,count(*) FILTER (WHERE status='failed')::int failed,count(*) FILTER (WHERE status='unknown')::int unknown,coalesce(jsonb_agg(safe_error_json) FILTER (WHERE safe_error_json IS NOT NULL),'[]'::jsonb) failures,min(retry_at) FILTER (WHERE status='failed' AND retryable=true) earliest_retry_at,min(sending_lease_expires_at) FILTER (WHERE status='sending') earliest_sending_lease_expiry FROM carneloot.notification_deliveries WHERE event_id=${eventId}::uuid`;
 								const row = rows[0];
 								if (row === undefined)
 									return yield* Effect.fail(
@@ -502,6 +513,12 @@ export const layer = Layer.effect(
 									sending: row.sending,
 									retryableFailed: row.retryable_failed,
 									terminal: row.terminal,
+									sent: row.sent,
+									failed: row.failed,
+									unknown: row.unknown,
+									failures: Schema.decodeUnknownSync(Schema.Array(SafeError))(
+										row.failures,
+									),
 									completed: event.status === 'completed' || canComplete,
 									earliestRetryAt:
 										row.earliest_retry_at === null

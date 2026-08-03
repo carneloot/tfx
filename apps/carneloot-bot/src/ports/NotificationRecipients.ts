@@ -34,6 +34,11 @@ export interface NotificationRecipientsService {
 		botId: BotId,
 		ownerUserId: UserId,
 	) => Effect.Effect<ResolvedRecipient, NotificationRecipientsError>;
+	readonly resolveUser: (
+		botId: BotId,
+		userId: UserId,
+		role: RecipientRole,
+	) => Effect.Effect<ResolvedRecipient, NotificationRecipientsError>;
 	readonly resolvePetRecipients: (
 		botId: BotId,
 		petId: PetId,

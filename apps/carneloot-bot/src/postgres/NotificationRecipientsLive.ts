@@ -5,8 +5,13 @@ import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
 import { traceService } from 'tfx/TraceService';
 
+import { botId as canonicalBotId } from '../bot/Declaration.js';
 import { TelegramChatId, UserId } from '../domain/Ids.js';
-import { caregiver, owner } from '../domain/notifications/RecipientRole.js';
+import {
+	caregiver,
+	owner,
+	type RecipientRole,
+} from '../domain/notifications/RecipientRole.js';
 import {
 	NotificationRecipients,
 	NotificationRecipientsError,
@@ -27,7 +32,7 @@ const Recipient = Data.taggedEnum<ResolvedRecipient>();
 
 const unreachable = (
 	userId: UserId,
-	role: typeof owner | typeof caregiver,
+	role: RecipientRole,
 ): ResolvedRecipient =>
 	Recipient.Unreachable({
 		recipientUserId: userId,
@@ -59,7 +64,43 @@ const decodePetRecipient = (input: unknown): PetNotificationRecipient => {
 export const layer = Layer.effect(
 	NotificationRecipients,
 	Effect.map(PgClient.PgClient, (sql) => {
+		const resolveUser = (_botId: string, userId: UserId, role: RecipientRole) =>
+			Effect.flatMap(
+				sql<Record<string, unknown>>`SELECT private_chat_id FROM carneloot.telegram_identities WHERE bot_id=${canonicalBotId} AND user_id=${userId}::uuid`,
+				(rows): Effect.Effect<ResolvedRecipient, NotificationRecipientsError> => {
+					if (rows[0] === undefined) return Effect.succeed(unreachable(userId, role));
+					return Effect.try({
+						try: () => {
+							const row = Schema.decodeUnknownSync(OwnerRow)(rows[0]);
+							const chatId = Schema.decodeUnknownSync(TelegramChatId)(
+								Number(row.private_chat_id),
+							);
+							return Recipient.Reachable({
+								recipientUserId: userId,
+								recipientChatId: chatId,
+								recipientRole: role,
+								channel: 'telegram',
+							});
+						},
+						catch: (cause) =>
+							new NotificationRecipientsError({
+								message: 'Malformed Telegram recipient row',
+								cause,
+							}),
+					});
+				},
+			).pipe(
+				Effect.mapError((cause) =>
+					cause instanceof NotificationRecipientsError
+						? cause
+						: new NotificationRecipientsError({
+								message: 'Recipient lookup failed',
+								cause,
+							}),
+				),
+			);
 		const service = {
+			resolveUser,
 			resolveOwner: (botId, ownerUserId) =>
 				Effect.flatMap(
 					sql<
