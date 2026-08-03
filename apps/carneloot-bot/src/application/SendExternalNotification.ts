@@ -120,7 +120,7 @@ export const execute = Effect.fn('SendExternalNotification.execute')(
 		const reachable = created.deliveries.filter(
 			(delivery) => delivery.recipientChatId !== null && delivery.status === 'pending',
 		);
-		yield* Effect.forEach(
+		const outcomes = yield* Effect.forEach(
 			reachable,
 			() =>
 				DispatchNotificationDelivery.executeGeneric({
@@ -128,7 +128,7 @@ export const execute = Effect.fn('SendExternalNotification.execute')(
 					botId: canonicalBotId,
 					text: rendered,
 				}).pipe(Effect.catch(() => Effect.succeed('unknown' as const))),
-			{ concurrency: directConcurrency, discard: true },
+			{ concurrency: directConcurrency },
 		);
 		const finalizedAt = yield* DateTime.now;
 		const finalizeError = {
@@ -143,10 +143,12 @@ export const execute = Effect.fn('SendExternalNotification.execute')(
 			.pipe(Effect.orElseSucceed(() => undefined));
 		if (summary === undefined) {
 			const counts = {
-				sent: 0,
-				failed: created.deliveries.filter((delivery) => delivery.status === 'failed')
-					.length,
-				unknown: reachable.length,
+				sent: outcomes.filter((outcome) => outcome === 'sent').length,
+				failed:
+					created.deliveries.filter((delivery) => delivery.status === 'failed')
+						.length + outcomes.filter((outcome) => outcome === 'failed').length,
+				unknown:
+					outcomes.filter((outcome) => outcome === 'unknown').length + 1,
 			};
 			return {
 				eventId: created.event.id,
