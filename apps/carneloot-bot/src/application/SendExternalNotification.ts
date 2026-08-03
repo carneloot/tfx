@@ -104,7 +104,14 @@ export const execute = Effect.fn('SendExternalNotification.execute')(
 			...subscriberIds.map((userId) =>
 				recipients.resolveUser(canonicalBotId, userId, subscriber),
 			),
-		]);
+		]).pipe(
+			Effect.mapError(
+				() =>
+					new InitialNotificationPersistenceUnavailable({
+						message: 'Initial notification persistence unavailable',
+					}),
+			),
+		);
 		const eventId = Schema.decodeUnknownSync(EventId)(
 			yield* crypto.randomUUIDv4.pipe(Effect.orDie),
 		);
