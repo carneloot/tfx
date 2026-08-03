@@ -19,6 +19,7 @@ export interface MappedRow {
 	readonly targetTable: string;
 	readonly targetKey: string;
 	readonly value: Readonly<Record<string, unknown>>;
+	readonly ignoredComparisonFields?: ReadonlyArray<string>;
 }
 export interface RoundingNotice {
 	readonly table: 'pet_food';
@@ -72,6 +73,7 @@ export const mapLegacySnapshot = (
 					yield* legacyId(fingerprint, table, id(row)),
 				);
 		const rows: MappedRow[] = [];
+		const importedAuditFields = ['created_at', 'updated_at'];
 		const rounding: RoundingNotice[] = [];
 		const warnings: MappedLegacy['warnings'][number][] = [];
 		const add = (
@@ -80,51 +82,88 @@ export const mapLegacySnapshot = (
 			targetTable: string,
 			targetKey: string,
 			value: Record<string, unknown>,
-		) => rows.push({ sourceTable, sourceKey, targetTable, targetKey, value });
+			ignoredComparisonFields: ReadonlyArray<string> = [],
+		) =>
+			rows.push({
+				sourceTable,
+				sourceKey,
+				targetTable,
+				targetKey,
+				value,
+				ignoredComparisonFields,
+			});
 		for (const r of snapshot.users) {
 			const telegram = num(r.telegram_id);
 			const uid = ids.get(`users:${id(r)}`)!;
-			add('users', id(r), 'users', uid, {
-				id: uid,
-				created_at: importedAt.toISOString(),
-				updated_at: importedAt.toISOString(),
-			});
-			add('users', id(r), 'telegram_identities', `${botId}:${telegram}`, {
-				bot_id: botId,
-				telegram_user_id: telegram,
-				user_id: uid,
-				username: r.username,
-				first_name: r.first_name,
-				last_name: r.last_name,
-				private_chat_id: telegram,
-				created_at: importedAt.toISOString(),
-				updated_at: importedAt.toISOString(),
-			});
+			add(
+				'users',
+				id(r),
+				'users',
+				uid,
+				{
+					id: uid,
+					created_at: importedAt.toISOString(),
+					updated_at: importedAt.toISOString(),
+				},
+				importedAuditFields,
+			);
+			add(
+				'users',
+				id(r),
+				'telegram_identities',
+				`${botId}:${telegram}`,
+				{
+					bot_id: botId,
+					telegram_user_id: telegram,
+					user_id: uid,
+					username: r.username,
+					first_name: r.first_name,
+					last_name: r.last_name,
+					private_chat_id: telegram,
+					created_at: importedAt.toISOString(),
+					updated_at: importedAt.toISOString(),
+				},
+				importedAuditFields,
+			);
 		}
 		for (const r of snapshot.pets) {
 			const pid = ids.get(`pets:${id(r)}`)!;
-			add('pets', id(r), 'pets', pid, {
-				id: pid,
-				owner_id: ids.get(`users:${r.owner_id}`),
-				name: r.name,
-				name_key: String(r.name)
-					.normalize('NFKC')
-					.trim()
-					.toLocaleLowerCase('pt-BR'),
-				created_at: importedAt.toISOString(),
-				updated_at: importedAt.toISOString(),
-			});
+			add(
+				'pets',
+				id(r),
+				'pets',
+				pid,
+				{
+					id: pid,
+					owner_id: ids.get(`users:${r.owner_id}`),
+					name: r.name,
+					name_key: String(r.name)
+						.normalize('NFKC')
+						.trim()
+						.toLocaleLowerCase('pt-BR'),
+					created_at: importedAt.toISOString(),
+					updated_at: importedAt.toISOString(),
+				},
+				importedAuditFields,
+			);
 		}
 		for (const r of snapshot.pet_carers) {
 			const petId = ids.get(`pets:${r.pet_id}`),
 				userId = ids.get(`users:${r.carer_id}`);
-			add('pet_carers', id(r), 'pet_caregivers', `${petId}:${userId}`, {
-				pet_id: petId,
-				caregiver_user_id: userId,
-				status: r.status,
-				created_at: importedAt.toISOString(),
-				updated_at: importedAt.toISOString(),
-			});
+			add(
+				'pet_carers',
+				id(r),
+				'pet_caregivers',
+				`${petId}:${userId}`,
+				{
+					pet_id: petId,
+					caregiver_user_id: userId,
+					status: r.status,
+					created_at: importedAt.toISOString(),
+					updated_at: importedAt.toISOString(),
+				},
+				importedAuditFields,
+			);
 		}
 		for (const r of snapshot.pet_food) {
 			const exact = num(r.quantity) * 1000,
@@ -144,20 +183,27 @@ export const mapLegacySnapshot = (
 			);
 			const actor = snapshot.users.find((u) => id(u) === r.user_id);
 			const message = r.message_id === null ? null : num(r.message_id);
-			add('pet_food', id(r), 'pet_food_entries', fid, {
-				id: fid,
-				pet_id: ids.get(`pets:${r.pet_id}`),
-				recorded_by: ids.get(`users:${r.user_id}`),
-				amount_mg: amount,
-				fed_at: date(r.time),
-				source_bot_id: botId,
-				source_update_id: updateIdFromDigest(digest),
-				source_message_chat_id:
-					message === null ? null : num(actor?.telegram_id),
-				source_message_id: message,
-				created_at: importedAt.toISOString(),
-				updated_at: importedAt.toISOString(),
-			});
+			add(
+				'pet_food',
+				id(r),
+				'pet_food_entries',
+				fid,
+				{
+					id: fid,
+					pet_id: ids.get(`pets:${r.pet_id}`),
+					recorded_by: ids.get(`users:${r.user_id}`),
+					amount_mg: amount,
+					fed_at: date(r.time),
+					source_bot_id: botId,
+					source_update_id: updateIdFromDigest(digest),
+					source_message_chat_id:
+						message === null ? null : num(actor?.telegram_id),
+					source_message_id: message,
+					created_at: importedAt.toISOString(),
+					updated_at: importedAt.toISOString(),
+				},
+				importedAuditFields,
+			);
 		}
 		const settings = new Map<string, Record<string, unknown>>();
 		for (const r of snapshot.configs) {
@@ -209,14 +255,21 @@ export const mapLegacySnapshot = (
 			}
 		}
 		for (const [petId, setting] of settings)
-			add('configs', `pet:${petId}`, 'pet_food_settings', petId, {
-				pet_id: petId,
-				day_start: setting.day_start ?? null,
-				timezone: setting.timezone ?? null,
-				reminder_delay_ms: setting.reminder_delay_ms ?? null,
-				created_at: importedAt.toISOString(),
-				updated_at: importedAt.toISOString(),
-			});
+			add(
+				'configs',
+				`pet:${petId}`,
+				'pet_food_settings',
+				petId,
+				{
+					pet_id: petId,
+					day_start: setting.day_start ?? null,
+					timezone: setting.timezone ?? null,
+					reminder_delay_ms: setting.reminder_delay_ms ?? null,
+					created_at: importedAt.toISOString(),
+					updated_at: importedAt.toISOString(),
+				},
+				importedAuditFields,
+			);
 		for (const r of snapshot.api_keys) {
 			const kid = ids.get(`api_keys:${id(r)}`)!;
 			add('api_keys', id(r), 'api_keys', kid, {
@@ -229,22 +282,36 @@ export const mapLegacySnapshot = (
 		}
 		for (const r of snapshot.notifications) {
 			const nid = ids.get(`notifications:${id(r)}`)!;
-			add('notifications', id(r), 'notification_templates', nid, {
-				id: nid,
-				owner_user_id: ids.get(`users:${r.owner_id}`),
-				keyword: r.keyword,
-				message: r.message,
-				created_at: importedAt.toISOString(),
-				updated_at: importedAt.toISOString(),
-			});
+			add(
+				'notifications',
+				id(r),
+				'notification_templates',
+				nid,
+				{
+					id: nid,
+					owner_user_id: ids.get(`users:${r.owner_id}`),
+					keyword: r.keyword,
+					message: r.message,
+					created_at: importedAt.toISOString(),
+					updated_at: importedAt.toISOString(),
+				},
+				importedAuditFields,
+			);
 		}
 		for (const r of snapshot.users_to_notify) {
 			const key = `${ids.get(`notifications:${r.notification_id}`)}:${ids.get(`users:${r.user_id}`)}`;
-			add('users_to_notify', id(r), 'notification_subscriptions', key, {
-				template_id: ids.get(`notifications:${r.notification_id}`),
-				user_id: ids.get(`users:${r.user_id}`),
-				created_at: importedAt.toISOString(),
-			});
+			add(
+				'users_to_notify',
+				id(r),
+				'notification_subscriptions',
+				key,
+				{
+					template_id: ids.get(`notifications:${r.notification_id}`),
+					user_id: ids.get(`users:${r.user_id}`),
+					created_at: importedAt.toISOString(),
+				},
+				['created_at'],
+			);
 		}
 		for (const r of snapshot.notification_history) {
 			const hid = ids.get(`notification_history:${id(r)}`)!;

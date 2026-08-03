@@ -41,4 +41,35 @@ describe('normalizeTargetForComparison', () => {
 
 		expect(result).toEqual({ message: '2025-12-31T21:00:00-03:00' });
 	});
+
+	it('ignores tagged runtime audit fields in mapped and target projections', () => {
+		const mapped = {
+			created_at: '2026-01-01T00:00:00.000Z',
+			updated_at: '2026-01-01T00:00:00.000Z',
+			name: 'Mimo',
+		};
+		const target = {
+			created_at: '2026-02-01T00:00:00.000Z',
+			updated_at: '2026-02-01T00:00:00.000Z',
+			name: 'Mimo',
+		};
+
+		expect(
+			normalizeMappedForComparison(mapped, ['created_at', 'updated_at']),
+		).toEqual({ name: 'Mimo' });
+		expect(
+			normalizeTargetForComparison(mapped, target, [
+				'created_at',
+				'updated_at',
+			]),
+		).toEqual({ name: 'Mimo' });
+	});
+
+	it('retains untagged source timestamps for comparison', () => {
+		const mapped = { created_at: '2026-01-01T00:00:00.000Z' };
+		const target = { created_at: '2026-01-02T00:00:00.000Z' };
+
+		expect(normalizeMappedForComparison(mapped)).toEqual(mapped);
+		expect(normalizeTargetForComparison(mapped, target)).toEqual(target);
+	});
 });

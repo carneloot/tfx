@@ -57,22 +57,29 @@ const normalizeTimestamp = (key: string, value: unknown) => {
 	return Number.isNaN(timestamp.valueOf()) ? value : timestamp.toISOString();
 };
 
+const comparisonFields = (
+	mapped: Readonly<Record<string, unknown>>,
+	ignoredFields: ReadonlyArray<string>,
+) => Object.keys(mapped).filter((key) => !ignoredFields.includes(key));
+
 export const normalizeMappedForComparison = (
 	mapped: Readonly<Record<string, unknown>>,
+	ignoredFields: ReadonlyArray<string> = [],
 ) =>
 	Object.fromEntries(
-		Object.entries(mapped).map(([key, value]) => [
+		comparisonFields(mapped, ignoredFields).map((key) => [
 			key,
-			normalizeTimestamp(key, value),
+			normalizeTimestamp(key, mapped[key]),
 		]),
 	);
 
 export const normalizeTargetForComparison = (
 	mapped: Readonly<Record<string, unknown>>,
 	target: Readonly<Record<string, unknown>>,
+	ignoredFields: ReadonlyArray<string> = [],
 ) =>
 	Object.fromEntries(
-		Object.keys(mapped).map((key) => [
+		comparisonFields(mapped, ignoredFields).map((key) => [
 			key,
 			normalizeTimestamp(key, target[key]),
 		]),
@@ -225,7 +232,13 @@ export const layer = Layer.effect(
 			}
 		};
 		const targetDigest = (row: MappedRow, target: Record<string, unknown>) =>
-			canonicalDigest(normalizeTargetForComparison(row.value, target));
+			canonicalDigest(
+				normalizeTargetForComparison(
+					row.value,
+					target,
+					row.ignoredComparisonFields ?? [],
+				),
+			);
 
 		return LegacyTarget.of({
 			promote: (mapped, options) =>
@@ -267,7 +280,10 @@ export const layer = Layer.effect(
 												prepared.push({
 													row,
 													digest: yield* canonicalDigest(
-														normalizeMappedForComparison(row.value),
+														normalizeMappedForComparison(
+															row.value,
+															row.ignoredComparisonFields ?? [],
+														),
 													),
 												});
 											const ledgers =

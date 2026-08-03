@@ -148,6 +148,16 @@ describe('legacy mapping', () => {
 				user_id: 'subscriber',
 			},
 		];
+		snapshot.notification_history = [
+			{
+				id: 'history',
+				notification_id: 'template',
+				pet_id: null,
+				user_id: 'owner',
+				message_id: 7,
+				sent_at: 1_700_000_000,
+			},
+		];
 		const mapped = await Effect.runPromise(
 			mapLegacySnapshot(
 				snapshot,
@@ -163,15 +173,25 @@ describe('legacy mapping', () => {
 		const subscription = mapped.rows.find(
 			(row) => row.targetTable === 'notification_subscriptions',
 		)!;
+		const history = mapped.rows.find(
+			(row) => row.targetTable === 'notification_events',
+		)!;
 		expect(apiKey.value).toMatchObject({ key_hash: 'a'.repeat(64) });
+		expect(apiKey.ignoredComparisonFields).toEqual([]);
 		expect(template.value).toMatchObject({
 			keyword: 'meal',
 			message: 'Hello {{name}}',
 			owner_user_id: apiKey.value.user_id,
 		});
+		expect(template.ignoredComparisonFields).toEqual([
+			'created_at',
+			'updated_at',
+		]);
 		expect(subscription.value).toMatchObject({
 			template_id: template.value.id,
 		});
+		expect(subscription.ignoredComparisonFields).toEqual(['created_at']);
+		expect(history.ignoredComparisonFields).toEqual([]);
 		expect(subscription.targetKey).toBe(
 			`${template.value.id}:${subscription.value.user_id}`,
 		);

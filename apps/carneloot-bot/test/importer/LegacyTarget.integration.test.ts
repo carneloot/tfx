@@ -255,12 +255,21 @@ describe.skipIf(!enabled)('legacy target dry run', () => {
 				user_id: 'subscriber',
 			},
 		];
-		const mapped = await Effect.runPromise(
+		const fingerprint = `notifications-${randomUUID()}`;
+		const firstMapped = await Effect.runPromise(
 			mapLegacySnapshot(
 				snapshot,
-				`notifications-${randomUUID()}`,
+				fingerprint,
 				'carneloot',
 				new Date('2026-01-01T00:00:00.000Z'),
+			).pipe(Effect.provide(NodeCrypto.layer)),
+		);
+		const secondMapped = await Effect.runPromise(
+			mapLegacySnapshot(
+				snapshot,
+				fingerprint,
+				'carneloot',
+				new Date('2026-02-01T00:00:00.000Z'),
 			).pipe(Effect.provide(NodeCrypto.layer)),
 		);
 		const sent: Array<Record<string, unknown>> = [];
@@ -279,20 +288,20 @@ describe.skipIf(!enabled)('legacy target dry run', () => {
 			Effect.gen(function* () {
 				const sql = yield* PgClient.PgClient;
 				const target = yield* LegacyTarget;
-				const first = yield* target.promote(mapped, { dryRun: false });
-				const second = yield* target.promote(mapped, { dryRun: false });
+				const first = yield* target.promote(firstMapped, { dryRun: false });
+				const second = yield* target.promote(secondMapped, { dryRun: false });
 				const key = yield* sql<{
 					readonly key_hash: string;
 					readonly user_id: string;
-				}>`SELECT key_hash,user_id FROM carneloot.api_keys WHERE id=${mapped.rows.find((row) => row.targetTable === 'api_keys')!.value.id}`;
+				}>`SELECT key_hash,user_id FROM carneloot.api_keys WHERE id=${firstMapped.rows.find((row) => row.targetTable === 'api_keys')!.value.id}`;
 				const template = yield* sql<{
 					readonly owner_user_id: string;
 					readonly keyword: string;
 					readonly message: string;
-				}>`SELECT owner_user_id,keyword,message FROM carneloot.notification_templates WHERE id=${mapped.rows.find((row) => row.targetTable === 'notification_templates')!.value.id}`;
+				}>`SELECT owner_user_id,keyword,message FROM carneloot.notification_templates WHERE id=${firstMapped.rows.find((row) => row.targetTable === 'notification_templates')!.value.id}`;
 				const subscriptions = yield* sql<{
 					readonly count: number;
-				}>`SELECT count(*)::int count FROM carneloot.notification_subscriptions WHERE template_id=${mapped.rows.find((row) => row.targetTable === 'notification_templates')!.value.id}`;
+				}>`SELECT count(*)::int count FROM carneloot.notification_subscriptions WHERE template_id=${firstMapped.rows.find((row) => row.targetTable === 'notification_templates')!.value.id}`;
 				const delivery = yield* SendExternalNotification.execute({
 					apiKey,
 					keyword: 'meal',
@@ -314,7 +323,10 @@ describe.skipIf(!enabled)('legacy target dry run', () => {
 			notifications: 1,
 			users_to_notify: 1,
 		});
-		expect(result.second.existing).toMatchObject(result.first.inserted);
+		expect(result.second).toEqual({
+			inserted: {},
+			existing: result.first.inserted,
+		});
 		expect(result.key?.key_hash).toBe(keyHash);
 		expect(result.template?.owner_user_id).toBe(result.key?.user_id);
 		expect(result.template).toMatchObject({
