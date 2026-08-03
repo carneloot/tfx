@@ -141,6 +141,7 @@ const program = Effect.scoped(
 		const declaredCommands = menuCommands.map(({ command }) => command);
 		const expectedCommands = [
 			'cadastrar',
+			'gerar_chave',
 			'adicionar_pet',
 			'listar_pets',
 			'deletar_pet',

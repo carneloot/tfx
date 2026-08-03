@@ -28,6 +28,15 @@ export const account = BotGroup.make('account').add(
 		error: ApplicationError,
 	}),
 );
+export const apiKeys = BotGroup.make('apiKeys').add(
+	Command.make('generateApiKey', {
+		name: 'gerar_chave',
+		description: 'Gerar chave para notificações externas',
+		middleware: [RegisteredUser],
+		error: ApplicationError,
+	}),
+);
+
 export const pets = BotGroup.make('pets')
 	.add(
 		Command.make('addPet', {
@@ -168,6 +177,7 @@ export const replies = BotGroup.make('replies').addMessage(
 
 export const Carneloot = Bot.make('carneloot')
 	.add(account)
+	.add(apiKeys)
 	.add(pets)
 	.add(petFood)
 	.add(replies);

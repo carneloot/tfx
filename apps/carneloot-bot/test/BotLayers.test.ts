@@ -3,6 +3,7 @@ import { BotBuilder, Middleware } from 'tfx';
 import { describe, expect, it } from 'vitest';
 
 import * as AccountHandlers from '../src/bot/AccountHandlers.js';
+import * as ApiKeyHandlers from '../src/bot/ApiKeyHandlers.js';
 import { built } from '../src/bot/AddPetConversation.js';
 import * as CaregiverHandlers from '../src/bot/CaregiverHandlers.js';
 import { Carneloot } from '../src/bot/Declaration.js';
@@ -16,6 +17,9 @@ describe('public bot Layer construction', () => {
 	it('composes declarations, middleware, handlers, and conversation without private imports', () => {
 		const account = BotBuilder.group(Carneloot, 'account', (handlers) =>
 			handlers.handle('register', () => AccountHandlers.registerCurrent),
+		);
+		const apiKeys = BotBuilder.group(Carneloot, 'apiKeys', (handlers) =>
+			handlers.handle('generateApiKey', () => ApiKeyHandlers.generate),
 		);
 		const pets = BotBuilder.group(Carneloot, 'pets', (handlers) =>
 			handlers
@@ -49,13 +53,14 @@ describe('public bot Layer construction', () => {
 		);
 		const middleware = Middleware.layer(RegisteredUser.live);
 		const integrated = Layer.provide(
-			Layer.mergeAll(account, pets, petFood, replies),
+			Layer.mergeAll(account, apiKeys, pets, petFood, replies),
 			middleware,
 		);
 		expect(integrated).toBeDefined();
 		expect(built.declaration.id).toBe('add-owned-pet');
 		expect(Object.keys(Carneloot.groups)).toEqual([
 			'account',
+			'apiKeys',
 			'pets',
 			'petFood',
 			'replies',
@@ -63,6 +68,7 @@ describe('public bot Layer construction', () => {
 		expect(
 			[
 				Router.accountHandlers,
+				Router.apiKeyHandlers,
 				Router.petHandlers,
 				Router.petFoodHandlers,
 				Router.replyHandlers,
@@ -76,6 +82,7 @@ describe('public bot Layer construction', () => {
 			})),
 		).toEqual([
 			{ groupId: 'account', entries: ['Command:register'] },
+			{ groupId: 'apiKeys', entries: ['Command:generateApiKey'] },
 			{
 				groupId: 'pets',
 				entries: [
