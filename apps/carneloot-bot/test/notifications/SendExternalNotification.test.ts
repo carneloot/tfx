@@ -7,7 +7,7 @@ import { RateLimitError, TelegramError } from 'tfx/TelegramError';
 import { describe, expect, it } from 'vitest';
 
 import * as SendExternalNotification from '../../src/application/SendExternalNotification.js';
-import { BotId, TelegramChatId, UserId } from '../../src/domain/Ids.js';
+import { TelegramChatId, UserId } from '../../src/domain/Ids.js';
 import { InitialNotificationPersistenceUnavailable } from '../../src/domain/notifications/ExternalNotification.js';
 import { DeliveryId } from '../../src/domain/notifications/NotificationDelivery.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
@@ -23,7 +23,6 @@ import {
 import { NotificationTemplateRepository } from '../../src/ports/NotificationTemplateRepository.js';
 import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 
-const botId = Schema.decodeUnknownSync(BotId)('carneloot');
 const ownerId = Schema.decodeUnknownSync(UserId)(
 	'00000000-0000-4000-8000-000000000001',
 );

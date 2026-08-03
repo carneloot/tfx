@@ -56,7 +56,7 @@ const placeholder = /\{\{\s*([^{}\s]+)\s*\}\}/gu;
 export const extractTemplateVariables = (
 	message: string,
 ): ReadonlyArray<string> =>
-	Array.from(message.matchAll(placeholder), (match) => match[1]!).filter(
+	Array.from(message.matchAll(placeholder), (match) => match[1] ?? '').filter(
 		(name, index, names) => names.indexOf(name) === index,
 	);
 
