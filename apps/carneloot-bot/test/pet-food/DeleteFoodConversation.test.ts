@@ -10,6 +10,7 @@ import { Telegram } from 'tfx/Telegram';
 import { describe, expect, it } from 'vitest';
 
 import * as DeleteFood from '../../src/bot/conversations/DeleteFoodConversation.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
 import {
 	BotId,
 	PetId,
@@ -149,6 +150,7 @@ const harness = (hasEntry = true) => {
 		MemoryStorage.layer,
 		TestClock.layer(),
 		Layer.succeed(MessageContext, context),
+		Layer.succeed(CurrentUser, current),
 		Layer.succeed(Telegram, {} as never),
 		Layer.succeed(UserRepository, {
 			registerTelegramProfile: () => Effect.die('unused'),

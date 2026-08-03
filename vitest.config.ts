@@ -8,6 +8,7 @@ export default defineConfig({
 			'**/dist/**',
 			'**/*.integration.test.ts',
 			'**/*.e2e.test.ts',
+			'**/integration-config.test.ts',
 		],
 	},
 });

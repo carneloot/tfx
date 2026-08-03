@@ -42,6 +42,7 @@ describe('portable Node composition', () => {
 		expect(
 			[
 				Router.accountHandlers,
+				Router.apiKeyHandlers,
 				Router.petHandlers,
 				Router.petFoodHandlers,
 				Router.replyHandlers,
@@ -55,6 +56,7 @@ describe('portable Node composition', () => {
 			})),
 		).toEqual([
 			{ groupId: 'account', entries: ['Command:register'] },
+			{ groupId: 'apiKeys', entries: ['Command:generateApiKey'] },
 			{
 				groupId: 'pets',
 				entries: [
@@ -84,6 +86,7 @@ describe('portable Node composition', () => {
 		]);
 		expect(Router.conversations.map((built) => built.declaration.id)).toEqual([
 			'add-owned-pet',
+			'replace-api-key',
 			'configure-pet-day-start',
 			'configure-reminder-delay',
 			'add-pet-food',
@@ -101,6 +104,10 @@ describe('portable Node composition', () => {
 			{
 				command: 'cadastrar',
 				description: 'Cadastrar ou atualizar seu perfil',
+			},
+			{
+				command: 'gerar_chave',
+				description: 'Gerar chave para notificações externas',
 			},
 			{ command: 'adicionar_pet', description: 'Adicionar um pet' },
 			{ command: 'listar_pets', description: 'Listar seus pets' },

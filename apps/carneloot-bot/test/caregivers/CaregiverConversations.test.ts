@@ -14,6 +14,7 @@ import * as List from '../../src/bot/conversations/ListCaregiversConversation.js
 import * as Invitations from '../../src/bot/conversations/PetInvitationsConversation.js';
 import * as Remove from '../../src/bot/conversations/RemoveCaregiverConversation.js';
 import * as Stop from '../../src/bot/conversations/StopCaringConversation.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
 import type {
 	CaregiverStatus,
 	PetCaregiver,
@@ -239,17 +240,30 @@ const harness = (initial: CaregiverStatus | null = 'pending') => {
 };
 const fresh = <A, E, R>(effect: Effect.Effect<A, E, R | Conversations>) =>
 	Effect.provide(effect, Layer.fresh(ConversationsLive.layer));
+const currentUser = (built: Built) =>
+	built === Invitations.built || built === Stop.built ? caregiver : owner;
 const start = (built: Built, startup: object) =>
-	fresh(
-		Effect.flatMap(Conversations, (s) =>
-			s.start(built as never, startup as never, { scope, conflict: 'replace' }),
+	Effect.provideService(
+		fresh(
+			Effect.flatMap(Conversations, (s) =>
+				s.start(built as never, startup as never, {
+					scope,
+					conflict: 'replace',
+				}),
+			),
 		),
+		CurrentUser,
+		currentUser(built),
 	);
 const resume = (built: Built, input: string, updateId: number) =>
-	fresh(
-		Effect.flatMap(Conversations, (s) =>
-			s.resume(built as never, input, { scope, updateId }),
+	Effect.provideService(
+		fresh(
+			Effect.flatMap(Conversations, (s) =>
+				s.resume(built as never, input, { scope, updateId }),
+			),
 		),
+		CurrentUser,
+		currentUser(built),
 	);
 const run = <A, E>(e: Effect.Effect<A, E, unknown>) =>
 	Effect.runPromise(e as Effect.Effect<A, E>);

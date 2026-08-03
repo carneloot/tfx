@@ -98,6 +98,7 @@ describe('FoodAddedNotificationJob declaration', () => {
 			releaseFailed: () => Effect.die('unused'),
 		};
 		const recipients = Layer.succeed(NotificationRecipients, {
+			resolveUser: () => Effect.die('unused'),
 			resolveOwner: () => Effect.die('unused'),
 			resolvePetRecipients: () =>
 				Effect.succeed([

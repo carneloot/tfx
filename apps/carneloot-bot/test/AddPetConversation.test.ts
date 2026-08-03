@@ -8,6 +8,7 @@ import { MessageContext, type MessageContextService } from 'tfx/MessageContext';
 import { describe, expect, it } from 'vitest';
 
 import * as AddPetConversation from '../src/bot/AddPetConversation.js';
+import { CurrentUser } from '../src/bot/CurrentUser.js';
 import { PetNameAlreadyExists } from '../src/domain/DomainError.js';
 import {
 	BotId,
@@ -112,6 +113,21 @@ describe('AddPetConversation', () => {
 		const dependencies = Layer.mergeAll(
 			petLayer,
 			userLayer,
+			Layer.succeed(CurrentUser, {
+				user: {
+					id: ownerId,
+					createdAt: DateTime.makeUnsafe(0),
+					updatedAt: DateTime.makeUnsafe(0),
+				},
+				profile: {
+					botId,
+					telegramUserId,
+					username: null,
+					firstName: 'Ana',
+					lastName: null,
+					privateChatId: Schema.decodeUnknownSync(TelegramChatId)(2),
+				},
+			}),
 			Layer.succeed(MessageContext, message),
 		);
 		const executable = Effect.provide(
@@ -174,6 +190,21 @@ describe('AddPetConversation', () => {
 				Layer.mergeAll(
 					petLayer,
 					userLayer,
+					Layer.succeed(CurrentUser, {
+						user: {
+							id: ownerId,
+							createdAt: DateTime.makeUnsafe(0),
+							updatedAt: DateTime.makeUnsafe(0),
+						},
+						profile: {
+							botId,
+							telegramUserId,
+							username: null,
+							firstName: 'Ana',
+							lastName: null,
+							privateChatId: Schema.decodeUnknownSync(TelegramChatId)(2),
+						},
+					}),
 					Layer.succeed(MessageContext, message),
 				),
 			),
@@ -238,6 +269,21 @@ describe('AddPetConversation', () => {
 				MemoryConversationStorage.layer,
 				petLayer,
 				userLayer,
+				Layer.succeed(CurrentUser, {
+					user: {
+						id: ownerId,
+						createdAt: DateTime.makeUnsafe(0),
+						updatedAt: DateTime.makeUnsafe(0),
+					},
+					profile: {
+						botId,
+						telegramUserId,
+						username: null,
+						firstName: 'Ana',
+						lastName: null,
+						privateChatId: Schema.decodeUnknownSync(TelegramChatId)(2),
+					},
+				}),
 				Layer.succeed(MessageContext, message),
 			),
 		) as unknown as Effect.Effect<{ readonly _tag: string }, never>;
