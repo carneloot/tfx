@@ -35,6 +35,38 @@ type LedgerRow = {
 	readonly target_key: string;
 };
 
+const mappedTimestampFields = new Set([
+	'created_at',
+	'updated_at',
+	'fed_at',
+	'scheduled_for',
+	'completed_at',
+	'cancelled_at',
+	'sending_started_at',
+	'sending_lease_expires_at',
+	'retry_at',
+	'sent_at',
+	'failed_at',
+	'unknown_at',
+]);
+
+export const normalizeTargetForComparison = (
+	mapped: Readonly<Record<string, unknown>>,
+	target: Readonly<Record<string, unknown>>,
+) =>
+	Object.fromEntries(
+		Object.keys(mapped).map((key) => {
+			const value = target[key];
+			if (!mappedTimestampFields.has(key) || typeof value !== 'string')
+				return [key, value];
+			const timestamp = new Date(value);
+			return [
+				key,
+				Number.isNaN(timestamp.valueOf()) ? value : timestamp.toISOString(),
+			];
+		}),
+	);
+
 const chunks = <A>(rows: ReadonlyArray<A>) =>
 	Array.from({ length: Math.ceil(rows.length / batchSize) }, (_, index) =>
 		rows.slice(index * batchSize, (index + 1) * batchSize),
@@ -182,11 +214,7 @@ export const layer = Layer.effect(
 			}
 		};
 		const targetDigest = (row: MappedRow, target: Record<string, unknown>) =>
-			canonicalDigest(
-				Object.fromEntries(
-					Object.keys(row.value).map((key) => [key, target[key]]),
-				),
-			);
+			canonicalDigest(normalizeTargetForComparison(row.value, target));
 
 		return LegacyTarget.of({
 			promote: (mapped, options) =>

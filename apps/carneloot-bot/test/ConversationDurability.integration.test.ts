@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as AddPetConversation from '../src/bot/AddPetConversation.js';
 import * as ConfigureReminderDelayConversation from '../src/bot/conversations/ConfigureReminderDelayConversation.js';
+import { CurrentUser } from '../src/bot/CurrentUser.js';
 import { BotId, TelegramChatId, TelegramUserId } from '../src/domain/Ids.js';
 import { PetName } from '../src/domain/Pet.js';
 import { PetFoodRepository } from '../src/ports/PetFoodRepository.js';
@@ -61,32 +62,40 @@ const profile = {
 describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 	it('rebuilds runtime layers and resumes a persisted add-pet conversation', async () => {
 		const scope = { botId: 'carneloot', chatId: 9020, userId: 9020 };
-		const start = Effect.gen(function* () {
-			const users = yield* UserRepository;
-			const owner = yield* users.registerTelegramProfile(profile);
-			const conversations = yield* Conversations;
-			yield* conversations.start(
-				AddPetConversation.built,
-				{
-					ownerId: owner.user.id,
-					botId: owner.profile.botId,
-					telegramUserId: owner.profile.telegramUserId,
-				},
-				{ scope },
-			);
-			return owner.user.id;
-		});
 		const result = await Effect.runPromise(
 			Effect.provide(
 				Effect.gen(function* () {
 					const sql = yield* PgClient.PgClient;
 					const pg = Layer.succeed(PgClient.PgClient, sql);
-					const firstRuntime = Layer.merge(
+					const owner = yield* Effect.provide(
+						Effect.gen(function* () {
+							const users = yield* UserRepository;
+							return yield* users.registerTelegramProfile(profile);
+						}),
+						services(pg),
+					);
+					const firstRuntime = Layer.mergeAll(
 						services(pg),
 						Layer.succeed(MessageContext, message),
+						Layer.succeed(CurrentUser, owner),
 					);
 					const ownerId = yield* Effect.provide(
-						Effect.provide(start, ConversationsLive.layer),
+						Effect.provide(
+							Effect.gen(function* () {
+								const conversations = yield* Conversations;
+								yield* conversations.start(
+									AddPetConversation.built,
+									{
+										ownerId: owner.user.id,
+										botId: owner.profile.botId,
+										telegramUserId: owner.profile.telegramUserId,
+									},
+									{ scope },
+								);
+								return owner.user.id;
+							}),
+							ConversationsLive.layer,
+						),
 						firstRuntime,
 					);
 					const resume = Effect.gen(function* () {
@@ -100,9 +109,10 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 						const pets = yield* repository.listOwned(ownerId as never);
 						return { result, pets };
 					});
-					const secondRuntime = Layer.merge(
+					const secondRuntime = Layer.mergeAll(
 						services(pg),
 						Layer.succeed(MessageContext, message),
+						Layer.succeed(CurrentUser, owner),
 					);
 					return yield* Effect.provide(
 						Effect.provide(resume, ConversationsLive.layer),
@@ -138,23 +148,29 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 				Effect.gen(function* () {
 					const sql = yield* PgClient.PgClient;
 					const pg = Layer.succeed(PgClient.PgClient, sql);
+					const owner = yield* Effect.provide(
+						Effect.gen(function* () {
+							const users = yield* UserRepository;
+							return yield* users.registerTelegramProfile({
+								...profile,
+								telegramUserId:
+									Schema.decodeUnknownSync(TelegramUserId)(telegramId),
+								privateChatId:
+									Schema.decodeUnknownSync(TelegramChatId)(telegramId),
+							});
+						}),
+						services(pg),
+					);
 					const runtime = Layer.mergeAll(
 						services(pg),
 						scheduler,
 						Layer.succeed(MessageContext, capturedMessage),
 						Layer.succeed(Telegram, {} as never),
+						Layer.succeed(CurrentUser, owner),
 					);
 					yield* Effect.provide(
 						Effect.provide(
 							Effect.gen(function* () {
-								const users = yield* UserRepository;
-								const owner = yield* users.registerTelegramProfile({
-									...profile,
-									telegramUserId:
-										Schema.decodeUnknownSync(TelegramUserId)(telegramId),
-									privateChatId:
-										Schema.decodeUnknownSync(TelegramChatId)(telegramId),
-								});
 								const pets = yield* PetRepository;
 								const pet = yield* pets.addOwned(
 									owner.user.id,

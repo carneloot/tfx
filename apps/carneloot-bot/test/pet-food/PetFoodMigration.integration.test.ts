@@ -12,6 +12,7 @@ import { migration0006Checksum } from '../../src/postgres/Migration0006Sql.js';
 import { migration0007Checksum } from '../../src/postgres/Migration0007Sql.js';
 import { migration0008Checksum } from '../../src/postgres/Migration0008Sql.js';
 import { migration0009Checksum } from '../../src/postgres/Migration0009Sql.js';
+import { migration0010Checksum } from '../../src/postgres/Migration0010Sql.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -92,6 +93,11 @@ describe.skipIf(!enabled)('pet food migration', () => {
 				version: 9,
 				name: 'import-targets',
 				checksum: migration0009Checksum,
+			},
+			{
+				version: 10,
+				name: 'external-notification-payload',
+				checksum: migration0010Checksum,
 			},
 		]);
 		expect(result.constraints.map((row) => row.constraint_name)).toEqual(
