@@ -17,6 +17,7 @@ import type {
 } from '../domain/notifications/NotificationEvent.js';
 import type { RecipientRole } from '../domain/notifications/RecipientRole.js';
 import type { FoodEntryId } from '../domain/pet-food/PetFood.js';
+import type { Uuid } from '../domain/Uuid.js';
 
 export class NotificationRepositoryError extends Data.TaggedError(
 	'NotificationRepositoryError',
@@ -56,6 +57,10 @@ export type RecipientInput =
 			readonly _tag: 'Unreachable';
 			readonly error: SafeError;
 	  });
+export interface ExternalEventPayload {
+	readonly templateId: Uuid | null;
+	readonly renderedMessage: string;
+}
 export interface DeliveryToken {
 	readonly id: DeliveryId;
 	readonly generation: number;
@@ -85,6 +90,17 @@ export interface NotificationRepositoryService {
 	readonly createEvent: (
 		input: EventInput,
 	) => Effect.Effect<NotificationEvent, NotificationRepositoryError>;
+	readonly createExternalEvent: (
+		input: EventInput,
+		payload: ExternalEventPayload,
+		recipients: ReadonlyArray<RecipientInput>,
+	) => Effect.Effect<
+		{
+			readonly event: NotificationEvent;
+			readonly deliveries: ReadonlyArray<NotificationDelivery>;
+		},
+		NotificationRepositoryError
+	>;
 	readonly cancelActiveForPet: (
 		botId: BotId,
 		petId: PetId,

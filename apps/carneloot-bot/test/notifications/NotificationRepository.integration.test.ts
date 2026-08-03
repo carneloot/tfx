@@ -4,10 +4,16 @@ import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import { describe, expect, it } from 'vitest';
 
-import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
+import {
+	BotId,
+	TelegramChatId,
+	TelegramUserId,
+	UserId,
+} from '../../src/domain/Ids.js';
 import { DeliveryId } from '../../src/domain/notifications/NotificationDelivery.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import * as RecipientRole from '../../src/domain/notifications/RecipientRole.js';
+import { Uuid } from '../../src/domain/Uuid.js';
 import { NotificationRepository } from '../../src/ports/NotificationRepository.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
 import * as RepositoriesLive from '../../src/postgres/RepositoriesLive.js';
@@ -757,5 +763,106 @@ else
 					result.duplicateMessage,
 				].every((exit) => exit._tag === 'Failure'),
 			).toBe(true);
+		});
+
+		it('atomically persists frozen external payloads and recipient deliveries', async () => {
+			const program = Effect.gen(function* () {
+				const owner = yield* register(
+					`owner-${crypto.randomUUID()}`,
+					Math.floor(Math.random() * 1_000_000) + 1,
+				);
+				const subscriber = yield* register(
+					`subscriber-${crypto.randomUUID()}`,
+					Math.floor(Math.random() * 1_000_000) + 1_000_001,
+				);
+				const sql = yield* PgClient.PgClient;
+				const repository = yield* NotificationRepository;
+				const templateId = crypto.randomUUID();
+				yield* sql`INSERT INTO carneloot.notification_templates (id,owner_user_id,keyword,message,created_at,updated_at) VALUES (${templateId}::uuid,${owner.user.id}::uuid,'external-test','before',now(),now())`;
+				const now = DateTime.makeUnsafe(1_000);
+				const created = yield* repository.createExternalEvent(
+					{
+						id: eventId(),
+						botId,
+						kind: 'external-notification',
+						ownerUserId: owner.user.id,
+						petId: null,
+						foodEntryId: null,
+						scheduledFor: null,
+						foodTimestampExplicit: false,
+						dedupeKey: `external-${crypto.randomUUID()}`,
+						now,
+					},
+					{
+						templateId: Schema.decodeUnknownSync(Uuid)(templateId),
+						renderedMessage: 'frozen message',
+					},
+					[
+						{
+							_tag: 'Reachable',
+							id: deliveryId(),
+							recipientUserId: owner.user.id,
+							recipientChatId: owner.profile.privateChatId,
+							recipientRole: RecipientRole.owner,
+							channel: 'telegram',
+						},
+						{
+							_tag: 'Reachable',
+							id: deliveryId(),
+							recipientUserId: subscriber.user.id,
+							recipientChatId: subscriber.profile.privateChatId,
+							recipientRole: RecipientRole.subscriber,
+							channel: 'telegram',
+						},
+					],
+				);
+				yield* sql`UPDATE carneloot.notification_templates SET message='after' WHERE id=${templateId}::uuid`;
+				const payload = yield* sql<{
+					rendered_message: string;
+				}>`SELECT rendered_message FROM carneloot.notification_event_payloads WHERE event_id=${created.event.id}::uuid`;
+				const failedEventId = eventId();
+				const failed = yield* Effect.result(
+					repository.createExternalEvent(
+						{
+							id: failedEventId,
+							botId,
+							kind: 'external-notification',
+							ownerUserId: owner.user.id,
+							petId: null,
+							foodEntryId: null,
+							scheduledFor: null,
+							foodTimestampExplicit: false,
+							dedupeKey: `external-fail-${crypto.randomUUID()}`,
+							now,
+						},
+						{ templateId: null, renderedMessage: 'will roll back' },
+						[
+							{
+								_tag: 'Reachable',
+								id: deliveryId(),
+								recipientUserId: Schema.decodeUnknownSync(UserId)(
+									'00000000-0000-4000-8000-000000000001',
+								),
+								recipientChatId: owner.profile.privateChatId,
+								recipientRole: RecipientRole.subscriber,
+								channel: 'telegram',
+							},
+						],
+					),
+				);
+				const rolledBack =
+					yield* sql`SELECT id FROM carneloot.notification_events WHERE id=${failedEventId}::uuid`;
+				return { created, payload, failed, rolledBack };
+			});
+			const result = await Effect.runPromise(Effect.provide(program, layer));
+			expect(result.created.deliveries).toHaveLength(2);
+			expect(
+				result.created.deliveries.map((delivery) => delivery.status),
+			).toStrictEqual(['pending', 'pending']);
+			expect(result.payload).toStrictEqual([
+				{ rendered_message: 'frozen message' },
+			]);
+			expect(result.failed._tag).toBe('Failure');
+			expect(result.rolledBack).toStrictEqual([]);
 		});
 	});

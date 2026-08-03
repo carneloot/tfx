@@ -229,6 +229,44 @@ export const layer = Layer.effect(
 						)
 						.pipe(Effect.withSpan('NotificationRepository.transaction')),
 				),
+			createExternalEvent: (input, payload, recipients) =>
+				protect(
+					sql
+						.withTransaction(
+							Effect.gen(function* () {
+								const inserted = yield* sql<Record<string, unknown>>`
+									INSERT INTO carneloot.notification_events (id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,recipients_materialized_at,food_timestamp_explicit,created_at,updated_at,completed_at,cancelled_at)
+									VALUES (${input.id}::uuid,${input.botId},${input.kind},${input.ownerUserId}::uuid,${input.petId}::uuid,${input.foodEntryId}::uuid,${input.scheduledFor === null ? null : DateTime.toDateUtc(input.scheduledFor)},'scheduled',${input.dedupeKey},NULL,${DateTime.toDateUtc(input.now)},${input.foodTimestampExplicit},${DateTime.toDateUtc(input.now)},${DateTime.toDateUtc(input.now)},NULL,NULL)
+									RETURNING *
+								`;
+								const event = yield* oneEvent(inserted);
+								yield* sql`
+									INSERT INTO carneloot.notification_event_payloads (event_id,template_id,rendered_message)
+									VALUES (${event.id}::uuid,${payload.templateId}::uuid,${payload.renderedMessage})
+								`;
+								const deliveries = yield* Effect.forEach(
+									recipients,
+									(recipient) =>
+										Effect.flatMap(
+											recipient._tag === 'Reachable'
+												? sql<Record<string, unknown>>`
+												INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,created_at,updated_at)
+												VALUES (${recipient.id}::uuid,${event.id}::uuid,${recipient.recipientUserId}::uuid,${recipient.recipientChatId},${recipient.recipientRole},${recipient.channel},'pending',0,0,false,${DateTime.toDateUtc(input.now)},${DateTime.toDateUtc(input.now)})
+												RETURNING *
+											`
+												: sql<Record<string, unknown>>`
+												INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,safe_error_json,failed_at,created_at,updated_at)
+												VALUES (${recipient.id}::uuid,${event.id}::uuid,${recipient.recipientUserId}::uuid,NULL,${recipient.recipientRole},${recipient.channel},'failed',0,0,false,${sql.json(recipient.error)},${DateTime.toDateUtc(input.now)},${DateTime.toDateUtc(input.now)},${DateTime.toDateUtc(input.now)})
+												RETURNING *
+											`,
+											oneDelivery,
+										),
+								);
+								return { event, deliveries };
+							}),
+						)
+						.pipe(Effect.withSpan('NotificationRepository.transaction')),
+				),
 			cancelActiveForPet: (botId, petId, now) =>
 				protect(
 					sql

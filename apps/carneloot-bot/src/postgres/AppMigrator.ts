@@ -12,6 +12,7 @@ import { migration0006Checksum, migration0006Sql } from './Migration0006Sql.js';
 import { migration0007Checksum, migration0007Sql } from './Migration0007Sql.js';
 import { migration0008Checksum, migration0008Sql } from './Migration0008Sql.js';
 import { migration0009Checksum, migration0009Sql } from './Migration0009Sql.js';
+import { migration0010Checksum, migration0010Sql } from './Migration0010Sql.js';
 
 const sqlMigration = (
 	version: number,
@@ -55,6 +56,12 @@ const migrations: ReadonlyArray<Migration> = Object.freeze([
 		migration0008Sql,
 	),
 	sqlMigration(9, 'import-targets', migration0009Checksum, migration0009Sql),
+	sqlMigration(
+		10,
+		'external-notification-payload',
+		migration0010Checksum,
+		migration0010Sql,
+	),
 ]);
 
 export const migrate = PostgresMigrator.run({

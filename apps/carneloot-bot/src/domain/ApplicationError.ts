@@ -21,6 +21,12 @@ import {
 	UserNotRegistered,
 } from './DomainError.js';
 import {
+	InitialNotificationPersistenceUnavailable,
+	InvalidApiKey,
+	MissingTemplateVariables,
+	TemplateNotFound,
+} from './notifications/ExternalNotification.js';
+import {
 	DuplicateFoodEntry,
 	FoodEntryNotFound,
 	PetAccessDenied,
@@ -54,6 +60,10 @@ export const ApplicationError = Schema.Union([
 	FoodNotificationSchedulerError,
 	FoodReplyLedgerError,
 	ConversationOperationError,
+	InvalidApiKey,
+	TemplateNotFound,
+	MissingTemplateVariables,
+	InitialNotificationPersistenceUnavailable,
 	SqlError,
 	TelegramError,
 ]);

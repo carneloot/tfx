@@ -38,6 +38,10 @@ import {
 	migration0009Checksum,
 	migration0009Sql,
 } from '../src/postgres/Migration0009Sql.js';
+import {
+	migration0010Checksum,
+	migration0010Sql,
+} from '../src/postgres/Migration0010Sql.js';
 
 describe('application migration artifacts', () => {
 	it.each([
@@ -62,6 +66,11 @@ describe('application migration artifacts', () => {
 		],
 		['0008_food_reply_operations.sql', migration0008Sql, migration0008Checksum],
 		['0009_import_targets.sql', migration0009Sql, migration0009Checksum],
+		[
+			'0010_external_notification_payload.sql',
+			migration0010Sql,
+			migration0010Checksum,
+		],
 	] as const)(
 		'matches committed %s bytes and SHA-256',
 		(file, sql, checksum) => {
@@ -111,6 +120,18 @@ describe('application migration artifacts', () => {
 		);
 		expect(migration0009Sql).toContain(
 			"CONSTRAINT legacy_import_ledger_digest_check CHECK (row_digest ~ '^[0-9a-f]{64}$')",
+		);
+	});
+
+	it('freezes nonempty rendered external notification payloads', () => {
+		expect(migration0010Sql).toContain(
+			'event_id uuid PRIMARY KEY REFERENCES carneloot.notification_events(id) ON DELETE CASCADE',
+		);
+		expect(migration0010Sql).toContain(
+			'template_id uuid REFERENCES carneloot.notification_templates(id)',
+		);
+		expect(migration0010Sql).toContain(
+			'CONSTRAINT notification_event_payloads_rendered_message_nonempty CHECK (octet_length(rendered_message) > 0)',
 		);
 	});
 
