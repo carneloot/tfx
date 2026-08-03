@@ -6,6 +6,8 @@
 
 **Tech Stack:** Effect v4 Tracer/SpanLink, `@tfx/postgres` migrations, PostgreSQL UUIDs, Vitest.
 
+**Status:** Complete. Validated with `pnpm check`, `pnpm test:unit`, and `RUN_TESTCONTAINERS=true pnpm test:integration`.
+
 ---
 
 ## File map

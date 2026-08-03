@@ -6,6 +6,8 @@
 
 **Tech Stack:** Effect v4 Crypto/Tracing/OTLP, `@effect/platform-bun`, `@effect/platform-node`, Vitest.
 
+**Status:** Complete. Validated with `pnpm check`, `pnpm test:unit`, and `RUN_TESTCONTAINERS=true pnpm test:integration`.
+
 ---
 
 ## File map
