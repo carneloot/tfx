@@ -1,7 +1,6 @@
-import { createHash, randomUUID } from 'node:crypto';
-
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { Effect, Layer, Schema } from 'effect';
+import { createHash, randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import { UserId } from '../../src/domain/Ids.js';
@@ -50,6 +49,10 @@ else
 					layer,
 				),
 			);
-			expect(result).toEqual({ first: undefined, second: expect.any(String), has: true });
+			expect(result).toEqual({
+				first: undefined,
+				second: expect.any(String),
+				has: true,
+			});
 		});
 	});

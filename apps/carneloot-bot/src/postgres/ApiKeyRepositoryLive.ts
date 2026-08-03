@@ -30,7 +30,9 @@ export const layer = Layer.effect(
 		const crypto = yield* Crypto.Crypto;
 		const service = {
 			hasForUser: (userId) =>
-				sql<{ readonly exists: boolean }>`SELECT EXISTS(SELECT 1 FROM carneloot.api_keys WHERE user_id=${userId}::uuid) AS exists`.pipe(
+				sql<{
+					readonly exists: boolean;
+				}>`SELECT EXISTS(SELECT 1 FROM carneloot.api_keys WHERE user_id=${userId}::uuid) AS exists`.pipe(
 					Effect.map((rows) => rows[0]?.exists ?? false),
 					Effect.mapError(persistence),
 				),
@@ -52,12 +54,14 @@ export const layer = Layer.effect(
 					yield* Schema.decodeUnknownEffect(ApiKeyHash)(keyHash).pipe(
 						Effect.mapError(persistence),
 					);
-					const rows = yield* sql<Record<string, unknown>>`SELECT user_id FROM carneloot.api_keys WHERE key_hash=${keyHash}`;
+					const rows = yield* sql<
+						Record<string, unknown>
+					>`SELECT user_id FROM carneloot.api_keys WHERE key_hash=${keyHash}`;
 					return rows[0] === undefined
 						? undefined
 						: yield* Schema.decodeUnknownEffect(UserId)(rows[0].user_id).pipe(
-							Effect.mapError(persistence),
-						);
+								Effect.mapError(persistence),
+							);
 				}).pipe(Effect.mapError(persistence)),
 		} satisfies ApiKeyRepositoryService;
 		return traceService('ApiKeyRepository', service);

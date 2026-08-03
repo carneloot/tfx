@@ -19,7 +19,9 @@ export const execute = Effect.fn('GenerateApiKey.execute')((userId: UserId) =>
 		const digest = yield* crypto
 			.digest('SHA-256', encoder.encode(key))
 			.pipe(Effect.orDie);
-		const hash = Schema.decodeUnknownSync(ApiKeyHash)(Encoding.encodeHex(digest));
+		const hash = Schema.decodeUnknownSync(ApiKeyHash)(
+			Encoding.encodeHex(digest),
+		);
 		yield* repository.replaceForUser(userId, hash);
 		return key;
 	}),

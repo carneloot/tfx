@@ -58,18 +58,22 @@ export const layer = Layer.effect(
 								const decoded = rows.map((row) =>
 									Schema.decodeUnknownSync(Row)(row),
 								);
-								const template = Schema.decodeUnknownSync(NotificationTemplate)({
-									id: decoded[0]?.id,
-									ownerUserId: decoded[0]?.owner_user_id,
-									keyword: decoded[0]?.keyword,
-									message: decoded[0]?.message,
-									createdAt: decoded[0]?.created_at,
-									updatedAt: decoded[0]?.updated_at,
-								});
+								const template = Schema.decodeUnknownSync(NotificationTemplate)(
+									{
+										id: decoded[0]?.id,
+										ownerUserId: decoded[0]?.owner_user_id,
+										keyword: decoded[0]?.keyword,
+										message: decoded[0]?.message,
+										createdAt: decoded[0]?.created_at,
+										updatedAt: decoded[0]?.updated_at,
+									},
+								);
 								return {
 									template,
 									subscriberUserIds: decoded.flatMap((row) =>
-										row.subscriber_user_id === null ? [] : [row.subscriber_user_id],
+										row.subscriber_user_id === null
+											? []
+											: [row.subscriber_user_id],
 									),
 								};
 							},

@@ -3,8 +3,8 @@ import { BotBuilder, BotRouter, DispatchOutcome } from 'tfx';
 import { isRetryableError, type TaggedError } from 'tfx/TaggedError';
 
 import * as AccountHandlers from './bot/AccountHandlers.js';
-import * as ApiKeyHandlers from './bot/ApiKeyHandlers.js';
 import * as AddPetConversation from './bot/AddPetConversation.js';
+import * as ApiKeyHandlers from './bot/ApiKeyHandlers.js';
 import * as CancelConversation from './bot/CancelConversation.js';
 import * as CaregiverHandlers from './bot/CaregiverHandlers.js';
 import * as AddFoodConversation from './bot/conversations/AddFoodConversation.js';
@@ -33,7 +33,8 @@ export const accountHandlers = BotBuilder.buildGroup(
 export const apiKeyHandlers = BotBuilder.buildGroup(
 	Carneloot,
 	'apiKeys',
-	(handlers) => handlers.handle('generateApiKey', () => ApiKeyHandlers.generate),
+	(handlers) =>
+		handlers.handle('generateApiKey', () => ApiKeyHandlers.generate),
 );
 export const petHandlers = BotBuilder.buildGroup(
 	Carneloot,

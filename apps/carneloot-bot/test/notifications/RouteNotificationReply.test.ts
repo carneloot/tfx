@@ -61,7 +61,10 @@ const event = {
 	completedAt: null,
 	cancelledAt: null,
 };
-const delivery = (recipientUserId: typeof UserId.Type, role: 'owner' | 'subscriber') => ({
+const delivery = (
+	recipientUserId: typeof UserId.Type,
+	role: 'owner' | 'subscriber',
+) => ({
 	id: role === 'owner' ? ownerDeliveryId : deliveryId,
 	eventId,
 	recipientUserId,
@@ -88,7 +91,12 @@ const delivery = (recipientUserId: typeof UserId.Type, role: 'owner' | 'subscrib
 });
 
 const run = (
-	context: { readonly delivery: ReturnType<typeof delivery>; readonly event: typeof event } | undefined,
+	context:
+		| {
+				readonly delivery: ReturnType<typeof delivery>;
+				readonly event: typeof event;
+		  }
+		| undefined,
 	sent: unknown[],
 	owner: ReturnType<typeof delivery> | null = delivery(ownerId, 'owner'),
 ) =>
@@ -114,7 +122,9 @@ const run = (
 describe('RouteNotificationReply', () => {
 	it('forwards subscriber text as a reply to same event owner message', async () => {
 		const sent: unknown[] = [];
-		await expect(run({ delivery: delivery(subscriberId, 'subscriber'), event }, sent)).resolves.toEqual({
+		await expect(
+			run({ delivery: delivery(subscriberId, 'subscriber'), event }, sent),
+		).resolves.toEqual({
 			_tag: 'NotificationForwarded',
 		});
 		expect(sent).toEqual([
@@ -129,7 +139,11 @@ describe('RouteNotificationReply', () => {
 	it('returns Unrelated when external subscriber reply has no sent owner', async () => {
 		const sent: unknown[] = [];
 		await expect(
-			run({ delivery: delivery(subscriberId, 'subscriber'), event }, sent, null),
+			run(
+				{ delivery: delivery(subscriberId, 'subscriber'), event },
+				sent,
+				null,
+			),
 		).resolves.toEqual({ _tag: 'Unrelated' });
 		expect(sent).toEqual([]);
 	});
@@ -143,9 +157,14 @@ describe('RouteNotificationReply', () => {
 						Layer.merge(
 							Layer.succeed(NotificationRepository, {
 								findSentByTelegramMessage: () =>
-									Effect.succeed({ delivery: delivery(ownerId, 'owner'), event }),
+									Effect.succeed({
+										delivery: delivery(ownerId, 'owner'),
+										event,
+									}),
 							} as never),
-							Layer.succeed(Telegram, { sendMessage: () => Effect.die('unexpected') } as never),
+							Layer.succeed(Telegram, {
+								sendMessage: () => Effect.die('unexpected'),
+							} as never),
 						),
 					),
 				),

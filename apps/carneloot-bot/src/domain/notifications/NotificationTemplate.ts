@@ -16,7 +16,8 @@ export const NotificationTemplateMessage = Schema.String.check(
 	Schema.isMinLength(1),
 	Schema.isMaxLength(4096),
 ).pipe(Schema.brand('NotificationTemplateMessage'));
-export type NotificationTemplateMessage = typeof NotificationTemplateMessage.Type;
+export type NotificationTemplateMessage =
+	typeof NotificationTemplateMessage.Type;
 export const NotificationTemplate = Schema.Struct({
 	id: NotificationTemplateId,
 	ownerUserId: UserId,

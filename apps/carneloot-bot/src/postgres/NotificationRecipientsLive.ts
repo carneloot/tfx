@@ -30,10 +30,7 @@ const PetRecipientRow = Schema.Struct({
 });
 const Recipient = Data.taggedEnum<ResolvedRecipient>();
 
-const unreachable = (
-	userId: UserId,
-	role: RecipientRole,
-): ResolvedRecipient =>
+const unreachable = (userId: UserId, role: RecipientRole): ResolvedRecipient =>
 	Recipient.Unreachable({
 		recipientUserId: userId,
 		recipientRole: role,
@@ -66,9 +63,14 @@ export const layer = Layer.effect(
 	Effect.map(PgClient.PgClient, (sql) => {
 		const resolveUser = (_botId: string, userId: UserId, role: RecipientRole) =>
 			Effect.flatMap(
-				sql<Record<string, unknown>>`SELECT private_chat_id FROM carneloot.telegram_identities WHERE bot_id=${canonicalBotId} AND user_id=${userId}::uuid`,
-				(rows): Effect.Effect<ResolvedRecipient, NotificationRecipientsError> => {
-					if (rows[0] === undefined) return Effect.succeed(unreachable(userId, role));
+				sql<
+					Record<string, unknown>
+				>`SELECT private_chat_id FROM carneloot.telegram_identities WHERE bot_id=${canonicalBotId} AND user_id=${userId}::uuid`,
+				(
+					rows,
+				): Effect.Effect<ResolvedRecipient, NotificationRecipientsError> => {
+					if (rows[0] === undefined)
+						return Effect.succeed(unreachable(userId, role));
 					return Effect.try({
 						try: () => {
 							const row = Schema.decodeUnknownSync(OwnerRow)(rows[0]);

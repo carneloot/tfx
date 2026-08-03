@@ -764,7 +764,11 @@ describe('generic external delivery', () => {
 		const h = harness(Effect.succeed({ message_id: 91 }));
 		const result = await Effect.runPromise(
 			Effect.provide(
-				Dispatch.executeGeneric({ eventId, botId, text: 'Frozen external text' }),
+				Dispatch.executeGeneric({
+					eventId,
+					botId,
+					text: 'Frozen external text',
+				}),
 				h.layer,
 			),
 		);
@@ -786,7 +790,11 @@ describe('generic external delivery', () => {
 		);
 		const result = await Effect.runPromise(
 			Effect.provide(
-				Dispatch.executeGeneric({ eventId, botId, text: 'Frozen external text' }),
+				Dispatch.executeGeneric({
+					eventId,
+					botId,
+					text: 'Frozen external text',
+				}),
 				h.layer,
 			),
 		);

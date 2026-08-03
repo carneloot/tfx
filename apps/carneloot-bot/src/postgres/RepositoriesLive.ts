@@ -1,8 +1,8 @@
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 
-import { migrate } from './AppMigrator.js';
 import * as ApiKeyRepositoryLive from './ApiKeyRepositoryLive.js';
+import { migrate } from './AppMigrator.js';
 import * as NotificationRecipientsLive from './NotificationRecipientsLive.js';
 import * as NotificationRepositoryLive from './NotificationRepositoryLive.js';
 import * as NotificationTemplateRepositoryLive from './NotificationTemplateRepositoryLive.js';
