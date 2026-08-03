@@ -1,8 +1,10 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Crypto from 'effect/Crypto';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
+import { traceService } from 'tfx/TraceService';
 
 const Timestamp = Schema.Union([
 	Schema.DateTimeUtcFromDate,
@@ -89,7 +91,9 @@ const select = (
 
 export const layer = Layer.effect(
 	UserRepository,
-	Effect.map(PgClient.PgClient, (sql) => {
+	Effect.gen(function* () {
+		const sql = yield* PgClient.PgClient;
+		const crypto = yield* Crypto.Crypto;
 		const validateProfile = (profile: TelegramProfile) =>
 			Effect.all([
 				Schema.decodeUnknownEffect(BotId)(profile.botId),
@@ -128,7 +132,9 @@ export const layer = Layer.effect(
 									);
 									return yield* decode(refreshed[0]);
 								}
-								const id = crypto.randomUUID();
+								const id = Schema.decodeUnknownSync(UserId)(
+									yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+								);
 								yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${id}::uuid,${timestamp},${timestamp})`;
 								yield* sql`INSERT INTO carneloot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${profile.botId},${profile.telegramUserId},${id}::uuid,${profile.username},${profile.firstName},${profile.lastName},${profile.privateChatId},${timestamp},${timestamp})`;
 								const created = yield* select(
@@ -139,6 +145,7 @@ export const layer = Layer.effect(
 								return yield* decode(created[0]);
 							}),
 						)
+						.pipe(Effect.withSpan('UserRepository.transaction'))
 						.pipe(Effect.mapError(persistence)),
 				),
 			findByUsername: (botId, username) =>
@@ -192,6 +199,6 @@ export const layer = Layer.effect(
 					return yield* decode(rows[0]);
 				}),
 		} satisfies UserRepositoryService;
-		return service;
+		return traceService('UserRepository', service);
 	}),
 );

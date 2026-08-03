@@ -12,6 +12,7 @@ import { migrate } from '../src/postgres/AppMigrator.js';
 import { migration0001Checksum } from '../src/postgres/Migration0001Sql.js';
 import * as PetRepositoryLive from '../src/postgres/PetRepositoryLive.js';
 import * as UserRepositoryLive from '../src/postgres/UserRepositoryLive.js';
+import * as DeterministicCrypto from './internal/DeterministicCrypto.js';
 import * as PostgresTestLayer from './internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -19,7 +20,11 @@ const enabled =
 const adapters = Layer.merge(
 	UserRepositoryLive.layer,
 	PetRepositoryLive.layer,
-).pipe(Layer.provideMerge(PostgresTestLayer.layer));
+).pipe(
+	Layer.provideMerge(
+		Layer.merge(PostgresTestLayer.layer, DeterministicCrypto.layer()),
+	),
+);
 const profile = {
 	botId: Schema.decodeUnknownSync(BotId)('carneloot'),
 	telegramUserId: Schema.decodeUnknownSync(TelegramUserId)(9001),

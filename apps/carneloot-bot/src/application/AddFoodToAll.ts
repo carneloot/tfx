@@ -22,33 +22,37 @@ export interface AddFoodToAllResult {
 	readonly items: ReadonlyArray<AddFoodToAllItem>;
 }
 
-export const execute = (
-	access: Omit<PetFoodAccess, 'petId'>,
-	input: ParsedFoodInput,
-	source: SourceInput,
-) =>
-	Effect.gen(function* () {
-		const repository = yield* PetRepository;
-		const pets = yield* repository.listAccessible(access.actorId);
-		const items = yield* Effect.forEach(
-			pets,
-			(pet) =>
-				AddFood.execute({ ...access, petId: pet.id }, input, source).pipe(
-					Effect.map((result) => ({
-						_tag: result.replayed ? ('Replayed' as const) : ('Added' as const),
-						pet,
-						entry: result.entry,
-					})),
-					Effect.catchTags({
-						PetFoodSetupMissing: () =>
-							Effect.succeed({ _tag: 'SetupMissing' as const, pet }),
-						DuplicateFoodEntry: () =>
-							Effect.succeed({ _tag: 'Duplicate' as const, pet }),
-						PetAccessDenied: () =>
-							Effect.succeed({ _tag: 'AccessLost' as const, pet }),
-					}),
-				),
-			{ concurrency: 4 },
-		);
-		return { items } satisfies AddFoodToAllResult;
-	});
+export const execute = Effect.fn('AddFoodToAll.execute')(
+	(
+		access: Omit<PetFoodAccess, 'petId'>,
+		input: ParsedFoodInput,
+		source: SourceInput,
+	) =>
+		Effect.gen(function* () {
+			const repository = yield* PetRepository;
+			const pets = yield* repository.listAccessible(access.actorId);
+			const items = yield* Effect.forEach(
+				pets,
+				(pet) =>
+					AddFood.execute({ ...access, petId: pet.id }, input, source).pipe(
+						Effect.map((result) => ({
+							_tag: result.replayed
+								? ('Replayed' as const)
+								: ('Added' as const),
+							pet,
+							entry: result.entry,
+						})),
+						Effect.catchTags({
+							PetFoodSetupMissing: () =>
+								Effect.succeed({ _tag: 'SetupMissing' as const, pet }),
+							DuplicateFoodEntry: () =>
+								Effect.succeed({ _tag: 'Duplicate' as const, pet }),
+							PetAccessDenied: () =>
+								Effect.succeed({ _tag: 'AccessLost' as const, pet }),
+						}),
+					),
+				{ concurrency: 4 },
+			);
+			return { items } satisfies AddFoodToAllResult;
+		}),
+);

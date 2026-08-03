@@ -49,6 +49,7 @@ import {
 	UserRepository,
 	type UserRepositoryService,
 } from '../../src/ports/UserRepository.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 
 const ownerId = Schema.decodeUnknownSync(UserId)(
 	'00000000-0000-4000-8000-000000000001',
@@ -329,6 +330,7 @@ const harness = (): Harness => {
 		Layer.succeed(Telegram, {} as never),
 		Layer.succeed(CurrentUser, current),
 		Layer.succeed(UpdateContext, update),
+		DeterministicCrypto.layer(),
 	);
 	return {
 		replies,

@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema } from 'effect';
+import { Effect, Layer, Schema, Tracer } from 'effect';
 import {
 	Bot,
 	BotBuilder,
@@ -431,6 +431,111 @@ describe('public BotRouter', () => {
 			} as never),
 		);
 		expect(resumed).toBe(4);
+	});
+
+	it('links persisted conversation resumes without recording raw data', async () => {
+		const spans: Array<Tracer.Span> = [];
+		const tracer = Tracer.make({
+			span: (options) => {
+				const span = new Tracer.NativeSpan(options);
+				spans.push(span);
+				return span;
+			},
+		});
+		const linkedConversation = ConversationBuilder.done(
+			ConversationBuilder.make(conversationDeclaration).step('count', {
+				enter: () => Effect.void,
+				onInput: (state) =>
+					Effect.succeed(
+						ConversationBuilder.to('count', state + 1, {
+							afterCommit: Effect.void,
+						}),
+					),
+				onInvalid: () => Effect.succeed(ConversationBuilder.stay()),
+			}),
+		);
+		const handlers = BotBuilder.buildGroup(bot, 'account', (value) =>
+			value.handle('start', () =>
+				Effect.gen(function* () {
+					const update = yield* UpdateContext.UpdateContext;
+					const conversations = yield* Conversations.Conversations;
+					yield* conversations
+						.start(linkedConversation, 0, {
+							scope: {
+								botId: 'declared',
+								chatId: update.chatId!,
+								userId: update.userId!,
+							},
+						})
+						.pipe(Effect.orDie);
+				}),
+			),
+		);
+		const groups = [handlers] as const;
+		const router = await Effect.runPromise(
+			build<typeof groups, readonly [typeof linkedConversation]>(groups, {
+				conversations: [linkedConversation],
+			}),
+		);
+		await Effect.runPromise(
+			Effect.provideService(
+				router.route(commandUpdate(30, '/start') as never),
+				Tracer.Tracer,
+				tracer,
+			),
+		);
+		await Effect.runPromise(
+			Effect.provideService(
+				router.route({
+					...commandUpdate(31, '42'),
+					message: {
+						...commandUpdate(31, '42').message,
+						entities: [],
+					},
+				} as never),
+				Tracer.Tracer,
+				tracer,
+			),
+		);
+		const command = spans.find((span) => span.name === 'Command.start');
+		const start = spans.find((span) => span.name === 'Conversation.start');
+		const resume = spans.find(
+			(span) => span.name === 'Conversation.counter.count',
+		);
+		expect(command).toBeDefined();
+		expect(command?.parent._tag).toBe('None');
+		expect(start?.parent._tag).toBe('Some');
+		expect(start?.parent._tag === 'Some' ? start.parent.value : undefined).toBe(
+			command,
+		);
+		expect(resume?.parent._tag).toBe('None');
+		expect(resume?.links).toHaveLength(1);
+		expect(resume?.links[0]?.span).toMatchObject({
+			traceId: start?.traceId,
+			spanId: start?.spanId,
+		});
+		const lifecycleResume = spans.find(
+			(span) => span.name === 'Conversation.resume',
+		);
+		expect(lifecycleResume?.parent._tag).toBe('Some');
+		expect(
+			lifecycleResume?.parent._tag === 'Some'
+				? lifecycleResume.parent.value
+				: undefined,
+		).toBe(resume);
+		for (const name of [
+			'Conversation.transition',
+			'Conversation.afterCommit',
+			'Conversation.enter',
+		]) {
+			const lifecycle = spans.find((span) => span.name === name);
+			expect(lifecycle?.parent._tag).toBe('Some');
+			expect(
+				lifecycle?.parent._tag === 'Some' ? lifecycle.parent.value : undefined,
+			).toBe(lifecycleResume);
+		}
+		const attributes = spans.flatMap((span) => [...span.attributes.values()]);
+		expect(attributes).not.toContain('42');
 	});
 
 	it('permanently rejects unhandled callbacks', async () => {

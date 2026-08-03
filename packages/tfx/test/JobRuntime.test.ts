@@ -2,6 +2,7 @@ import { Effect, Fiber, Layer, Ref, Schema } from 'effect';
 import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as TestClock from 'effect/testing/TestClock';
+import * as Tracer from 'effect/Tracer';
 import { describe, expect, it } from 'vitest';
 
 import * as Job from '../src/Job.js';
@@ -28,6 +29,19 @@ const declaration = Job.make('work', {
 	maxAttempts: 3,
 	retry: () => Job.retry(100),
 });
+const makeSpanCollector = () => {
+	const spans: Array<Tracer.Span> = [];
+	return {
+		spans,
+		tracer: Tracer.make({
+			span: (options) => {
+				const span = new Tracer.NativeSpan(options);
+				spans.push(span);
+				return span;
+			},
+		}),
+	};
+};
 const provide = <A, E>(
 	effect: Effect.Effect<A, E, JobRuntime | JobStore>,
 	implementation: Job.Implementation<typeof declaration, never>,
@@ -59,6 +73,40 @@ const withCountingStore = <A, E>(
 		);
 	}).pipe(Effect.provide(MemoryJobStore.layer));
 describe('JobRuntime', () => {
+	it('emits job-execution span only after claiming job', async () => {
+		const implementation = Job.implement(declaration, () => Effect.void);
+		const { spans, tracer } = makeSpanCollector();
+		const program = Effect.gen(function* () {
+			const runtime = yield* JobRuntime;
+			expect(yield* runtime.runOne()).toBeUndefined();
+			expect(spans).toEqual([]);
+			const scheduled = yield* runtime.schedule(declaration, { value: 'work' });
+			expect(yield* runtime.runOne()).toMatchObject({
+				id: scheduled.id,
+				status: 'completed',
+			});
+			expect(
+				spans.filter((span) => span.name === 'JobRuntime.job-execution'),
+			).toHaveLength(1);
+			const executionSpan = spans.find(
+				(span) => span.name === 'JobRuntime.job-execution',
+			);
+			expect(
+				executionSpan === undefined ? [] : [...executionSpan.attributes],
+			).toEqual([
+				['jobId', scheduled.id],
+				['jobName', declaration.name],
+			]);
+		});
+		await Effect.runPromise(
+			Effect.provideService(
+				provide(program, implementation),
+				Tracer.Tracer,
+				tracer,
+			),
+		);
+	});
+
 	it('migrates before promotion, retries, and succeeds', async () => {
 		let runs = 0;
 		const implementation = Job.implement(declaration, (payload) =>

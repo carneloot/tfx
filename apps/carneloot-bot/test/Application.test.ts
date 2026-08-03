@@ -5,10 +5,8 @@ import { describe, expect, it } from 'vitest';
 import * as AddPet from '../src/application/AddPet.js';
 import * as ListPets from '../src/application/ListPets.js';
 import * as RegisterUser from '../src/application/RegisterUser.js';
-import {
-	PetNameAlreadyExists,
-	UserNotRegistered,
-} from '../src/domain/DomainError.js';
+import { CurrentUser } from '../src/bot/CurrentUser.js';
+import { PetNameAlreadyExists } from '../src/domain/DomainError.js';
 import {
 	BotId,
 	TelegramChatId,
@@ -53,20 +51,14 @@ const pets = Layer.succeed(PetRepository, {
 	listOwned: () => Effect.succeed([]),
 	listAccessible: () => Effect.succeed([]),
 });
-const users = (id = ownerId) =>
-	Layer.succeed(UserRepository, {
-		findById: () => Effect.die('unused'),
-		findByUsername: () => Effect.succeed([]),
-		registerTelegramProfile: () => Effect.die('unused'),
-		findByTelegram: () =>
-			Effect.succeed({
-				user: {
-					id,
-					createdAt: DateTime.makeUnsafe(0),
-					updatedAt: DateTime.makeUnsafe(0),
-				},
-				profile,
-			}),
+const current = (id = ownerId) =>
+	Layer.succeed(CurrentUser, {
+		user: {
+			id,
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
+		},
+		profile,
 	});
 const request = { ownerId, botId, telegramUserId, name: ' Rex ' };
 const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
@@ -92,7 +84,7 @@ describe('pet application services', () => {
 	it('revalidates identity, normalizes, and logs the created pet', async () => {
 		const { result: pet, logs } = await Effect.runPromise(
 			captureLogs(
-				Effect.provide(AddPet.execute(request), Layer.merge(pets, users())),
+				Effect.provide(AddPet.execute(request), Layer.merge(pets, current())),
 			),
 		);
 		expect(pet.name).toBe('Rex');
@@ -143,16 +135,9 @@ describe('pet application services', () => {
 		])
 			expect(JSON.stringify(logs)).not.toContain(String(pii));
 	});
-	it('rejects removed or remapped identities without insertion', async () => {
+	it('rejects mismatched conversation identity without insertion', async () => {
 		insertions = 0;
-		const removed = Layer.succeed(UserRepository, {
-			findById: () => Effect.die('unused'),
-			findByUsername: () => Effect.succeed([]),
-			registerTelegramProfile: () => Effect.die('unused'),
-			findByTelegram: () =>
-				Effect.fail(new UserNotRegistered({ message: 'removed' })),
-		});
-		for (const identity of [removed, users(otherId)]) {
+		for (const identity of [current(otherId)]) {
 			const result = await Effect.runPromiseExit(
 				Effect.provide(AddPet.execute(request), Layer.merge(pets, identity)),
 			);

@@ -12,6 +12,7 @@ import { PetCaregiverRepository } from '../src/ports/PetCaregiverRepository.js';
 import { PetFoodRepository } from '../src/ports/PetFoodRepository.js';
 import { PetRepository } from '../src/ports/PetRepository.js';
 import { UserRepository } from '../src/ports/UserRepository.js';
+import * as DeterministicCrypto from './internal/DeterministicCrypto.js';
 import * as PostgresTestLayer from './internal/PostgresTestLayer.js';
 import { testConfig } from './internal/TestConfig.js';
 
@@ -28,7 +29,7 @@ describe.skipIf(!enabled)('application persistence layer', () => {
 		};
 		const graph = Layer.provide(
 			PersistenceLive.layer(config),
-			PostgresTestLayer.layer,
+			Layer.merge(PostgresTestLayer.layer, DeterministicCrypto.layer()),
 		);
 		await Effect.runPromise(
 			Effect.scoped(

@@ -24,6 +24,7 @@ describe('cancel conversation handler', () => {
 			yield* storage.create(
 				{
 					scope,
+					originTrace: undefined,
 					conversationId: 'flow',
 					version: 1,
 					step: 'name',

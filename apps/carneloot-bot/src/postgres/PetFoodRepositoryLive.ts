@@ -4,6 +4,7 @@ import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
+import { traceService } from 'tfx/TraceService';
 
 import { DomainPersistenceError } from '../domain/DomainError.js';
 import { BotId, PetId, TelegramChatId, UserId } from '../domain/Ids.js';
@@ -343,6 +344,6 @@ export const layer = Layer.effect(
 					'Status query failed',
 				),
 		} satisfies PetFoodRepositoryService;
-		return service;
+		return traceService('PetFoodRepository', service);
 	}),
 );

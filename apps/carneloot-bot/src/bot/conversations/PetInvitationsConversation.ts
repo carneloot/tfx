@@ -18,6 +18,7 @@ import { PetName } from '../../domain/Pet.js';
 import { PetCaregiverRepository } from '../../ports/PetCaregiverRepository.js';
 import { PetRepository } from '../../ports/PetRepository.js';
 import { UserRepository } from '../../ports/UserRepository.js';
+import { RegisteredUser } from '../Declaration.js';
 import * as ConversationUi from './ConversationUi.js';
 
 const InvitationOption = Schema.Struct({
@@ -108,6 +109,7 @@ export const declaration = Conversation.make('pet-caregiver-invitations', {
 			input: ConversationInput.choice(confirmChoice),
 		}),
 	},
+	middleware: [RegisteredUser],
 	idleTimeout: 15 * 60 * 1000,
 	error: ApplicationError,
 });

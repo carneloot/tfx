@@ -20,6 +20,7 @@ import { PetCaregiverRepository } from '../../ports/PetCaregiverRepository.js';
 import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
 import { PetRepository } from '../../ports/PetRepository.js';
 import { UserRepository } from '../../ports/UserRepository.js';
+import { RegisteredUser } from '../Declaration.js';
 import * as ConversationUi from './ConversationUi.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
@@ -104,6 +105,7 @@ export const declaration = Conversation.make('configure-pet-day-start', {
 			input: Text,
 		}),
 	},
+	middleware: [RegisteredUser],
 	idleTimeout: 15 * 60 * 1000,
 	error: ApplicationError,
 });

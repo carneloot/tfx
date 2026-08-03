@@ -5,6 +5,7 @@ import * as Effect from 'effect/Effect';
 import { up as up0001 } from './internal/Migration0001.js';
 import { up as up0002 } from './internal/Migration0002.js';
 import { up as up0003 } from './internal/Migration0003.js';
+import { up as up0004 } from './internal/Migration0004.js';
 import { migrationChecksums } from './internal/MigrationChecksums.js';
 import { make } from './internal/Tables.js';
 import type { Options } from './Options.js';
@@ -29,6 +30,12 @@ export const migrate = (options: Options = {}) => {
 			name: 'job-state-invariant',
 			checksum: migrationChecksums[3],
 			up: (sql) => up0003(sql, tables).pipe(Effect.asVoid),
+		},
+		{
+			version: 4,
+			name: 'conversation-trace-context',
+			checksum: migrationChecksums[4],
+			up: (sql) => up0004(sql, tables).pipe(Effect.asVoid),
 		},
 	]);
 	return PostgresMigrator.run({

@@ -70,6 +70,11 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 				name: 'job-state-invariant',
 				checksum: sourceChecksum('Migration0003.ts'),
 			},
+			{
+				version: 4,
+				name: 'conversation-trace-context',
+				checksum: sourceChecksum('Migration0004.ts'),
+			},
 		]);
 		expect(
 			rows.ledger.every((row) => /^[0-9a-f]{64}$/u.test(row.checksum)),
@@ -99,7 +104,7 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 				stage: 'ledger_validation',
 			},
 		});
-		expect(result.count).toBe('3');
+		expect(result.count).toBe('4');
 	});
 
 	it('rejects unknown future versions and missing applied prefixes', async () => {
@@ -133,7 +138,7 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 			yield* migrate(options);
 			const sql = yield* PgClient.PgClient;
 			yield* sql`ALTER TABLE tfx_corrupt_test.case_jobs DROP CONSTRAINT case_jobs_state_chk`;
-			yield* sql`DELETE FROM tfx_corrupt_test.case_migrations WHERE version=3`;
+			yield* sql`DELETE FROM tfx_corrupt_test.case_migrations WHERE version>=3`;
 			const id = crypto.randomUUID();
 			yield* sql`INSERT INTO tfx_corrupt_test.case_jobs (id,declaration,payload_version,payload_json,status,attempts,max_attempts,run_at,lease_generation,cancellation_requested,outcome_json,created_at,updated_at) VALUES (${id}::uuid,'corrupt',1,'{}'::jsonb,'completed',0,1,now(),0,false,NULL,now(),now())`;
 			const result = yield* Effect.result(migrate(options));
@@ -156,6 +161,6 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 		);
 		expect(result.result._tag).toBe('Failure');
 		expect(result.failedCount).toBe('2');
-		expect(result.repairedCount).toBe('3');
+		expect(result.repairedCount).toBe('4');
 	});
 });

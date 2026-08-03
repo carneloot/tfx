@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import * as AppLive from '../src/AppLive.js';
 import { AppConfig } from '../src/Config.js';
 import { JobWorker } from '../src/JobWorker.js';
+import * as DeterministicCrypto from './internal/DeterministicCrypto.js';
 import * as PostgresTestLayer from './internal/PostgresTestLayer.js';
 import { testConfig } from './internal/TestConfig.js';
 
@@ -51,7 +52,11 @@ describe.skipIf(!enabled)('application layer', () => {
 			Telegram.layer(config.botToken),
 			NodeHttpClient.layerFetch,
 		);
-		const infrastructure = Layer.merge(PostgresTestLayer.layer, telegram);
+		const infrastructure = Layer.mergeAll(
+			PostgresTestLayer.layer,
+			telegram,
+			DeterministicCrypto.layer(),
+		);
 		const graph = Layer.provide(
 			Layer.provide(
 				AppLive.layer(() => UpdateDelivery.manual),

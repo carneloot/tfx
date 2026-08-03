@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as AppLive from '../../src/AppLive.js';
 import { AppConfig, type AppConfigService } from '../../src/Config.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -119,7 +120,11 @@ const fixture = Effect.gen(function* () {
 		answerCallbackQuery: () => Effect.succeed(true),
 	} as never);
 	const pg = Layer.succeed(PgClient.PgClient, sql);
-	const infrastructure = Layer.merge(pg, telegram);
+	const infrastructure = Layer.mergeAll(
+		pg,
+		telegram,
+		DeterministicCrypto.layer(),
+	);
 	const graph = Layer.provide(
 		Layer.provide(
 			AppLive.layer(() => UpdateDelivery.manual),

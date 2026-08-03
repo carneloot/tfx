@@ -1,8 +1,10 @@
+import * as Crypto from 'effect/Crypto';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
 import { JobRuntime } from 'tfx/JobRuntime';
+import { traceService } from 'tfx/TraceService';
 
 import { DeliveryId } from '../domain/notifications/NotificationDelivery.js';
 import { EventId } from '../domain/notifications/NotificationEvent.js';
@@ -52,6 +54,7 @@ export const layer = Layer.effect(
 		const recipients = yield* NotificationRecipients;
 		const notifications = yield* NotificationRepository;
 		const jobs = yield* JobRuntime;
+		const crypto = yield* Crypto.Crypto;
 
 		const service = {
 			scheduleAdded: (request) =>
@@ -65,7 +68,9 @@ export const layer = Layer.effect(
 
 					const now = yield* DateTime.now;
 					const event = yield* notifications.createEvent({
-						id: Schema.decodeUnknownSync(EventId)(crypto.randomUUID()),
+						id: Schema.decodeUnknownSync(EventId)(
+							yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+						),
 						botId: request.botId,
 						kind: 'food-added',
 						ownerUserId: request.ownerUserId,
@@ -78,11 +83,15 @@ export const layer = Layer.effect(
 					});
 					if (event.recipientsMaterializedAt !== null) return;
 
-					const inputs: ReadonlyArray<RecipientInput> = resolved.map(
-						({ resolution }) => ({
-							...resolution,
-							id: Schema.decodeUnknownSync(DeliveryId)(crypto.randomUUID()),
-						}),
+					const inputs: ReadonlyArray<RecipientInput> = yield* Effect.forEach(
+						resolved,
+						({ resolution }) =>
+							Effect.gen(function* () {
+								const id = Schema.decodeUnknownSync(DeliveryId)(
+									yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+								);
+								return { ...resolution, id };
+							}),
 					);
 					yield* notifications.materializeRecipients(event.id, inputs, now);
 					const marked = yield* notifications.markRecipientsMaterialized(
@@ -134,6 +143,6 @@ export const layer = Layer.effect(
 					),
 				),
 		} satisfies FoodNotificationSchedulerService;
-		return service;
+		return traceService('FoodNotificationScheduler', service);
 	}),
 );

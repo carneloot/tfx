@@ -25,6 +25,7 @@ import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
 import { PetRepository } from '../../ports/PetRepository.js';
 import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
 import { UserRepository } from '../../ports/UserRepository.js';
+import { RegisteredUser } from '../Declaration.js';
 import * as ConversationUi from './ConversationUi.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
@@ -58,6 +59,7 @@ const required = <A, E extends TaggedError, R>(
 		yield* PetRepository;
 		yield* PetCaregiverRepository;
 		yield* ReminderScheduler;
+		yield* UserRepository;
 		yield* UserRepository;
 		return yield* effect;
 	});
@@ -95,6 +97,7 @@ export const declaration = Conversation.make('correct-pet-food', {
 			input: Text,
 		}),
 	},
+	middleware: [RegisteredUser],
 	idleTimeout: 15 * 60 * 1000,
 	error: ApplicationError,
 });

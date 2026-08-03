@@ -1,3 +1,4 @@
+import * as BunCrypto from '@effect/platform-bun/BunCrypto';
 import * as BunRuntime from '@effect/platform-bun/BunRuntime';
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
@@ -128,7 +129,7 @@ const program = Effect.scoped(
 	Effect.gen(function* () {
 		const sql = yield* PgClient.PgClient;
 		const pg = Layer.succeed(PgClient.PgClient, sql);
-		const infrastructure = Layer.merge(pg, telegram);
+		const infrastructure = Layer.mergeAll(pg, telegram, BunCrypto.layer);
 		const graph = Layer.provide(
 			Layer.provide(
 				AppLive.layer(() => UpdateDelivery.manual),

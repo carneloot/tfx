@@ -112,5 +112,10 @@ export const dispatch = Effect.fn('DeduplicatedDispatch.dispatch')(function (
 				),
 			);
 		}),
-	).pipe(Effect.catch(deduplicationFailure));
+	).pipe(
+		Effect.catch(deduplicationFailure),
+		Effect.withSpan('DeduplicatedDispatch.deduplicate', {
+			attributes: { updateId: update.update_id },
+		}),
+	);
 });

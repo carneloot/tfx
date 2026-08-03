@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as AppLive from '../../src/AppLive.js';
 import { AppConfig, type AppConfigService } from '../../src/Config.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -111,7 +112,11 @@ const makeGraph = (
 	return Layer.provide(
 		Layer.provide(
 			AppLive.layer(() => UpdateDelivery.manual),
-			Layer.merge(Layer.succeed(PgClient.PgClient, sql), telegram),
+			Layer.mergeAll(
+				Layer.succeed(PgClient.PgClient, sql),
+				telegram,
+				DeterministicCrypto.layer(),
+			),
 		),
 		Layer.succeed(AppConfig, config),
 	);

@@ -11,6 +11,7 @@ import {
 	type Mutation,
 	type Scope,
 } from 'tfx/ConversationStorage';
+import { traceService } from 'tfx/TraceService';
 
 import {
 	decode,
@@ -20,6 +21,7 @@ import {
 	NullableTimestamp,
 	RawInteger,
 	safeCause,
+	Uuid,
 } from './internal/RowValidation.js';
 import { make } from './internal/Tables.js';
 import type { Options } from './Options.js';
@@ -28,6 +30,10 @@ const RowSchema = Schema.Struct({
 	bot_id: Schema.NonEmptyString,
 	chat_id: RawInteger,
 	user_id: RawInteger,
+	instance_id: Uuid,
+	origin_trace_id: Schema.NullOr(Schema.String),
+	origin_span_id: Schema.NullOr(Schema.String),
+	origin_span_sampled: Schema.NullOr(Schema.Boolean),
 	conversation_id: Schema.NonEmptyString,
 	version: Schema.Int.check(Schema.isGreaterThan(0)),
 	step: Schema.NonEmptyString,
@@ -86,9 +92,21 @@ const decodeRow = (
 		const lastUpdateId =
 			row.last_update_id === null ? undefined : row.last_update_id;
 		const expiresAt = row.expires_at === null ? undefined : row.expires_at;
+		const originTrace =
+			row.origin_trace_id === null ||
+			row.origin_span_id === null ||
+			row.origin_span_sampled === null
+				? undefined
+				: {
+						traceId: row.origin_trace_id,
+						spanId: row.origin_span_id,
+						sampled: row.origin_span_sampled,
+					};
 
 		return {
 			scope: { botId: row.bot_id, chatId, userId },
+			instanceId: row.instance_id,
+			originTrace,
 			conversationId: row.conversation_id,
 			version: row.version,
 			step: row.step,
@@ -125,6 +143,7 @@ export const layer = (
 				updateId,
 				expectedRevision,
 				handler,
+				expectedInstanceId,
 			) =>
 				unwrapHandlerFailure(
 					sql
@@ -140,7 +159,11 @@ export const layer = (
 								const current = yield* decodeRow(raw);
 								if (current.lastUpdateId === updateId)
 									return { _tag: 'Duplicate' as const, row: current };
-								if (current.revision !== expectedRevision)
+								if (
+									current.revision !== expectedRevision ||
+									(expectedInstanceId !== undefined &&
+										current.instanceId !== expectedInstanceId)
+								)
 									return { _tag: 'Stale' as const, row: current };
 								const now = yield* DateTime.now;
 								if (
@@ -212,10 +235,10 @@ export const layer = (
 									conflict === 'fail'
 										? yield* sql<
 												Record<string, unknown>
-											>`INSERT INTO ${schema}.${table} (bot_id,chat_id,user_id,conversation_id,version,step,state_json,revision,last_update_id,expires_at) VALUES (${row.scope.botId},${row.scope.chatId},${row.scope.userId},${row.conversationId},${row.version},${row.step},${sql.json(row.state)},0,${row.lastUpdateId ?? null},${row.expiresAt === undefined ? null : DateTime.toDateUtc(row.expiresAt)}) ON CONFLICT (bot_id,chat_id,user_id) DO NOTHING RETURNING *`
+											>`INSERT INTO ${schema}.${table} (bot_id,chat_id,user_id,conversation_id,version,step,state_json,revision,last_update_id,expires_at,origin_trace_id,origin_span_id,origin_span_sampled) VALUES (${row.scope.botId},${row.scope.chatId},${row.scope.userId},${row.conversationId},${row.version},${row.step},${sql.json(row.state)},0,${row.lastUpdateId ?? null},${row.expiresAt === undefined ? null : DateTime.toDateUtc(row.expiresAt)},${row.originTrace?.traceId ?? null},${row.originTrace?.spanId ?? null},${row.originTrace?.sampled ?? null}) ON CONFLICT (bot_id,chat_id,user_id) DO NOTHING RETURNING *`
 										: yield* sql<
 												Record<string, unknown>
-											>`INSERT INTO ${schema}.${table} (bot_id,chat_id,user_id,conversation_id,version,step,state_json,revision,last_update_id,expires_at) VALUES (${row.scope.botId},${row.scope.chatId},${row.scope.userId},${row.conversationId},${row.version},${row.step},${sql.json(row.state)},0,${row.lastUpdateId ?? null},${row.expiresAt === undefined ? null : DateTime.toDateUtc(row.expiresAt)}) ON CONFLICT (bot_id,chat_id,user_id) DO UPDATE SET conversation_id=EXCLUDED.conversation_id,version=EXCLUDED.version,step=EXCLUDED.step,state_json=EXCLUDED.state_json,revision=0,last_update_id=EXCLUDED.last_update_id,expires_at=EXCLUDED.expires_at,updated_at=now() RETURNING *`;
+											>`INSERT INTO ${schema}.${table} (bot_id,chat_id,user_id,conversation_id,version,step,state_json,revision,last_update_id,expires_at,origin_trace_id,origin_span_id,origin_span_sampled) VALUES (${row.scope.botId},${row.scope.chatId},${row.scope.userId},${row.conversationId},${row.version},${row.step},${sql.json(row.state)},0,${row.lastUpdateId ?? null},${row.expiresAt === undefined ? null : DateTime.toDateUtc(row.expiresAt)},${row.originTrace?.traceId ?? null},${row.originTrace?.spanId ?? null},${row.originTrace?.sampled ?? null}) ON CONFLICT (bot_id,chat_id,user_id) DO UPDATE SET instance_id=EXCLUDED.instance_id,origin_trace_id=EXCLUDED.origin_trace_id,origin_span_id=EXCLUDED.origin_span_id,origin_span_sampled=EXCLUDED.origin_span_sampled,conversation_id=EXCLUDED.conversation_id,version=EXCLUDED.version,step=EXCLUDED.step,state_json=EXCLUDED.state_json,revision=0,last_update_id=EXCLUDED.last_update_id,expires_at=EXCLUDED.expires_at,updated_at=now() RETURNING *`;
 								if (rows.length === 0)
 									return yield* Effect.fail(
 										new ConversationStorageError(
@@ -242,6 +265,6 @@ export const layer = (
 						}),
 					),
 			} satisfies ConversationStorageService;
-			return service;
+			return traceService('PostgresConversationStorage', service);
 		}),
 	);

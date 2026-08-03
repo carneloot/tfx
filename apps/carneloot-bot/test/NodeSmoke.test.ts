@@ -1,11 +1,44 @@
+import * as NodeCrypto from '@effect/platform-node/NodeCrypto';
+import * as Crypto from 'effect/Crypto';
+import * as Effect from 'effect/Effect';
+import * as Layer from 'effect/Layer';
+import * as UpdateDelivery from 'tfx/UpdateDelivery';
 import { describe, expect, it } from 'vitest';
 
+import * as AppLive from '../src/AppLive.js';
 import * as Production from '../src/Production.js';
 import * as Router from '../src/Router.js';
 import { testConfig } from './internal/TestConfig.js';
 
+type Assert<T extends true> = T;
+type IsNever<T> = [T] extends [never] ? true : false;
+
+const nodePortableApplicationLayer = Layer.provide(
+	AppLive.layer(() => UpdateDelivery.manual),
+	NodeCrypto.layer,
+);
+
+const nodePortableApplicationExcludesCrypto: Assert<
+	IsNever<
+		Extract<Layer.Services<typeof nodePortableApplicationLayer>, Crypto.Crypto>
+	>
+> = true;
+
 describe('portable Node composition', () => {
+	it('provides Node Crypto without building portable application', async () => {
+		const uuid = await Effect.runPromise(
+			Effect.gen(function* () {
+				const crypto = yield* Crypto.Crypto;
+				return yield* crypto.randomUUIDv4;
+			}).pipe(Effect.provide(NodeCrypto.layer)),
+		);
+		expect(uuid).toMatch(
+			/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+		);
+	});
+
 	it('exports complete router metadata and production polling options', () => {
+		expect(nodePortableApplicationExcludesCrypto).toBe(true);
 		expect(
 			[
 				Router.accountHandlers,

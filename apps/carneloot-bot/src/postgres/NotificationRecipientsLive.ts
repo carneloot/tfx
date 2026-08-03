@@ -3,6 +3,7 @@ import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
+import { traceService } from 'tfx/TraceService';
 
 import { TelegramChatId, UserId } from '../domain/Ids.js';
 import { caregiver, owner } from '../domain/notifications/RecipientRole.js';
@@ -142,6 +143,6 @@ export const layer = Layer.effect(
 				);
 			},
 		} satisfies NotificationRecipientsService;
-		return service;
+		return traceService('NotificationRecipients', service);
 	}),
 );

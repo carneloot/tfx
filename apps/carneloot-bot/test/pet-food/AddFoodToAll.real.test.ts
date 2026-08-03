@@ -3,6 +3,7 @@ import { DateTime, Effect, Layer, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import * as AddFoodToAll from '../../src/application/AddFoodToAll.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
 import { DomainPersistenceError } from '../../src/domain/DomainError.js';
 import {
 	BotId,
@@ -31,6 +32,7 @@ import {
 import { PetRepository } from '../../src/ports/PetRepository.js';
 import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 
 const actorId = Schema.decodeUnknownSync(UserId)(
 	'00000000-0000-4000-8000-000000000001',
@@ -78,9 +80,21 @@ const fixture = (options: FixtureOptions) => {
 		updatedAt: messageDate,
 	});
 	const layer = Layer.mergeAll(
+		DeterministicCrypto.layer(),
 		Layer.succeed(PgClient.PgClient, {
 			withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
 		} as unknown as PgClient.PgClient),
+		Layer.succeed(CurrentUser, {
+			user: { id: actorId, createdAt: messageDate, updatedAt: messageDate },
+			profile: {
+				botId,
+				telegramUserId,
+				username: null,
+				firstName: 'Actor',
+				lastName: null,
+				privateChatId: Schema.decodeUnknownSync(TelegramChatId)(42),
+			},
+		}),
 		Layer.succeed(UserRepository, {
 			registerTelegramProfile: unused,
 			findById: unused,

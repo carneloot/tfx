@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import * as AppLive from '../../src/AppLive.js';
 import { AppConfig, type AppConfigService } from '../../src/Config.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -89,7 +90,11 @@ const build = (sent: string[], reminder?: Deferred.Deferred<void>) => {
 		setMessageReaction: () => Effect.succeed(true),
 		answerCallbackQuery: () => Effect.succeed(true),
 	} as never);
-	const infrastructure = Layer.merge(postgres, telegram);
+	const infrastructure = Layer.mergeAll(
+		postgres,
+		telegram,
+		DeterministicCrypto.layer(),
+	);
 	return Layer.provide(
 		Layer.provide(
 			AppLive.layer(() => UpdateDelivery.manual),

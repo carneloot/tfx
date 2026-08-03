@@ -17,6 +17,7 @@ import { PetName } from '../../domain/Pet.js';
 import { PetRepository } from '../../ports/PetRepository.js';
 import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
 import { UserRepository } from '../../ports/UserRepository.js';
+import { RegisteredUser } from '../Declaration.js';
 import * as ConversationUi from './ConversationUi.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
@@ -76,6 +77,7 @@ export const declaration = Conversation.make('delete-pet', {
 			input: ConversationInput.choice(confirmChoice),
 		}),
 	},
+	middleware: [RegisteredUser],
 	idleTimeout: 15 * 60 * 1000,
 	error: ApplicationError,
 });

@@ -39,6 +39,7 @@ import {
 import { PetRepository } from '../../src/ports/PetRepository.js';
 import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 
 const ownerId = Schema.decodeUnknownSync(UserId)(
 	'00000000-0000-4000-8000-000000000001',
@@ -168,6 +169,7 @@ const provide = <A, E, R>(
 			identity,
 			scheduler,
 			sql,
+			DeterministicCrypto.layer(),
 		),
 	) as Effect.Effect<A, E>;
 const unused = () => Effect.die('unused');

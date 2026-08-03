@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import * as CorrectFood from '../../src/application/CorrectFood.js';
 import * as DeleteFood from '../../src/application/DeleteFood.js';
 import * as ReconcileFoodReminder from '../../src/application/ReconcileFoodReminder.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
 import {
 	BotId,
 	PetId,
@@ -274,6 +275,21 @@ describe('food mutation services', () => {
 			status: unused,
 		});
 		const dependencies = Layer.mergeAll(
+			Layer.succeed(CurrentUser, {
+				user: {
+					id: actorId,
+					createdAt: DateTime.makeUnsafe(0),
+					updatedAt: DateTime.makeUnsafe(0),
+				},
+				profile: {
+					botId,
+					telegramUserId,
+					username: null,
+					firstName: 'Ana',
+					lastName: null,
+					privateChatId: Schema.decodeUnknownSync(TelegramChatId)(42),
+				},
+			}),
 			repository,
 			Layer.succeed(UserRepository, {
 				registerTelegramProfile: unused,

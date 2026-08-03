@@ -18,6 +18,7 @@ describe('MemoryConversationStorage', () => {
 				const row = yield* storage.create(
 					{
 						scope,
+						originTrace: undefined,
 						conversationId: 'flow',
 						version: 1,
 						step: 'one',
@@ -65,6 +66,7 @@ describe('MemoryConversationStorage', () => {
 				yield* storage.create(
 					{
 						scope,
+						originTrace: undefined,
 						conversationId: 'flow',
 						version: 1,
 						step: 'one',
@@ -100,6 +102,7 @@ describe('MemoryConversationStorage', () => {
 				for (const current of [scope, other])
 					yield* storage.create(
 						{
+							originTrace: undefined,
 							scope: current,
 							conversationId: 'flow',
 							version: 1,
@@ -145,6 +148,7 @@ describe('MemoryConversationStorage', () => {
 			yield* storage.create(
 				{
 					scope,
+					originTrace: undefined,
 					conversationId: 'old',
 					version: 1,
 					step: 'one',
@@ -159,6 +163,7 @@ describe('MemoryConversationStorage', () => {
 			return yield* storage.create(
 				{
 					scope,
+					originTrace: undefined,
 					conversationId: 'new',
 					version: 1,
 					step: 'one',
@@ -184,6 +189,7 @@ describe('MemoryConversationStorage', () => {
 			yield* storage.create(
 				{
 					scope,
+					originTrace: undefined,
 					conversationId: 'flow',
 					version: 1,
 					step: 'one',

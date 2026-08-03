@@ -18,8 +18,8 @@ type IsUnknown<T> = unknown extends T
 		: false
 	: false;
 
-export type AppLayerHasNoRequirements = Assert<
-	IsNever<Layer.Services<typeof appLayer>>
+export type AppLayerClosesRequirements = Assert<
+	Equal<Layer.Services<typeof appLayer>, never>
 >;
 export type AppLayerErrorsAreTagged = Assert<
 	IsTagged<Layer.Error<typeof appLayer>>

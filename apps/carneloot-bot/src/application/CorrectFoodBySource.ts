@@ -37,102 +37,104 @@ export type CorrectFoodBySourceResult =
 	  };
 
 /** Corrects every currently accessible entry correlated to one exact Telegram message. */
-export const execute = (input: CorrectFoodBySourceInput) =>
-	Effect.gen(function* () {
-		const sql = yield* PgClient.PgClient;
-		const repository = yield* PetFoodRepository;
-		return yield* sql.withTransaction(
-			Effect.gen(function* () {
-				const selected = yield* repository.lockAccessibleBySourceMessage(
-					input.actorId,
-					input.botId,
-					input.chatId,
-					input.repliedMessageId,
-				);
-				if (selected.length === 0) return { _tag: 'Unrelated' } as const;
-				const correction = yield* FoodCorrectionInput.parse(input.correction);
+export const execute = Effect.fn('CorrectFoodBySource.execute')(
+	(input: CorrectFoodBySourceInput) =>
+		Effect.gen(function* () {
+			const sql = yield* PgClient.PgClient;
+			const repository = yield* PetFoodRepository;
+			return yield* sql.withTransaction(
+				Effect.gen(function* () {
+					const selected = yield* repository.lockAccessibleBySourceMessage(
+						input.actorId,
+						input.botId,
+						input.chatId,
+						input.repliedMessageId,
+					);
+					if (selected.length === 0) return { _tag: 'Unrelated' } as const;
+					const correction = yield* FoodCorrectionInput.parse(input.correction);
 
-				const pets = new Map<
-					string,
-					{
-						readonly petId: PetFoodEntry['petId'];
-						readonly ownerId: UserId;
-						readonly before:
-							| {
-									readonly id: PetFoodEntry['id'];
-									readonly fedAt: DateTime.Utc;
-							  }
-							| undefined;
+					const pets = new Map<
+						string,
+						{
+							readonly petId: PetFoodEntry['petId'];
+							readonly ownerId: UserId;
+							readonly before:
+								| {
+										readonly id: PetFoodEntry['id'];
+										readonly fedAt: DateTime.Utc;
+								  }
+								| undefined;
+						}
+					>();
+					for (const entry of selected) {
+						if (pets.has(entry.petId)) continue;
+						const authorized = yield* authorize({
+							actorId: input.actorId,
+							botId: input.botId,
+							telegramUserId: input.telegramUserId,
+							petId: entry.petId,
+						});
+						const latest = yield* repository.latestEntry(entry.petId);
+						pets.set(entry.petId, {
+							petId: entry.petId,
+							ownerId: authorized.ownerId,
+							before:
+								latest === undefined
+									? undefined
+									: { id: latest.id, fedAt: latest.fedAt },
+						});
 					}
-				>();
-				for (const entry of selected) {
-					if (pets.has(entry.petId)) continue;
-					const authorized = yield* authorize({
-						actorId: input.actorId,
-						botId: input.botId,
-						telegramUserId: input.telegramUserId,
-						petId: entry.petId,
-					});
-					const latest = yield* repository.latestEntry(entry.petId);
-					pets.set(entry.petId, {
-						petId: entry.petId,
-						ownerId: authorized.ownerId,
-						before:
-							latest === undefined
-								? undefined
-								: { id: latest.id, fedAt: latest.fedAt },
-					});
-				}
 
-				const now = yield* DateTime.now;
-				const updated: Array<PetFoodEntry> = [];
-				for (const entry of selected) {
-					const settings = yield* repository.getSettings(entry.petId);
-					if (settings?.timeZone == null)
-						return yield* Effect.fail(
-							new PetFoodSetupMissing({
-								message: 'Pet time zone is not configured',
-							}),
+					const now = yield* DateTime.now;
+					const updated: Array<PetFoodEntry> = [];
+					for (const entry of selected) {
+						const settings = yield* repository.getSettings(entry.petId);
+						if (settings?.timeZone == null)
+							return yield* Effect.fail(
+								new PetFoodSetupMissing({
+									message: 'Pet time zone is not configured',
+								}),
+							);
+						const fedAt =
+							correction.when === undefined
+								? entry.fedAt
+								: yield* FoodDateTime.parse(
+										correction.when,
+										settings.timeZone,
+										input.messageDate,
+									);
+						const duplicate = yield* repository.findBusinessDuplicateExcluding(
+							entry.petId,
+							fedAt,
+							entry.id,
 						);
-					const fedAt =
-						correction.when === undefined
-							? entry.fedAt
-							: yield* FoodDateTime.parse(
-									correction.when,
-									settings.timeZone,
-									input.messageDate,
-								);
-					const duplicate = yield* repository.findBusinessDuplicateExcluding(
-						entry.petId,
-						fedAt,
-						entry.id,
-					);
-					if (duplicate !== undefined)
-						return yield* Effect.fail(
-							new DuplicateFoodEntry({
-								message: 'A food entry already exists within one minute',
-							}),
+						if (duplicate !== undefined)
+							return yield* Effect.fail(
+								new DuplicateFoodEntry({
+									message: 'A food entry already exists within one minute',
+								}),
+							);
+						const value = yield* repository.updateEntry(
+							entry.id,
+							correction.amountMg ?? entry.amountMg,
+							fedAt,
+							now,
 						);
-					const value = yield* repository.updateEntry(
-						entry.id,
-						correction.amountMg ?? entry.amountMg,
-						fedAt,
-						now,
-					);
-					if (value === undefined)
-						return yield* Effect.die('Locked food entry disappeared');
-					updated.push(value);
-				}
+						if (value === undefined)
+							return yield* Effect.die('Locked food entry disappeared');
+						updated.push(value);
+					}
 
-				for (const pet of pets.values()) {
-					yield* ReconcileFoodReminder.reconcile({
-						botId: input.botId,
-						ownerUserId: pet.ownerId,
-						petId: pet.petId,
-						before: pet.before,
-					});
-				}
-				return { _tag: 'Corrected', entries: updated } as const;
-			}),
-		);
-	});
+					for (const pet of pets.values()) {
+						yield* ReconcileFoodReminder.reconcile({
+							botId: input.botId,
+							ownerUserId: pet.ownerId,
+							petId: pet.petId,
+							before: pet.before,
+						});
+					}
+					return { _tag: 'Corrected', entries: updated } as const;
+				}),
+			);
+		}),
+);

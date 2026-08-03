@@ -5,8 +5,15 @@ import type * as Effect from 'effect/Effect';
 import type { Scope } from './internal/conversation/Scope.js';
 import type { AfterCommit } from './internal/conversation/Transition.js';
 export type { Scope };
+export interface ConversationTraceContext {
+	readonly traceId: string;
+	readonly spanId: string;
+	readonly sampled: boolean;
+}
 export interface ConversationRow {
 	readonly scope: Scope;
+	readonly instanceId: string;
+	readonly originTrace: ConversationTraceContext | undefined;
 	readonly conversationId: string;
 	readonly version: number;
 	readonly step: string;
@@ -15,6 +22,10 @@ export interface ConversationRow {
 	readonly lastUpdateId: number | undefined;
 	readonly expiresAt: DateTime.Utc | undefined;
 }
+export type NewConversationRow = Omit<
+	ConversationRow,
+	'instanceId' | 'revision'
+>;
 export type Mutation =
 	| {
 			readonly _tag: 'Persist';
@@ -54,7 +65,7 @@ export interface ConversationStorageService {
 		scope: Scope,
 	) => Effect.Effect<ConversationRow | undefined, ConversationStorageError>;
 	readonly create: (
-		row: Omit<ConversationRow, 'revision'>,
+		row: NewConversationRow,
 		conflict: 'fail' | 'replace',
 	) => Effect.Effect<ConversationRow, ConversationStorageError>;
 	readonly transition: <A, E, R>(
@@ -68,6 +79,7 @@ export interface ConversationStorageService {
 			E,
 			R
 		>,
+		expectedInstanceId?: string,
 	) => Effect.Effect<TransitionResult<A>, E | ConversationStorageError, R>;
 	readonly cancel: (
 		scope: Scope,

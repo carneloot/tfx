@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Crypto from 'effect/Crypto';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
@@ -33,6 +34,7 @@ import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
 import { PetRepository } from '../../ports/PetRepository.js';
 import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
 import { UserRepository } from '../../ports/UserRepository.js';
+import { RegisteredUser } from '../Declaration.js';
 import * as ConversationUi from './ConversationUi.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
@@ -66,6 +68,7 @@ const required = <A, E extends TaggedError, R>(
 ) =>
 	Effect.gen(function* () {
 		yield* PgClient.PgClient;
+		yield* Crypto.Crypto;
 		yield* UpdateContext.UpdateContext;
 		yield* PetFoodRepository;
 		yield* PetRepository;
@@ -122,6 +125,7 @@ export const declaration = Conversation.make('add-pet-food', {
 		pet: Conversation.step('pet', { state: PetState, input: Text }),
 		amount: Conversation.step('amount', { state: AmountState, input: Text }),
 	},
+	middleware: [RegisteredUser],
 	idleTimeout: 15 * 60 * 1_000,
 	error: ApplicationError,
 });

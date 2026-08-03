@@ -23,6 +23,8 @@ import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
 import { PetRepository } from '../../ports/PetRepository.js';
 import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
 import { UserRepository } from '../../ports/UserRepository.js';
+import { CurrentUser } from '../CurrentUser.js';
+import { RegisteredUser } from '../Declaration.js';
 import * as ConversationUi from './ConversationUi.js';
 
 const PetOption = Schema.Struct({ id: PetId, name: PetName });
@@ -82,6 +84,7 @@ const required = <A, E extends TaggedError, R>(
 		yield* PetCaregiverRepository;
 		yield* ReminderScheduler;
 		yield* UserRepository;
+		yield* CurrentUser;
 		return yield* effect;
 	});
 const invalidChoice = required(
@@ -154,6 +157,7 @@ export const declaration = Conversation.make('configure-reminder-delay', {
 			input: ConversationInput.choice(deleteChoice),
 		}),
 	},
+	middleware: [RegisteredUser],
 	idleTimeout: '15 minutes',
 	error: ApplicationError,
 });

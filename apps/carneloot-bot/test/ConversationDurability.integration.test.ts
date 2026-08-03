@@ -21,6 +21,7 @@ import { PetRepository } from '../src/ports/PetRepository.js';
 import { ReminderScheduler } from '../src/ports/ReminderScheduler.js';
 import { UserRepository } from '../src/ports/UserRepository.js';
 import * as RepositoriesLive from '../src/postgres/RepositoriesLive.js';
+import * as DeterministicCrypto from './internal/DeterministicCrypto.js';
 import * as PostgresTestLayer from './internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -38,7 +39,10 @@ const tfxPersistence = Layer.unwrap(
 	Effect.as(TfxMigrations.migrate(tfxOptions), Layer.merge(storage, dedup)),
 );
 const services = <E, R>(pg: Layer.Layer<PgClient.PgClient, E, R>) =>
-	Layer.provideMerge(Layer.merge(tfxPersistence, RepositoriesLive.layer), pg);
+	Layer.provideMerge(
+		Layer.merge(tfxPersistence, RepositoriesLive.layer),
+		Layer.merge(pg, DeterministicCrypto.layer()),
+	);
 const message = {
 	reply: () => Effect.succeed({} as never),
 } as unknown as MessageContextService;
@@ -226,6 +230,7 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 			yield* store.create(
 				{
 					scope,
+					originTrace: undefined,
 					conversationId: 'direct',
 					version: 1,
 					step: 'name',

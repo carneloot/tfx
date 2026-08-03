@@ -1,0 +1,19 @@
+{
+	"format_on_save": "on",
+	"languages": {
+		"TypeScript": {
+			"formatter": {
+				"external": {
+					"command": "pnpm",
+					"arguments": [
+						"exec",
+						"oxfmt",
+						"--disable-nested-config",
+						"--stdin-filepath",
+						"{buffer_path}"
+					]
+				}
+			}
+		}
+	}
+}

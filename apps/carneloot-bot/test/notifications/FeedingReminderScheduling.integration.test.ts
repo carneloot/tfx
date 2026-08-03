@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as AddFood from '../../src/application/AddFood.js';
 import * as ReconcileFoodReminder from '../../src/application/ReconcileFoodReminder.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
 import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
 import { FoodAmountMg } from '../../src/domain/pet-food/FoodAmount.js';
@@ -31,6 +32,7 @@ import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
 import * as ReminderSchedulerLive from '../../src/postgres/ReminderSchedulerLive.js';
 import * as RepositoriesLive from '../../src/postgres/RepositoriesLive.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 
 const enabled =
@@ -64,7 +66,7 @@ const stores = Layer.provideMerge(
 			tablePrefix: 'case_',
 		}),
 	),
-	pg,
+	Layer.merge(pg, DeterministicCrypto.layer()),
 );
 const runtime = Layer.provideMerge(
 	JobRuntimeLive.layer(implementation),
@@ -369,16 +371,20 @@ else
 				const result = yield* Effect.result(
 					sql.withTransaction(
 						Effect.andThen(
-							executeAddFood(
-								{
-									actorId: user.user.id,
-									botId,
-									telegramUserId: user.profile.telegramUserId,
-									petId: pet.id,
-								},
-								'10g',
-								'',
-								{ botId, updateId: 99_000 },
+							Effect.provideService(
+								executeAddFood(
+									{
+										actorId: user.user.id,
+										botId,
+										telegramUserId: user.profile.telegramUserId,
+										petId: pet.id,
+									},
+									'10g',
+									'',
+									{ botId, updateId: 99_000 },
+								),
+								CurrentUser,
+								user,
 							),
 							Effect.fail('forced rollback'),
 						),

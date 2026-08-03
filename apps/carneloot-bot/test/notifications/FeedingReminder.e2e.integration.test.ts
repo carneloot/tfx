@@ -11,6 +11,7 @@ import { NetworkError, RateLimitError, TelegramError } from 'tfx/TelegramError';
 import { describe, expect, it } from 'vitest';
 
 import * as ConfigureReminderDelay from '../../src/application/ConfigureReminderDelay.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
 import {
 	BotId,
 	PetId,
@@ -34,6 +35,7 @@ import { ReminderScheduler } from '../../src/ports/ReminderScheduler.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
 import * as ReminderSchedulerLive from '../../src/postgres/ReminderSchedulerLive.js';
 import * as RepositoriesLive from '../../src/postgres/RepositoriesLive.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 
 const enabled =
@@ -111,7 +113,7 @@ const stores = Layer.provideMerge(
 		RepositoriesLive.layer,
 		TfxPostgres.layer({ schema: 'tfx_feeding_e2e', tablePrefix: 'case_' }),
 	),
-	pg,
+	Layer.merge(pg, DeterministicCrypto.layer()),
 );
 const runtime = Layer.provideMerge(
 	JobRuntimeLive.layer(FeedingReminderJobLive.implementation),
@@ -384,14 +386,18 @@ else
 				const fixture = yield* scheduleFixture;
 				yield* TestClock.setTime(3_000);
 				expect(yield* runFresh).toMatchObject({ status: 'completed' });
-				yield* ConfigureReminderDelay.set(
-					{
-						actorId: fixture.user.user.id,
-						botId,
-						telegramUserId: fixture.user.profile.telegramUserId,
-						petId: fixture.pet.id,
-					},
-					Duration.seconds(2),
+				yield* Effect.provideService(
+					ConfigureReminderDelay.set(
+						{
+							actorId: fixture.user.user.id,
+							botId,
+							telegramUserId: fixture.user.profile.telegramUserId,
+							petId: fixture.pet.id,
+						},
+						Duration.seconds(2),
+					),
+					CurrentUser,
+					fixture.user,
 				);
 				yield* TestClock.setTime(4_000);
 				expect(yield* runFresh).toBeUndefined();
@@ -417,14 +423,18 @@ else
 				yield* TestClock.setTime(3_000);
 				const send = yield* Effect.forkChild(runFresh);
 				yield* Deferred.await(control.started!);
-				yield* ConfigureReminderDelay.set(
-					{
-						actorId: fixture.user.user.id,
-						botId,
-						telegramUserId: fixture.user.profile.telegramUserId,
-						petId: fixture.pet.id,
-					},
-					Duration.seconds(2),
+				yield* Effect.provideService(
+					ConfigureReminderDelay.set(
+						{
+							actorId: fixture.user.user.id,
+							botId,
+							telegramUserId: fixture.user.profile.telegramUserId,
+							petId: fixture.pet.id,
+						},
+						Duration.seconds(2),
+					),
+					CurrentUser,
+					fixture.user,
 				);
 				yield* Deferred.succeed(control.release!, undefined);
 				expect(yield* Fiber.join(send)).toMatchObject({ status: 'completed' });

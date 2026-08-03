@@ -6,6 +6,7 @@ import * as AddFood from '../../src/application/AddFood.js';
 import * as ConfigureDayStart from '../../src/application/ConfigureDayStart.js';
 import * as ConfigureReminderDelay from '../../src/application/ConfigureReminderDelay.js';
 import { authorize } from '../../src/application/PetFoodAccess.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
 import {
 	BotId,
 	PetId,
@@ -17,7 +18,6 @@ import { FoodAmount } from '../../src/domain/pet-food/FoodAmount.js';
 import { PetName } from '../../src/domain/Pet.js';
 import { PetCaregiverRepository } from '../../src/ports/PetCaregiverRepository.js';
 import { PetRepository } from '../../src/ports/PetRepository.js';
-import { UserRepository } from '../../src/ports/UserRepository.js';
 
 const actorId = Schema.decodeUnknownSync(UserId)(
 	'00000000-0000-4000-8000-000000000001',
@@ -50,26 +50,20 @@ const authorizationLayers = (
 	} = {},
 ) =>
 	Layer.mergeAll(
-		Layer.succeed(UserRepository, {
-			registerTelegramProfile: unused,
-			findById: () => Effect.die('unused'),
-			findByUsername: unused,
-			findByTelegram: () =>
-				Effect.succeed({
-					user: {
-						id: options.currentActorId ?? actorId,
-						createdAt: now,
-						updatedAt: now,
-					},
-					profile: {
-						botId: access.botId,
-						telegramUserId: access.telegramUserId,
-						username: null,
-						firstName: 'Ana',
-						lastName: null,
-						privateChatId: Schema.decodeUnknownSync(TelegramChatId)(42),
-					},
-				}),
+		Layer.succeed(CurrentUser, {
+			user: {
+				id: options.currentActorId ?? actorId,
+				createdAt: now,
+				updatedAt: now,
+			},
+			profile: {
+				botId: access.botId,
+				telegramUserId: access.telegramUserId,
+				username: null,
+				firstName: 'Ana',
+				lastName: null,
+				privateChatId: Schema.decodeUnknownSync(TelegramChatId)(42),
+			},
 		}),
 		Layer.succeed(PetRepository, {
 			findById: unused,

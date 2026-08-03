@@ -24,6 +24,7 @@ const row = (
 	id: string,
 ) => ({
 	scope,
+	originTrace: undefined,
 	conversationId: id,
 	version: 1,
 	step: 'one',
@@ -86,6 +87,61 @@ else {
 			expect(result).toMatchObject({
 				_tag: 'Failure',
 				failure: { reason: 'InvariantViolation' },
+			});
+		});
+
+		it('generates and preserves conversation trace context', async () => {
+			const scope = { botId: crypto.randomUUID(), chatId: 14, userId: 24 };
+			const firstTrace = {
+				traceId: 'start-trace',
+				spanId: 'start-span',
+				sampled: true,
+			};
+			const replacementTrace = {
+				traceId: 'replacement-trace',
+				spanId: 'replacement-span',
+				sampled: false,
+			};
+			const program = Effect.gen(function* () {
+				const storage = yield* ConversationStorage;
+				const created = yield* storage.create(
+					{ ...row(scope, 'flow'), originTrace: firstTrace },
+					'fail',
+				);
+				const replaced = yield* storage.create(
+					{ ...row(scope, 'replacement'), originTrace: replacementTrace },
+					'replace',
+				);
+				const transitioned = yield* storage.transition(scope, 1, 0, () =>
+					Effect.succeed({
+						value: undefined,
+						mutation: { _tag: 'Persist' as const, step: 'two', state: 1 },
+					}),
+				);
+				return {
+					created,
+					replaced,
+					transitioned,
+					loaded: yield* storage.load(scope),
+				};
+			});
+			const result = await Effect.runPromise(Effect.provide(program, layer()));
+			expect(result.created.instanceId).toMatch(
+				/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu,
+			);
+			expect(result.created.originTrace).toEqual(firstTrace);
+			expect(result.replaced.instanceId).not.toBe(result.created.instanceId);
+			expect(result.replaced.originTrace).toEqual(replacementTrace);
+			expect(result.transitioned).toMatchObject({
+				_tag: 'Applied',
+				row: {
+					instanceId: result.replaced.instanceId,
+					originTrace: replacementTrace,
+				},
+			});
+			expect(result.loaded).toMatchObject({
+				instanceId: result.replaced.instanceId,
+				originTrace: replacementTrace,
 			});
 		});
 

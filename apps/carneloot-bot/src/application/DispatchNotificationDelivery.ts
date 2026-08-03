@@ -1,4 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as Crypto from 'effect/Crypto';
 import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
@@ -191,7 +192,15 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 			);
 		}
 		const food = yield* PetFoodRepository;
-		const latest = yield* food.latestEntry(payload.petId);
+		const pets = yield* PetRepository;
+		const { latest, pet, settings } = yield* Effect.all(
+			{
+				latest: food.latestEntry(payload.petId),
+				pet: pets.findById(payload.petId),
+				settings: food.getSettings(payload.petId),
+			},
+			{ concurrency: 'unbounded' },
+		);
 		if (latest?.id !== payload.foodEntryId) {
 			yield* notifications.cancelEvent(payload.eventId, now);
 			yield* Effect.logInfo('carneloot.delivery.cancelled').pipe(
@@ -199,8 +208,6 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 			);
 			return;
 		}
-		const pets = yield* PetRepository;
-		const pet = yield* pets.findById(payload.petId);
 		if (pet === undefined || pet.ownerId !== event.ownerUserId) {
 			yield* notifications.cancelEvent(payload.eventId, now);
 			yield* Effect.logWarning('carneloot.delivery.cancelled').pipe(
@@ -208,7 +215,6 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 			);
 			return;
 		}
-		const settings = yield* food.getSettings(payload.petId);
 		if (
 			settings === undefined ||
 			settings.dayStart === null ||
@@ -221,6 +227,7 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 			return;
 		}
 		const recipients = yield* NotificationRecipients;
+		const crypto = yield* Crypto.Crypto;
 		const sql = yield* PgClient.PgClient;
 		const materialized = yield* sql.withTransaction(
 			Effect.gen(function* () {
@@ -231,14 +238,15 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 					locked.botId,
 					payload.petId,
 				);
-				yield* notifications.materializeRecipients(
-					locked.id,
-					resolved.map(({ resolution }) => ({
-						...resolution,
-						id: Schema.decodeUnknownSync(DeliveryId)(crypto.randomUUID()),
-					})),
-					now,
+				const inputs = yield* Effect.forEach(resolved, ({ resolution }) =>
+					Effect.gen(function* () {
+						const id = Schema.decodeUnknownSync(DeliveryId)(
+							yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+						);
+						return { ...resolution, id };
+					}),
 				);
+				yield* notifications.materializeRecipients(locked.id, inputs, now);
 				return yield* notifications.markRecipientsMaterialized(locked.id, now);
 			}),
 		);
@@ -530,8 +538,13 @@ export const executeFoodAdded = Effect.fn(
 		const pets = yield* PetRepository;
 		const users = yield* UserRepository;
 		const entry = yield* food.lockEntry(payload.petId, payload.foodEntryId);
-		const pet = yield* pets.findById(payload.petId);
-		const settings = yield* food.getSettings(payload.petId);
+		const { pet, settings } = yield* Effect.all(
+			{
+				pet: pets.findById(payload.petId),
+				settings: food.getSettings(payload.petId),
+			},
+			{ concurrency: 'unbounded' },
+		);
 		const actor = yield* users
 			.findById(payload.botId, entry?.recordedBy ?? event.ownerUserId)
 			.pipe(

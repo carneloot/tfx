@@ -1,4 +1,5 @@
 import type * as PgClient from '@effect/sql-pg/PgClient';
+import type * as Crypto from 'effect/Crypto';
 import type * as Layer from 'effect/Layer';
 import { BotRuntime } from 'tfx/BotRuntime';
 import { Conversations } from 'tfx/Conversations';
@@ -56,6 +57,6 @@ export type AppOutputIsNarrow = Assert<
 export type AppRequirementsAreInfrastructure = Assert<
 	Equal<
 		Layer.Services<typeof application>,
-		AppConfig | PgClient.PgClient | Telegram
+		AppConfig | Crypto.Crypto | PgClient.PgClient | Telegram
 	>
 >;

@@ -3,6 +3,7 @@ import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
+import { traceService } from 'tfx/TraceService';
 
 import {
 	CaregiverInvitationNotPending,
@@ -138,6 +139,6 @@ export const layer = Layer.effect(
 			listAcceptedForUser: (caregiverUserId) =>
 				listBy(caregiverUserId, 'accepted'),
 		} satisfies PetCaregiverRepositoryService;
-		return service;
+		return traceService('PetCaregiverRepository', service);
 	}),
 );

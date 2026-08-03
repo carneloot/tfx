@@ -46,6 +46,7 @@ import {
 	type PetFoodRepositoryService,
 } from '../../src/ports/PetFoodRepository.js';
 import { PetRepository } from '../../src/ports/PetRepository.js';
+import * as DeterministicCrypto from '../internal/DeterministicCrypto.js';
 
 const eventId = Schema.decodeUnknownSync(EventId)(
 	'00000000-0000-4000-8000-000000000001',
@@ -171,6 +172,7 @@ const harness = (
 	let lastRetryAt: DateTime.Utc | null = null;
 	let cancelled = false;
 	let materializations = 0;
+	let materializedIds: ReadonlyArray<DeliveryId> = [];
 	let recipientsMaterialized = false;
 	const persistedEvent = {
 		id: eventId,
@@ -226,6 +228,7 @@ const harness = (
 		materializeRecipients: (_eventId, recipients) =>
 			Effect.sync(() => {
 				materializations++;
+				materializedIds = recipients.map((recipient) => recipient.id);
 				if (recipients[0]?._tag === 'Unreachable') state = 'permanent';
 				return [];
 			}),
@@ -448,6 +451,7 @@ const harness = (
 				}).pipe(Effect.andThen(send)),
 		} as never),
 		TestClock.layer(),
+		DeterministicCrypto.layer(),
 	);
 	return {
 		layer,
@@ -457,6 +461,7 @@ const harness = (
 		lastRetryAt: () => lastRetryAt,
 		cancelled: () => cancelled,
 		materializations: () => materializations,
+		materializedIds: () => materializedIds,
 	};
 };
 
@@ -550,6 +555,11 @@ describe('delivery dispatcher', () => {
 		const h = harness(Effect.succeed({ message_id: 7 }));
 		await Effect.runPromise(Effect.provide(Dispatch.execute(payload), h.layer));
 		expect(h.calls()).toBe(1);
+		expect(h.materializedIds()).toEqual([
+			Schema.decodeUnknownSync(DeliveryId)(
+				'00000000-0000-4000-8000-000000000001',
+			),
+		]);
 		expect(h.state()).toBe('sent');
 	});
 	it('returns the exact typed retry delay for rate limits', async () => {

@@ -66,6 +66,9 @@ export const make = (options: {
 					),
 				)
 				.pipe(
+					Effect.withSpan('Dispatcher.dispatch', {
+						attributes: { botId: options.botId, updateId: update.update_id },
+					}),
 					Effect.tap((outcome) => {
 						const log =
 							outcome._tag === 'Fatal'

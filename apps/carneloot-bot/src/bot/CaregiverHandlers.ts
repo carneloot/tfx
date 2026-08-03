@@ -135,8 +135,10 @@ export const startStopCaring = Effect.gen(function* () {
 	const caregivers = yield* PetCaregiverRepository;
 	const pets = yield* PetRepository;
 	const relations = yield* caregivers.listAcceptedForUser(current.user.id);
-	const caredPets = (yield* Effect.forEach(relations, (relation) =>
-		pets.findById(relation.petId),
+	const caredPets = (yield* Effect.forEach(
+		relations,
+		(relation) => pets.findById(relation.petId),
+		{ concurrency: 4 },
 	)).filter((pet) => pet !== undefined);
 	const first = caredPets[0];
 	if (first === undefined) {

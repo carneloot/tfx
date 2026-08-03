@@ -26,7 +26,7 @@ cp apps/carneloot-bot/.env.example apps/carneloot-bot/.env
 | `POLLING_TIMEOUT`                                   | Effect duration, `30 seconds` (whole seconds, 1–50)                  |
 | `POLLING_RETRY_DELAY`                               | Effect duration, `1 second`                                          |
 | `DISPATCH_CAPACITY` / `DISPATCH_CONCURRENCY`        | positive counts, `1024` / `16`                                       |
-| `JOB_IDLE`                                          | Effect duration, `100 millis`                                        |
+| `JOB_IDLE`                                          | Effect duration, `1 second`                                          |
 | `JOB_LEASE` / `JOB_HEARTBEAT`                       | Effect durations, `30 seconds` / `10 seconds`; heartbeat below lease |
 | `DEDUP_LEASE` / `DEDUP_HEARTBEAT`                   | Effect durations, `30 seconds` / `10 seconds`; heartbeat below lease |
 | `DEDUP_WAIT` / `DEDUP_RETENTION`                    | Effect durations, `5 seconds` / `1 day`                              |

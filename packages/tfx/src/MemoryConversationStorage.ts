@@ -74,12 +74,22 @@ export const layer: Layer.Layer<ConversationStorage> = Layer.effect(
 									'Conversation already active',
 								),
 							);
-						const created = Object.freeze({ ...row, revision: 0 });
+						const created = Object.freeze({
+							...row,
+							instanceId: crypto.randomUUID(),
+							revision: 0,
+						});
 						rows.set(k, created);
 						return created;
 					}),
 				),
-			transition: (scope, updateId, expectedRevision, handler) =>
+			transition: (
+				scope,
+				updateId,
+				expectedRevision,
+				handler,
+				expectedInstanceId,
+			) =>
 				withLock(
 					mutex(scope),
 					Effect.gen(function* () {
@@ -88,7 +98,11 @@ export const layer: Layer.Layer<ConversationStorage> = Layer.effect(
 						if (current === undefined) return { _tag: 'Missing' as const };
 						if (current.lastUpdateId === updateId)
 							return { _tag: 'Duplicate' as const, row: current };
-						if (current.revision !== expectedRevision)
+						if (
+							current.revision !== expectedRevision ||
+							(expectedInstanceId !== undefined &&
+								current.instanceId !== expectedInstanceId)
+						)
 							return { _tag: 'Stale' as const, row: current };
 						const now = yield* DateTime.now;
 						if (
