@@ -10,6 +10,33 @@ Effect-based TypeScript workspace for portable Telegram bot infrastructure and C
 
 Runtime integrations use Effect platform Layers directly. `tfx` does not wrap Node or Bun platform packages. Tests remain private workspace files and are not package exports.
 
+## Effect 4 stable
+
+The workspace pins Effect and its platform, SQL, and OpenAPI generator packages to
+`4.0.6`. The language service and `@effect/tsgo` have independent version numbers.
+Use Node 24 and the declared pnpm version; `pnpm install` patches the TypeScript
+compiler, including after tooling upgrades. Effect warnings remain visible but do
+not fail builds; TypeScript and Effect errors still do.
+
+The beta-to-stable migration uses `effect/http`, `effect/sql`, `effect/cli`, and
+`effect/observability`, PascalCase configuration constructors, and
+`Schema.TaggedError`. See the [Effect 4 release](https://effect.website/blog/releases/effect/40/)
+and the installed package sources for the current APIs; the v3 migration guide
+does not describe all changes since beta.98.
+
+The native PostgreSQL driver returns `bigint` for `int8`. Repository row codecs
+accept those values only within JavaScript's safe-integer range and retain the
+existing public number types. Multi-statement application migrations use
+`PostgresMigrator.executeSql` inside the existing locked transaction rather than
+sending an entire script through the driver's single-statement extended protocol.
+
+Telegram generation remains reproducible with `pnpm --filter tfx telegram:check`.
+Generated schema declarations use service-free codecs, so consumers can decode
+updates synchronously. `Telegram.make` and `Telegram.layer` accept an optional
+second `{ timeout }` argument that bounds the whole operation, including response
+decoding; a timeout is a retryable `TelegramError` with a `NetworkError` reason.
+The default remains unbounded.
+
 ## TFX incoming command flow
 
 ```mermaid

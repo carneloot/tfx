@@ -10,6 +10,7 @@ import { Telegram } from 'tfx/Telegram';
 import { describe, expect, it } from 'vitest';
 
 import * as CorrectFood from '../../src/bot/conversations/CorrectFoodConversation.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
 import {
 	BotId,
 	PetId,
@@ -157,6 +158,7 @@ const harness = (hasEntry = true) => {
 	const layer = Layer.mergeAll(
 		MemoryStorage.layer,
 		TestClock.layer(),
+		Layer.succeed(CurrentUser, current),
 		Layer.succeed(MessageContext, context),
 		Layer.succeed(Telegram, {} as never),
 		Layer.succeed(UserRepository, {

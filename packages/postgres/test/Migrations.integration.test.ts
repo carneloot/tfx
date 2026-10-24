@@ -138,6 +138,12 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 			yield* migrate(options);
 			const sql = yield* PgClient.PgClient;
 			yield* sql`ALTER TABLE tfx_corrupt_test.case_jobs DROP CONSTRAINT case_jobs_state_chk`;
+			// Restore the version-2 schema as well as its ledger before replaying 3/4.
+			yield* sql`ALTER TABLE tfx_corrupt_test.case_conversations
+				DROP COLUMN instance_id,
+				DROP COLUMN origin_trace_id,
+				DROP COLUMN origin_span_id,
+				DROP COLUMN origin_span_sampled`;
 			yield* sql`DELETE FROM tfx_corrupt_test.case_migrations WHERE version>=3`;
 			const id = crypto.randomUUID();
 			yield* sql`INSERT INTO tfx_corrupt_test.case_jobs (id,declaration,payload_version,payload_json,status,attempts,max_attempts,run_at,lease_generation,cancellation_requested,outcome_json,created_at,updated_at) VALUES (${id}::uuid,'corrupt',1,'{}'::jsonb,'completed',0,1,now(),0,false,NULL,now(),now())`;
@@ -159,7 +165,15 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 		const result = await Effect.runPromise(
 			Effect.provide(program, PostgresTestLayer.layer),
 		);
-		expect(result.result._tag).toBe('Failure');
+		expect(result.result).toMatchObject({
+			_tag: 'Failure',
+			failure: {
+				_tag: 'MigrationError',
+				stage: 'apply',
+				version: 3,
+				migrationName: 'job-state-invariant',
+			},
+		});
 		expect(result.failedCount).toBe('2');
 		expect(result.repairedCount).toBe('4');
 	});

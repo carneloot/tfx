@@ -7,7 +7,7 @@ class Repository extends Context.Service<
 	Repository,
 	{ readonly value: string }
 >()('types/JobRepository') {}
-class Failure extends Schema.TaggedErrorClass<Failure>()('Failure', {}) {}
+class Failure extends Schema.TaggedError<Failure>()('Failure', {}) {}
 const history = VersionedSchema.history(
 	VersionedSchema.version(1, Schema.Struct({ old: Schema.String })),
 ).pipe(

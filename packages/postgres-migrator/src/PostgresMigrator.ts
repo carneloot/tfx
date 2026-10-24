@@ -5,8 +5,19 @@ import {
 	validateAppliedMigrations,
 	validateManifest,
 } from './internal/MigrationLedger.js';
+import { splitSqlStatements } from './internal/SqlStatements.js';
 import type { Options, Result } from './Migration.js';
 import { MigrationError, type MigrationStage } from './MigrationError.js';
+
+/** Executes a trusted SQL script sequentially in the caller's transaction. */
+export const executeSql = (sql: PgClient.PgClient, source: string) =>
+	Effect.suspend(() =>
+		Effect.forEach(
+			splitSqlStatements(source),
+			(statement) => sql.unsafe(statement),
+			{ concurrency: 1, discard: true },
+		),
+	);
 
 const failure = (
 	stage: MigrationStage,

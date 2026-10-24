@@ -135,7 +135,7 @@ export const layer = Layer.effect(
 							const now = yield* DateTime.now;
 							const timestamp = DateTime.toDateUtc(now);
 							const id = Schema.decodeUnknownSync(PetId)(
-								yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+								yield* crypto.randomUUIDv4().pipe(Effect.orDie),
 							);
 							const rows = yield* sql<
 								Record<string, unknown>

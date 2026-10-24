@@ -69,7 +69,7 @@ export const layer = Layer.effect(
 					const now = yield* DateTime.now;
 					const event = yield* notifications.createEvent({
 						id: Schema.decodeUnknownSync(EventId)(
-							yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+							yield* crypto.randomUUIDv4().pipe(Effect.orDie),
 						),
 						botId: request.botId,
 						kind: 'food-added',
@@ -88,7 +88,7 @@ export const layer = Layer.effect(
 						({ resolution }) =>
 							Effect.gen(function* () {
 								const id = Schema.decodeUnknownSync(DeliveryId)(
-									yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+									yield* crypto.randomUUIDv4().pipe(Effect.orDie),
 								);
 								return { ...resolution, id };
 							}),

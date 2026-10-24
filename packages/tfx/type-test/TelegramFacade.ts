@@ -1,4 +1,13 @@
+import * as Schema from 'effect/Schema';
+
 import type { TelegramService } from '../src/Telegram.js';
+import { Update } from '../src/TelegramSchemas.js';
+
+// Webhook adapters can validate updates without a runtime or schema services.
+const update: typeof Update.Type = Schema.decodeUnknownSync(Update)({
+	update_id: 1,
+});
+void update;
 
 declare const telegram: TelegramService;
 

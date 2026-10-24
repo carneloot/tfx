@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as AddPetConversation from '../src/bot/AddPetConversation.js';
 import * as ConfigureReminderDelayConversation from '../src/bot/conversations/ConfigureReminderDelayConversation.js';
+import { CurrentUser } from '../src/bot/CurrentUser.js';
 import { BotId, TelegramChatId, TelegramUserId } from '../src/domain/Ids.js';
 import { PetName } from '../src/domain/Pet.js';
 import { PetFoodRepository } from '../src/ports/PetFoodRepository.js';
@@ -65,15 +66,17 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 			const users = yield* UserRepository;
 			const owner = yield* users.registerTelegramProfile(profile);
 			const conversations = yield* Conversations;
-			yield* conversations.start(
-				AddPetConversation.built,
-				{
-					ownerId: owner.user.id,
-					botId: owner.profile.botId,
-					telegramUserId: owner.profile.telegramUserId,
-				},
-				{ scope },
-			);
+			yield* conversations
+				.start(
+					AddPetConversation.built,
+					{
+						ownerId: owner.user.id,
+						botId: owner.profile.botId,
+						telegramUserId: owner.profile.telegramUserId,
+					},
+					{ scope },
+				)
+				.pipe(Effect.provideService(CurrentUser, owner));
 			return owner.user.id;
 		});
 		const result = await Effect.runPromise(
@@ -90,12 +93,15 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 						firstRuntime,
 					);
 					const resume = Effect.gen(function* () {
-						const conversations = yield* Conversations;
-						const result = yield* conversations.resume(
-							AddPetConversation.built,
-							'Rex',
-							{ scope, updateId: 700 },
+						const users = yield* UserRepository;
+						const current = yield* users.findByTelegram(
+							profile.botId,
+							profile.telegramUserId,
 						);
+						const conversations = yield* Conversations;
+						const result = yield* conversations
+							.resume(AddPetConversation.built, 'Rex', { scope, updateId: 700 })
+							.pipe(Effect.provideService(CurrentUser, current));
 						const repository = yield* PetRepository;
 						const pets = yield* repository.listOwned(ownerId as never);
 						return { result, pets };
@@ -167,21 +173,24 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 									yield* DateTime.now,
 								);
 								const conversations = yield* Conversations;
-								yield* conversations.start(
-									ConfigureReminderDelayConversation.built,
-									{
-										actorId: owner.user.id,
-										botId: owner.profile.botId,
-										telegramUserId: owner.profile.telegramUserId,
-										pets: [{ id: pet.id, name: pet.name }],
-									},
-									{ scope },
-								);
-								yield* conversations.resume(
-									ConfigureReminderDelayConversation.built,
-									'Barto',
-									{ scope, updateId: telegramId },
-								);
+								yield* conversations
+									.start(
+										ConfigureReminderDelayConversation.built,
+										{
+											actorId: owner.user.id,
+											botId: owner.profile.botId,
+											telegramUserId: owner.profile.telegramUserId,
+											pets: [{ id: pet.id, name: pet.name }],
+										},
+										{ scope },
+									)
+									.pipe(Effect.provideService(CurrentUser, owner));
+								yield* conversations
+									.resume(ConfigureReminderDelayConversation.built, 'Barto', {
+										scope,
+										updateId: telegramId,
+									})
+									.pipe(Effect.provideService(CurrentUser, owner));
 							}),
 							ConversationsLive.layer,
 						),
@@ -190,12 +199,18 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 					return yield* Effect.provide(
 						Effect.provide(
 							Effect.gen(function* () {
-								const conversations = yield* Conversations;
-								const resumed = yield* conversations.resume(
-									ConfigureReminderDelayConversation.built,
-									'Alterar',
-									{ scope, updateId: telegramId + 1 },
+								const users = yield* UserRepository;
+								const current = yield* users.findByTelegram(
+									profile.botId,
+									Schema.decodeUnknownSync(TelegramUserId)(telegramId),
 								);
+								const conversations = yield* Conversations;
+								const resumed = yield* conversations
+									.resume(ConfigureReminderDelayConversation.built, 'Alterar', {
+										scope,
+										updateId: telegramId + 1,
+									})
+									.pipe(Effect.provideService(CurrentUser, current));
 								const storage = yield* ConversationStorage;
 								const row = yield* storage.load(scope);
 								return { resumed, row };

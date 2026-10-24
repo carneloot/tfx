@@ -1,5 +1,5 @@
 import * as Schema from 'effect/Schema';
-import { SqlError } from 'effect/unstable/sql/SqlError';
+import { SqlError } from 'effect/sql/SqlError';
 import { TelegramError } from 'tfx/TelegramError';
 
 import { FoodReplyLedgerError } from '../application/RouteFoodReply.js';
@@ -28,7 +28,7 @@ import {
 	PetFoodSetupMissing,
 } from './pet-food/PetFoodError.js';
 
-export class ConversationOperationError extends Schema.TaggedErrorClass<ConversationOperationError>()(
+export class ConversationOperationError extends Schema.TaggedError<ConversationOperationError>()(
 	'ConversationOperationError',
 	{ message: Schema.String, cause: Schema.Unknown },
 ) {}

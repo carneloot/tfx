@@ -16,16 +16,16 @@
 		"import:legacy": "bun src/importer-bin.ts"
 	},
 	"dependencies": {
-		"@effect/platform-bun": "4.0.0-beta.98",
-		"@effect/sql-pg": "4.0.0-beta.98",
+		"@effect/platform-bun": "4.0.6",
+		"@effect/sql-pg": "4.0.6",
 		"@libsql/client": "0.15.15",
 		"@tfx/postgres": "workspace:^",
 		"@tfx/postgres-migrator": "workspace:^",
-		"effect": "4.0.0-beta.98",
+		"effect": "4.0.6",
 		"tfx": "workspace:^"
 	},
 	"devDependencies": {
-		"@effect/platform-node": "4.0.0-beta.98",
+		"@effect/platform-node": "4.0.6",
 		"@testcontainers/postgresql": "11.10.0"
 	},
 	"engines": {

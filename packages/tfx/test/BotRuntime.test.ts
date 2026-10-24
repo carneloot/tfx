@@ -18,7 +18,7 @@ import {
 } from 'tfx';
 import { describe, expect, it } from 'vitest';
 
-class SourceFailure extends Schema.TaggedErrorClass<SourceFailure>()(
+class SourceFailure extends Schema.TaggedError<SourceFailure>()(
 	'SourceFailure',
 	{ message: Schema.String },
 ) {}

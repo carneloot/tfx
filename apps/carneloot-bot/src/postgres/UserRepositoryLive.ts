@@ -31,17 +31,17 @@ import {
 const Row = Schema.Struct({
 	id: UserId,
 	bot_id: BotId,
-	telegram_user_id: Schema.Union([Schema.String, Schema.Number]),
+	telegram_user_id: Schema.Union([Schema.String, Schema.Number, Schema.BigInt]),
 	username: Schema.NullOr(Schema.String),
 	first_name: Schema.String,
 	last_name: Schema.NullOr(Schema.String),
-	private_chat_id: Schema.Union([Schema.String, Schema.Number]),
+	private_chat_id: Schema.Union([Schema.String, Schema.Number, Schema.BigInt]),
 	created_at: Timestamp,
 	updated_at: Timestamp,
 });
-const safeUserId = (value: string | number) =>
+const safeUserId = (value: string | number | bigint) =>
 	Schema.decodeUnknownSync(TelegramUserId)(Number(value));
-const safeChatId = (value: string | number) =>
+const safeChatId = (value: string | number | bigint) =>
 	Schema.decodeUnknownSync(TelegramChatId)(Number(value));
 const decode = (value: unknown) =>
 	Effect.try({
@@ -133,7 +133,7 @@ export const layer = Layer.effect(
 									return yield* decode(refreshed[0]);
 								}
 								const id = Schema.decodeUnknownSync(UserId)(
-									yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+									yield* crypto.randomUUIDv4().pipe(Effect.orDie),
 								);
 								yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${id}::uuid,${timestamp},${timestamp})`;
 								yield* sql`INSERT INTO carneloot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${profile.botId},${profile.telegramUserId},${id}::uuid,${profile.username},${profile.firstName},${profile.lastName},${profile.privateChatId},${timestamp},${timestamp})`;

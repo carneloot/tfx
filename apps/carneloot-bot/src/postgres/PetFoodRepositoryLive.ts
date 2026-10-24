@@ -61,7 +61,7 @@ const SettingsRow = Schema.Struct({
 	day_start: Schema.NullOr(Schema.String),
 	timezone: Schema.NullOr(Schema.String),
 	reminder_delay_ms: Schema.NullOr(
-		Schema.Union([Schema.String, Schema.Number]),
+		Schema.Union([Schema.String, Schema.Number, Schema.BigInt]),
 	),
 	created_at: Timestamp,
 	updated_at: Timestamp,
@@ -70,15 +70,15 @@ const EntryRow = Schema.Struct({
 	id: FoodEntryId,
 	pet_id: PetId,
 	recorded_by: UserId,
-	amount_mg: Schema.Union([Schema.String, Schema.Number]),
+	amount_mg: Schema.Union([Schema.String, Schema.Number, Schema.BigInt]),
 	fed_at: Timestamp,
 	source_bot_id: Schema.NonEmptyString,
-	source_update_id: Schema.Union([Schema.String, Schema.Number]),
+	source_update_id: Schema.Union([Schema.String, Schema.Number, Schema.BigInt]),
 	source_message_chat_id: Schema.NullOr(
-		Schema.Union([Schema.String, Schema.Number]),
+		Schema.Union([Schema.String, Schema.Number, Schema.BigInt]),
 	),
 	source_message_id: Schema.NullOr(
-		Schema.Union([Schema.String, Schema.Number]),
+		Schema.Union([Schema.String, Schema.Number, Schema.BigInt]),
 	),
 	created_at: Timestamp,
 	updated_at: Timestamp,

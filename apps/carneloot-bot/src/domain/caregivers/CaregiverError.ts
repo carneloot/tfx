@@ -1,36 +1,36 @@
 import * as Schema from 'effect/Schema';
 
-export class CaregiverUsernameNotFound extends Schema.TaggedErrorClass<CaregiverUsernameNotFound>()(
+export class CaregiverUsernameNotFound extends Schema.TaggedError<CaregiverUsernameNotFound>()(
 	'CaregiverUsernameNotFound',
 	{ message: Schema.String },
 ) {}
 
-export class CaregiverUsernameAmbiguous extends Schema.TaggedErrorClass<CaregiverUsernameAmbiguous>()(
+export class CaregiverUsernameAmbiguous extends Schema.TaggedError<CaregiverUsernameAmbiguous>()(
 	'CaregiverUsernameAmbiguous',
 	{ message: Schema.String },
 ) {}
 
-export class CaregiverSelfInvitation extends Schema.TaggedErrorClass<CaregiverSelfInvitation>()(
+export class CaregiverSelfInvitation extends Schema.TaggedError<CaregiverSelfInvitation>()(
 	'CaregiverSelfInvitation',
 	{ message: Schema.String },
 ) {}
 
-export class CaregiverRelationshipExists extends Schema.TaggedErrorClass<CaregiverRelationshipExists>()(
+export class CaregiverRelationshipExists extends Schema.TaggedError<CaregiverRelationshipExists>()(
 	'CaregiverRelationshipExists',
 	{ message: Schema.String },
 ) {}
 
-export class CaregiverInvitationNotFound extends Schema.TaggedErrorClass<CaregiverInvitationNotFound>()(
+export class CaregiverInvitationNotFound extends Schema.TaggedError<CaregiverInvitationNotFound>()(
 	'CaregiverInvitationNotFound',
 	{ message: Schema.String },
 ) {}
 
-export class CaregiverInvitationNotPending extends Schema.TaggedErrorClass<CaregiverInvitationNotPending>()(
+export class CaregiverInvitationNotPending extends Schema.TaggedError<CaregiverInvitationNotPending>()(
 	'CaregiverInvitationNotPending',
 	{ message: Schema.String },
 ) {}
 
-export class CaregiverAccessLost extends Schema.TaggedErrorClass<CaregiverAccessLost>()(
+export class CaregiverAccessLost extends Schema.TaggedError<CaregiverAccessLost>()(
 	'CaregiverAccessLost',
 	{ message: Schema.String },
 ) {}

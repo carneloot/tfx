@@ -39,7 +39,7 @@ const nullableDateTimeEquals = (
 	left === null || right === null
 		? left === right
 		: DateTime.Equivalence(left, right);
-const integer = Schema.Union([Schema.String, Schema.Number]);
+const integer = Schema.Union([Schema.String, Schema.Number, Schema.BigInt]);
 const nullableInteger = Schema.NullOr(integer);
 const EventRow = Schema.Struct({
 	id: EventId,
@@ -82,7 +82,7 @@ const DeliveryRow = Schema.Struct({
 	created_at: Timestamp,
 	updated_at: Timestamp,
 });
-const safeInteger = (value: string | number, minimum?: number) => {
+const safeInteger = (value: string | number | bigint, minimum?: number) => {
 	const result = Number(value);
 	if (
 		!Number.isSafeInteger(result) ||

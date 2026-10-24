@@ -1,26 +1,26 @@
 import * as Schema from 'effect/Schema';
 
-export class PetAccessDenied extends Schema.TaggedErrorClass<PetAccessDenied>()(
+export class PetAccessDenied extends Schema.TaggedError<PetAccessDenied>()(
 	'PetAccessDenied',
 	{ message: Schema.String },
 ) {}
 
-export class PetFoodSetupMissing extends Schema.TaggedErrorClass<PetFoodSetupMissing>()(
+export class PetFoodSetupMissing extends Schema.TaggedError<PetFoodSetupMissing>()(
 	'PetFoodSetupMissing',
 	{ message: Schema.String },
 ) {}
 
-export class DuplicateFoodEntry extends Schema.TaggedErrorClass<DuplicateFoodEntry>()(
+export class DuplicateFoodEntry extends Schema.TaggedError<DuplicateFoodEntry>()(
 	'DuplicateFoodEntry',
 	{ message: Schema.String },
 ) {}
 
-export class FoodEntryNotFound extends Schema.TaggedErrorClass<FoodEntryNotFound>()(
+export class FoodEntryNotFound extends Schema.TaggedError<FoodEntryNotFound>()(
 	'FoodEntryNotFound',
 	{ message: Schema.String },
 ) {}
 
-export class PetFoodError extends Schema.TaggedErrorClass<PetFoodError>()(
+export class PetFoodError extends Schema.TaggedError<PetFoodError>()(
 	'PetFoodError',
 	{
 		reason: Schema.Literals([

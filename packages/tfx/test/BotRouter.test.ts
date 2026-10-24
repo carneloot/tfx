@@ -35,7 +35,7 @@ const commandUpdate = (id: number, text: string, user = 10, chat = 20) => ({
 		],
 	},
 });
-class TestHandlerError extends Schema.TaggedErrorClass<TestHandlerError>()(
+class TestHandlerError extends Schema.TaggedError<TestHandlerError>()(
 	'TestHandlerError',
 	{ message: Schema.String },
 ) {}

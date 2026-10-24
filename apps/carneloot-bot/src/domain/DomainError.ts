@@ -1,6 +1,6 @@
 import * as Schema from 'effect/Schema';
 
-export class InvalidDomainInput extends Schema.TaggedErrorClass<InvalidDomainInput>()(
+export class InvalidDomainInput extends Schema.TaggedError<InvalidDomainInput>()(
 	'InvalidDomainInput',
 	{
 		message: Schema.String,
@@ -8,17 +8,17 @@ export class InvalidDomainInput extends Schema.TaggedErrorClass<InvalidDomainInp
 	},
 ) {}
 
-export class UserNotRegistered extends Schema.TaggedErrorClass<UserNotRegistered>()(
+export class UserNotRegistered extends Schema.TaggedError<UserNotRegistered>()(
 	'UserNotRegistered',
 	{ message: Schema.String },
 ) {}
 
-export class PetNameAlreadyExists extends Schema.TaggedErrorClass<PetNameAlreadyExists>()(
+export class PetNameAlreadyExists extends Schema.TaggedError<PetNameAlreadyExists>()(
 	'PetNameAlreadyExists',
 	{ message: Schema.String },
 ) {}
 
-export class DomainPersistenceError extends Schema.TaggedErrorClass<DomainPersistenceError>()(
+export class DomainPersistenceError extends Schema.TaggedError<DomainPersistenceError>()(
 	'DomainPersistenceError',
 	{
 		reason: Schema.Literals(['PersistenceFailure', 'InvariantViolation']),

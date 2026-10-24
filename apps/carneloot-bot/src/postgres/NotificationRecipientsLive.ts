@@ -16,12 +16,14 @@ import {
 } from '../ports/NotificationRecipients.js';
 
 const OwnerRow = Schema.Struct({
-	private_chat_id: Schema.Union([Schema.String, Schema.Number]),
+	private_chat_id: Schema.Union([Schema.String, Schema.Number, Schema.BigInt]),
 });
 const PetRecipientRow = Schema.Struct({
 	user_id: UserId,
 	role: Schema.Literals(['owner', 'caregiver']),
-	private_chat_id: Schema.NullOr(Schema.Union([Schema.String, Schema.Number])),
+	private_chat_id: Schema.NullOr(
+		Schema.Union([Schema.String, Schema.Number, Schema.BigInt]),
+	),
 });
 const Recipient = Data.taggedEnum<ResolvedRecipient>();
 

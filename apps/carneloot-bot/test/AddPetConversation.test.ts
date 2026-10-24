@@ -8,6 +8,7 @@ import { MessageContext, type MessageContextService } from 'tfx/MessageContext';
 import { describe, expect, it } from 'vitest';
 
 import * as AddPetConversation from '../src/bot/AddPetConversation.js';
+import { CurrentUser } from '../src/bot/CurrentUser.js';
 import { PetNameAlreadyExists } from '../src/domain/DomainError.js';
 import {
 	BotId,
@@ -23,27 +24,30 @@ const ownerId = Schema.decodeUnknownSync(UserId)(
 const botId = Schema.decodeUnknownSync(BotId)('carneloot');
 const telegramUserId = Schema.decodeUnknownSync(TelegramUserId)(2);
 const identity = { ownerId, botId, telegramUserId };
-const userLayer = Layer.succeed(UserRepository, {
-	findById: () => Effect.die('unused'),
-	findByUsername: () => Effect.succeed([]),
-	registerTelegramProfile: () => Effect.die('unused'),
-	findByTelegram: () =>
-		Effect.succeed({
-			user: {
-				id: ownerId,
-				createdAt: DateTime.makeUnsafe(0),
-				updatedAt: DateTime.makeUnsafe(0),
-			},
-			profile: {
-				botId,
-				telegramUserId,
-				username: null,
-				firstName: 'Ana',
-				lastName: null,
-				privateChatId: Schema.decodeUnknownSync(TelegramChatId)(2),
-			},
-		}),
-});
+const current = {
+	user: {
+		id: ownerId,
+		createdAt: DateTime.makeUnsafe(0),
+		updatedAt: DateTime.makeUnsafe(0),
+	},
+	profile: {
+		botId,
+		telegramUserId,
+		username: null,
+		firstName: 'Ana',
+		lastName: null,
+		privateChatId: Schema.decodeUnknownSync(TelegramChatId)(2),
+	},
+};
+const userLayer = Layer.mergeAll(
+	Layer.succeed(CurrentUser, current),
+	Layer.succeed(UserRepository, {
+		findById: () => Effect.die('unused'),
+		findByUsername: () => Effect.succeed([]),
+		registerTelegramProfile: () => Effect.die('unused'),
+		findByTelegram: () => Effect.succeed(current),
+	}),
+);
 const replies: Array<string> = [];
 const replyOptions: Array<unknown> = [];
 const message = {

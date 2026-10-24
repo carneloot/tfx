@@ -21,7 +21,7 @@ class Result extends Context.Service<Result, { readonly id: number }>()(
 	'types/Result',
 ) {}
 
-class Unauthorized extends Schema.TaggedErrorClass<Unauthorized>()(
+class Unauthorized extends Schema.TaggedError<Unauthorized>()(
 	'Unauthorized',
 	{},
 ) {}

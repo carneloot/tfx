@@ -20,13 +20,13 @@ export class LegacyImportConfig extends Context.Service<
 
 export const load = Effect.map(
 	Config.all({
-		sourceUrl: Config.string('LEGACY_DATABASE_URL'),
+		sourceUrl: Config.String('LEGACY_DATABASE_URL'),
 		sourceAuthToken: Config.option(
-			Config.redacted('LEGACY_DATABASE_AUTH_TOKEN'),
+			Config.Redacted('LEGACY_DATABASE_AUTH_TOKEN'),
 		),
-		sourceId: Config.string('LEGACY_SOURCE_ID'),
-		databaseUrl: Config.redacted('DATABASE_URL'),
-		botId: Config.string('BOT_ID'),
+		sourceId: Config.String('LEGACY_SOURCE_ID'),
+		databaseUrl: Config.Redacted('DATABASE_URL'),
+		botId: Config.String('BOT_ID'),
 	}),
 	(value): LegacyImportConfigService => ({
 		sourceUrl: value.sourceUrl,

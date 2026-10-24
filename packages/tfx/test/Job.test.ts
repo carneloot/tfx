@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import * as Job from '../src/Job.js';
 import * as VersionedSchema from '../src/VersionedSchema.js';
 
-class Failure extends Schema.TaggedErrorClass<Failure>()('Failure', {
+class Failure extends Schema.TaggedError<Failure>()('Failure', {
 	message: Schema.String,
 }) {}
 

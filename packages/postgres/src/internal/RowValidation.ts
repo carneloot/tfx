@@ -1,6 +1,7 @@
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
+import * as SchemaGetter from 'effect/SchemaGetter';
 
 const nilUuid = '00000000-0000-0000-0000-000000000000';
 const maxUuid = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
@@ -18,6 +19,12 @@ export const Uuid = Schema.String.check(
 export const RawInteger = Schema.Union([
 	Schema.Int,
 	Schema.NumberFromString.check(Schema.isInt()),
+	Schema.BigInt.pipe(
+		Schema.decodeTo(Schema.Int, {
+			decode: SchemaGetter.transform(Number),
+			encode: SchemaGetter.transform(BigInt),
+		}),
+	),
 ]);
 export const NullableInteger = Schema.NullOr(RawInteger);
 export const NonNegativeRawInteger = RawInteger.check(

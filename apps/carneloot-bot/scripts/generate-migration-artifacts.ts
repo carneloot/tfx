@@ -4,7 +4,7 @@ import * as NodeServices from '@effect/platform-node/NodeServices';
 import * as Crypto from 'effect/Crypto';
 import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
-import * as Encoding from 'effect/Encoding';
+import * as Hex from 'effect/encoding/Hex';
 import * as FileSystem from 'effect/FileSystem';
 import * as Path from 'effect/Path';
 
@@ -76,7 +76,7 @@ export const generateMigrationArtifacts = (options: {
 					const rendered = renderMigrationArtifact(
 						fileName,
 						sql,
-						Encoding.encodeHex(digest),
+						Hex.encode(digest),
 					);
 
 					if (options.check) {

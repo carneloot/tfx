@@ -5,7 +5,7 @@ import * as Schema from 'effect/Schema';
 import type { BotId, PetId, UserId } from '../domain/Ids.js';
 import type { FoodEntryId } from '../domain/pet-food/PetFood.js';
 
-export class FoodNotificationSchedulerError extends Schema.TaggedErrorClass<FoodNotificationSchedulerError>()(
+export class FoodNotificationSchedulerError extends Schema.TaggedError<FoodNotificationSchedulerError>()(
 	'FoodNotificationSchedulerError',
 	{
 		reason: Schema.Literals(['PersistenceFailure', 'InvariantViolation']),

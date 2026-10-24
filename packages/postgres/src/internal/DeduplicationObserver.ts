@@ -1,7 +1,6 @@
 import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
-import * as Schedule from 'effect/Schedule';
 import type { ObservedCompletion } from 'tfx/UpdateDeduplicator';
 
 export interface Pending {
@@ -10,8 +9,9 @@ export interface Pending {
 export const pending: Pending = { _tag: 'Pending' };
 
 type Observation = ObservedCompletion | Pending;
-const isPending = (observation: Observation): observation is Pending =>
-	observation._tag === 'Pending';
+const isComplete = (
+	observation: Observation,
+): observation is ObservedCompletion => observation._tag !== 'Pending';
 
 export const observe = <E, R>(options: {
 	readonly startedAt: DateTime.Utc;
@@ -30,10 +30,12 @@ export const observe = <E, R>(options: {
 			return { _tag: 'TimedOut' };
 		return yield* options.check;
 	});
-	return Effect.repeat(pass, {
-		while: isPending,
-		schedule: Schedule.spaced(interval).pipe(
-			Schedule.setInputType<Observation>(),
-		),
-	});
+	const poll: Effect.Effect<ObservedCompletion, E, R> = Effect.flatMap(
+		pass,
+		(observation) =>
+			isComplete(observation)
+				? Effect.succeed(observation)
+				: Effect.sleep(interval).pipe(Effect.andThen(() => poll)),
+	);
+	return poll;
 };

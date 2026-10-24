@@ -40,7 +40,7 @@ export const FoodReplyResult = Schema.Union([
 ]);
 export type FoodReplyResult = typeof FoodReplyResult.Type;
 
-export class FoodReplyLedgerError extends Schema.TaggedErrorClass<FoodReplyLedgerError>()(
+export class FoodReplyLedgerError extends Schema.TaggedError<FoodReplyLedgerError>()(
 	'FoodReplyLedgerError',
 	{
 		reason: Schema.Literals(['InvalidStoredResult']),

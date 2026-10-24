@@ -1,9 +1,9 @@
 import * as Effect from 'effect/Effect';
+import * as HttpClient from 'effect/http/HttpClient';
+import type * as HttpClientRequest from 'effect/http/HttpClientRequest';
+import * as HttpClientResponse from 'effect/http/HttpClientResponse';
 import * as Redacted from 'effect/Redacted';
 import * as Tracer from 'effect/Tracer';
-import * as HttpClient from 'effect/unstable/http/HttpClient';
-import type * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest';
-import * as HttpClientResponse from 'effect/unstable/http/HttpClientResponse';
 import { describe, expect, it } from 'vitest';
 
 import { make } from '../src/Telegram.js';
@@ -62,6 +62,34 @@ const makeSpanCollector = () => {
 };
 
 describe('Telegram', () => {
+	it.each(['request', 'body'] as const)(
+		'times out a stalled %s as a retryable NetworkError',
+		async (stage) => {
+			const client = HttpClient.make((request) =>
+				stage === 'request'
+					? Effect.never
+					: Effect.succeed(
+							HttpClientResponse.fromWeb(
+								request,
+								new Response(new ReadableStream(), {
+									headers: { 'content-type': 'application/json' },
+								}),
+							),
+						),
+			);
+			const result = Effect.flatMap(
+				make(Redacted.make('1:x'), { timeout: '10 millis' }),
+				(telegram) => telegram.getMe(),
+			).pipe(Effect.provideService(HttpClient.HttpClient, client));
+			await expect(Effect.runPromise(result)).rejects.toMatchObject({
+				_tag: 'TelegramError',
+				module: 'Telegram',
+				method: 'getMe',
+				isRetryable: true,
+				reason: { _tag: 'NetworkError', message: 'Telegram request timed out' },
+			});
+		},
+	);
 	it('sends sendMessage as JSON and strips successful envelope', async () => {
 		const payload = { chat_id: 42, text: 'oi' };
 		const execute = run(success, (request) => {

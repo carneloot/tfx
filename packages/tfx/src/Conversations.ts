@@ -19,15 +19,15 @@ import type * as Transition from './internal/conversation/Transition.js';
 import type { TaggedError } from './TaggedError.js';
 import { VersionedSchemaError } from './VersionedSchema.js';
 
-export class ConversationScopeUnavailable extends Schema.TaggedErrorClass<ConversationScopeUnavailable>()(
+export class ConversationScopeUnavailable extends Schema.TaggedError<ConversationScopeUnavailable>()(
 	'ConversationScopeUnavailable',
 	{ message: Schema.String },
 ) {}
-export class HandledWithOutputFailure extends Schema.TaggedErrorClass<HandledWithOutputFailure>()(
+export class HandledWithOutputFailure extends Schema.TaggedError<HandledWithOutputFailure>()(
 	'HandledWithOutputFailure',
 	{ cause: Schema.Unknown },
 ) {}
-export class ConversationExecutionError extends Schema.TaggedErrorClass<ConversationExecutionError>()(
+export class ConversationExecutionError extends Schema.TaggedError<ConversationExecutionError>()(
 	'ConversationExecutionError',
 	{ cause: Schema.Unknown },
 ) {}

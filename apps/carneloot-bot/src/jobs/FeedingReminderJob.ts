@@ -16,14 +16,14 @@ export const PayloadV1 = Schema.Struct({
 export const Payload = VersionedSchema.history(
 	VersionedSchema.version(1, PayloadV1),
 );
-export class FeedingReminderRetryError extends Schema.TaggedErrorClass<FeedingReminderRetryError>()(
+export class FeedingReminderRetryError extends Schema.TaggedError<FeedingReminderRetryError>()(
 	'FeedingReminderRetryError',
 	{
 		message: Schema.String,
 		retryAfter: Schema.optionalKey(Schema.DurationFromMillis),
 	},
 ) {}
-export class FeedingReminderPermanentError extends Schema.TaggedErrorClass<FeedingReminderPermanentError>()(
+export class FeedingReminderPermanentError extends Schema.TaggedError<FeedingReminderPermanentError>()(
 	'FeedingReminderPermanentError',
 	{ message: Schema.String },
 ) {}

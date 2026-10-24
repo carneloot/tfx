@@ -116,7 +116,7 @@
 		"prepublishOnly": "node scripts/approve-photon-publication.ts"
 	},
 	"peerDependencies": {
-		"effect": "4.0.0-beta.98"
+		"effect": "4.0.6"
 	},
 	"engines": {
 		"bun": "1.3.14",
