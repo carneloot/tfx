@@ -127,7 +127,7 @@ export const execute = Effect.fn('AddFood.execute')(
 							});
 
 						const id = Schema.decodeUnknownSync(FoodEntryId)(
-							yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+							yield* crypto.randomUUIDv4().pipe(Effect.orDie),
 						);
 
 						const entry = yield* repository.insert({

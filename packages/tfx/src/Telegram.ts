@@ -1,10 +1,11 @@
 import * as Context from 'effect/Context';
+import type * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
+import * as HttpClient from 'effect/http/HttpClient';
+import * as HttpClientError from 'effect/http/HttpClientError';
+import * as HttpClientRequest from 'effect/http/HttpClientRequest';
 import * as Layer from 'effect/Layer';
 import * as Redacted from 'effect/Redacted';
-import * as HttpClient from 'effect/unstable/http/HttpClient';
-import * as HttpClientError from 'effect/unstable/http/HttpClientError';
-import * as HttpClientRequest from 'effect/unstable/http/HttpClientRequest';
 
 import { make as makeGenerated } from './internal/telegram/generated/TelegramApi.runtime.js';
 import type { TelegramApi } from './internal/telegram/generated/TelegramApi.types.js';
@@ -57,6 +58,12 @@ const mapGeneratedError = (method: string, cause: unknown): TelegramError => {
 			: undefined;
 	if (tagged?._tag === 'APIResponseError')
 		return fromEnvelope(method, tagged.cause as TelegramFailureEnvelope);
+	if (tagged?._tag === 'TimeoutError')
+		return new TelegramError({
+			module: 'Telegram',
+			method,
+			reason: new NetworkError({ message: 'Telegram request timed out' }),
+		});
 
 	if (HttpClientError.isHttpClientError(cause)) {
 		const reason =
@@ -84,6 +91,7 @@ const mapGeneratedError = (method: string, cause: unknown): TelegramError => {
 
 export const make = (
 	token: Redacted.Redacted<string>,
+	options: { readonly timeout?: Duration.Input } = {},
 ): Effect.Effect<TelegramService, never, HttpClient.HttpClient> =>
 	Effect.map(HttpClient.HttpClient, (client) => {
 		const baseUrl = `https://api.telegram.org/bot${Redacted.value(token)}`;
@@ -100,7 +108,9 @@ export const make = (
 				}) => Effect.Effect<unknown, unknown>;
 				return (payload: unknown = {}) =>
 					Effect.provideService(
-						operation({ payload }),
+						options.timeout === undefined
+							? operation({ payload })
+							: Effect.timeout(operation({ payload }), options.timeout),
 						HttpClient.TracerDisabledWhen,
 						// Telegram token is part of API path; standard HTTP tracing records full URL.
 						() => true,
@@ -134,5 +144,6 @@ export const make = (
 
 export const layer = (
 	token: Redacted.Redacted<string>,
+	options: { readonly timeout?: Duration.Input } = {},
 ): Layer.Layer<Telegram, never, HttpClient.HttpClient> =>
-	Layer.effect(Telegram, make(token));
+	Layer.effect(Telegram, make(token, options));

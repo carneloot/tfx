@@ -4,7 +4,7 @@ import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Ref from 'effect/Ref';
-import type { SqlError } from 'effect/unstable/sql/SqlError';
+import type { SqlError } from 'effect/sql/SqlError';
 
 import { LegacyImportError } from './LegacyImportError.js';
 import { canonicalDigest, type MappedRow } from './LegacyMapping.js';

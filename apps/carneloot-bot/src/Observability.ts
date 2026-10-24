@@ -1,10 +1,10 @@
 import * as Config from 'effect/Config';
 import * as Effect from 'effect/Effect';
+import * as FetchHttpClient from 'effect/http/FetchHttpClient';
 import * as Layer from 'effect/Layer';
-import * as FetchHttpClient from 'effect/unstable/http/FetchHttpClient';
-import * as OtlpLogger from 'effect/unstable/observability/OtlpLogger';
-import * as OtlpSerialization from 'effect/unstable/observability/OtlpSerialization';
-import * as OtlpTracer from 'effect/unstable/observability/OtlpTracer';
+import * as OtlpLogger from 'effect/observability/OtlpLogger';
+import * as OtlpSerialization from 'effect/observability/OtlpSerialization';
+import * as OtlpTracer from 'effect/observability/OtlpTracer';
 
 export const otlpResource = Object.freeze({
 	serviceName: 'carneloot-bot',
@@ -17,10 +17,10 @@ export const defaultOtlpEndpoints = Object.freeze({
 export const layer = Layer.unwrap(
 	Effect.map(
 		Config.all({
-			tracesUrl: Config.string('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT').pipe(
+			tracesUrl: Config.String('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT').pipe(
 				Config.withDefault(defaultOtlpEndpoints.tracesUrl),
 			),
-			logsUrl: Config.string('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT').pipe(
+			logsUrl: Config.String('OTEL_EXPORTER_OTLP_LOGS_ENDPOINT').pipe(
 				Config.withDefault(defaultOtlpEndpoints.logsUrl),
 			),
 		}),

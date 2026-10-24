@@ -106,16 +106,18 @@ normalized = normalized.replaceAll(
 	'HttpClientRequest.bodyJsonUnsafe(options.payload as any)',
 );
 normalized = normalized.replaceAll(
-	'HttpClientRequest.bodyFormData(options.payload as any)',
+	'HttpClientRequest.bodyFormDataRecord(options.payload as any)',
 	'bodyTelegramPayload(options.payload as any)',
 );
 const unexpectedStatusPattern =
 	/  const unexpectedStatus = \(response: HttpClientResponse\.HttpClientResponse\) =>[\s\S]*?\n  const withResponse =/;
 if (!unexpectedStatusPattern.test(normalized))
 	throw new Error('could not replace unexpected status decoder');
+if (!normalized.includes('export const TelegramErrorResponse ='))
+	throw new Error('Telegram error response schema missing');
 normalized = normalized.replace(
 	unexpectedStatusPattern,
-	`  const unexpectedStatus = (response: HttpClientResponse.HttpClientResponse) =>\n    Effect.flatMap(\n      HttpClientResponse.schemaBodyJson(APIResponseError)(response),\n      (cause) => Effect.fail(TelegramApiError(\"APIResponseError\", cause, response))\n    )\n  const withResponse =`,
+	`  const unexpectedStatus = (response: HttpClientResponse.HttpClientResponse) =>\n    Effect.flatMap(\n      HttpClientResponse.schemaBodyJson(TelegramErrorResponse)(response),\n      (cause) => Effect.fail(TelegramApiError(\"APIResponseError\", cause, response))\n    )\n  const withResponse =`,
 );
 const makeMarker = 'export const make = (\n';
 const helper = `const containsUpload = (value: unknown, seen = new Set<unknown>()): boolean => {\n  if (typeof Blob === \"function\" && value instanceof Blob) return true\n  if (typeof File === \"function\" && value instanceof File) return true\n  if (typeof value !== \"object\" || value === null || seen.has(value)) return false\n  seen.add(value)\n  return Object.values(value).some((item) => containsUpload(item, seen))\n}\nconst bodyTelegramPayload = (payload: Record<string, unknown>) => containsUpload(payload)\n  ? HttpClientRequest.bodyFormDataRecord(payload)\n  : HttpClientRequest.bodyJsonUnsafe(payload)\n\n`;
@@ -153,14 +155,16 @@ const apiInterface = full
 	.replace(/^  readonly httpClient:.*\n/m, '')
 	.replace(/typeof ([A-Za-z0-9_]+)\.(?:Encoded|Type)/g, '$1')
 	.replace(
-		/<Config extends OperationConfig>\(options: \{ readonly payload: ([^;]+); readonly config\?: Config \| undefined \}\) => Effect\.Effect<WithOptionalResponse<([^,]+), Config>,/g,
-		'(options: { readonly payload: $1 }) => Effect.Effect<$2,',
+		/readonly ("[^"]+"): \{\n\s+<Config extends OperationConfig \| undefined = undefined>\(options: \{ readonly payload: ([^;]+); readonly config: Config \}\): Effect\.Effect<WithOptionalResponse<([^,]+), Config>, ([^\n]+)>;\n[^\n]+\n\s+\}/g,
+		'readonly $1: (options: { readonly payload: $2 }) => Effect.Effect<$3, $4>',
 	)
 	.replace(
-		/<Config extends OperationConfig>\(options: \{ readonly config\?: Config \| undefined \} \| undefined\) => Effect\.Effect<WithOptionalResponse<([^,]+), Config>,/g,
-		'(options?: { readonly payload?: Record<string, never> }) => Effect.Effect<$1,',
+		/readonly ("[^"]+"): \{\n\s+<Config extends OperationConfig \| undefined = undefined>\(options: \{ readonly config: Config \}\): Effect\.Effect<WithOptionalResponse<([^,]+), Config>, ([^\n]+)>;\n[^\n]+\n\s+\}/g,
+		'readonly $1: (options?: { readonly payload?: Record<string, never> }) => Effect.Effect<$2, $3>',
 	);
-const typeOnly = `// generated type-only surface; do not edit\nimport type * as Effect from "effect/Effect"\nimport type { Json, SchemaError } from "effect/Schema"\nimport type * as HttpClientError from "effect/unstable/http/HttpClientError"\nimport type * as HttpClientResponse from "effect/unstable/http/HttpClientResponse"\nexport interface OperationConfig { readonly includeResponse?: boolean | undefined }\nexport type WithOptionalResponse<A, Config extends OperationConfig> = Config extends { readonly includeResponse: true } ? [A, HttpClientResponse.HttpClientResponse] : A\n${types.join('\n')}\n${apiInterface}\n`;
+if (apiInterface.includes('WithOptionalResponse'))
+	throw new Error('could not normalize TelegramApi operation overloads');
+const typeOnly = `// generated type-only surface; do not edit\nimport type * as Effect from "effect/Effect"\nimport type { Json, SchemaError } from "effect/Schema"\nimport type * as HttpClientError from "effect/http/HttpClientError"\nimport type * as HttpClientResponse from "effect/http/HttpClientResponse"\nexport interface OperationConfig { readonly includeResponse?: boolean | undefined }\nexport type WithOptionalResponse<A, Config extends OperationConfig> = Config extends { readonly includeResponse: true } ? [A, HttpClientResponse.HttpClientResponse] : A\n${types.join('\n')}\n${apiInterface}\n`;
 writeFileSync(resolve(dirname(target), 'TelegramApi.types.ts'), typeOnly);
 
 const runtimeTarget = resolve(dirname(target), 'TelegramApi.runtime.js');
@@ -187,7 +191,7 @@ writeFileSync(
 );
 writeFileSync(
 	resolve(dirname(target), 'TelegramApi.runtime.d.ts'),
-	`// generated runtime bridge; do not edit\nimport type * as Effect from "effect/Effect"\nimport type * as Schema from "effect/Schema"\nimport type * as HttpClient from "effect/unstable/http/HttpClient"\nimport type { TelegramApi, BotCommand as BotCommandType, Message as MessageType, Update as UpdateType, User as UserType } from "./TelegramApi.types.js"\nexport declare const make: (client: HttpClient.HttpClient, options?: { readonly transformClient?: ((client: HttpClient.HttpClient) => Effect.Effect<HttpClient.HttpClient>) | undefined }) => TelegramApi\nexport declare const BotCommand: Schema.Schema<BotCommandType>\nexport declare const Message: Schema.Schema<MessageType>\nexport declare const Update: Schema.Schema<UpdateType>\nexport declare const User: Schema.Schema<UserType>\n`,
+	`// generated runtime bridge; do not edit\nimport type * as Effect from "effect/Effect"\nimport type * as Schema from "effect/Schema"\nimport type * as HttpClient from "effect/http/HttpClient"\nimport type { TelegramApi, BotCommand as BotCommandType, Message as MessageType, Update as UpdateType, User as UserType } from "./TelegramApi.types.js"\nexport declare const make: (client: HttpClient.HttpClient, options?: { readonly transformClient?: ((client: HttpClient.HttpClient) => Effect.Effect<HttpClient.HttpClient>) | undefined }) => TelegramApi\nexport declare const BotCommand: Schema.Codec<BotCommandType>\nexport declare const Message: Schema.Codec<MessageType>\nexport declare const Update: Schema.Codec<UpdateType>\nexport declare const User: Schema.Codec<UserType>\n`,
 );
 
 const manifestFiles = [

@@ -246,14 +246,14 @@ else
 				const sql = yield* PgClient.PgClient;
 				const [delivery] = yield* sql<{
 					status: string;
-					telegram_message_id: string;
+					telegram_message_id: bigint;
 				}>`SELECT status,telegram_message_id FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
 				const [event] = yield* sql<{
 					status: string;
 				}>`SELECT status FROM carneloot.notification_events WHERE id=${fixture.event.id}::uuid`;
 				expect(delivery).toMatchObject({
 					status: 'sent',
-					telegram_message_id: '77',
+					telegram_message_id: 77n,
 				});
 				expect(event?.status).toBe('completed');
 			});
@@ -464,13 +464,13 @@ else
 				const deliveries = yield* sql<{
 					recipient_role: string;
 					status: string;
-					recipient_chat_id: string | null;
+					recipient_chat_id: bigint | null;
 				}>`SELECT recipient_role,status,recipient_chat_id FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC`;
 				expect(deliveries).toEqual([
 					{
 						recipient_role: 'owner',
 						status: 'sent',
-						recipient_chat_id: String(fixture.user.profile.privateChatId),
+						recipient_chat_id: BigInt(fixture.user.profile.privateChatId),
 					},
 					{
 						recipient_role: 'caregiver',

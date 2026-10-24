@@ -220,13 +220,13 @@ else
 							const rows = yield* sql<{
 								pet_name: string;
 								timezone: string;
-								amount_mg: string;
+								amount_mg: bigint;
 								fed_at: Date;
 								source_bot_id: string;
-								source_update_id: string;
-								source_message_chat_id: string;
-								source_message_id: string;
-								recorded_by_telegram_id: string;
+								source_update_id: bigint;
+								source_message_chat_id: bigint;
+								source_message_id: bigint;
+								recorded_by_telegram_id: bigint;
 							}>`SELECT p.name AS pet_name,s.timezone,e.amount_mg,e.fed_at,
 								e.source_bot_id,e.source_update_id,e.source_message_chat_id,
 								e.source_message_id,up.telegram_user_id AS recorded_by_telegram_id
@@ -245,24 +245,24 @@ else
 								{
 									pet_name: 'Mimi',
 									timezone: 'Asia/Tokyo',
-									amount_mg: '50000',
+									amount_mg: 50000n,
 									fed_at: '2024-01-01T23:30:00.000Z',
 									source_bot_id: 'carneloot',
-									source_update_id: String(todosId),
-									source_message_chat_id: String(caregiver.id),
-									source_message_id: String(todosId),
-									recorded_by_telegram_id: String(caregiver.id),
+									source_update_id: BigInt(todosId),
+									source_message_chat_id: BigInt(caregiver.id),
+									source_message_id: BigInt(todosId),
+									recorded_by_telegram_id: BigInt(caregiver.id),
 								},
 								{
 									pet_name: 'Rex',
 									timezone: 'America/Sao_Paulo',
-									amount_mg: '50000',
+									amount_mg: 50000n,
 									fed_at: '2024-01-01T11:30:00.000Z',
 									source_bot_id: 'carneloot',
-									source_update_id: String(todosId),
-									source_message_chat_id: String(caregiver.id),
-									source_message_id: String(todosId),
-									recorded_by_telegram_id: String(caregiver.id),
+									source_update_id: BigInt(todosId),
+									source_message_chat_id: BigInt(caregiver.id),
+									source_message_id: BigInt(todosId),
+									recorded_by_telegram_id: BigInt(caregiver.id),
 								},
 							]);
 							expect(sent.at(-1)).toEqual({

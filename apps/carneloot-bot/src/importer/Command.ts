@@ -1,9 +1,9 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import * as TfxPostgres from '@tfx/postgres/TfxPostgres';
+import { Command } from 'effect/cli';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import type * as Redacted from 'effect/Redacted';
-import { Command } from 'effect/unstable/cli';
 import * as JobRuntimeLive from 'tfx/JobRuntime';
 
 import { migrate } from '../postgres/AppMigrator.js';

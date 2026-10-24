@@ -241,7 +241,7 @@ export const execute = Effect.fn('DispatchNotificationDelivery.execute')(
 				const inputs = yield* Effect.forEach(resolved, ({ resolution }) =>
 					Effect.gen(function* () {
 						const id = Schema.decodeUnknownSync(DeliveryId)(
-							yield* crypto.randomUUIDv4.pipe(Effect.orDie),
+							yield* crypto.randomUUIDv4().pipe(Effect.orDie),
 						);
 						return { ...resolution, id };
 					}),

@@ -3,7 +3,7 @@ import { Effect, Logger } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import type { Migration } from '../src/Migration.js';
-import { run } from '../src/PostgresMigrator.js';
+import { executeSql, run } from '../src/PostgresMigrator.js';
 import * as PostgresTestLayer from './internal/PostgresTestLayer.js';
 
 const enabled =
@@ -42,6 +42,78 @@ const messages = (logs: ReadonlyArray<CapturedLog>) =>
 	logs.map(({ message }) => message);
 
 describe.skipIf(!enabled)('shared PostgreSQL migrator', () => {
+	it('executes scripts without splitting quoted SQL and rolls back a failed script', async () => {
+		const suffix = crypto.randomUUID().replaceAll('-', '');
+		const schema = `migrator_${suffix}`;
+		const first: Migration = {
+			version: 1,
+			name: 'script',
+			checksum: checksum('a'),
+			up: (sql) =>
+				executeSql(
+					sql,
+					String.raw`
+				-- ignored ; ' $$
+				CREATE TABLE ${schema}."items;quoted" (value text);
+				/* outer ; /* nested ; */ still comment ; */
+				INSERT INTO ${schema}."items;quoted" VALUES ('one;''two'), (E'three\';four');
+				DO $body$ BEGIN
+					INSERT INTO ${schema}."items;quoted" VALUES ($$five;six$$);
+				END $body$;
+				INSERT INTO ${schema}."items;quoted" VALUES ('last')
+			`,
+				),
+		};
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				yield* run(options(suffix, [first]));
+				const sql = yield* PgClient.PgClient;
+				const rows = yield* sql<{
+					value: string;
+				}>`SELECT value FROM ${sql(schema)}.${sql('items;quoted')} ORDER BY value`;
+				const failed = yield* Effect.result(
+					run(
+						options(suffix, [
+							first,
+							{
+								version: 2,
+								name: 'failed-script',
+								checksum: checksum('b'),
+								up: (client) =>
+									executeSql(
+										client,
+										`
+					INSERT INTO ${schema}."items;quoted" VALUES ('rolled back');
+					SELECT * FROM ${schema}.missing;
+				`,
+									),
+							},
+						]),
+					),
+				);
+				const after = yield* sql<{
+					count: string;
+				}>`SELECT count(*)::text AS count FROM ${sql(schema)}.${sql('items;quoted')}`;
+				const ledger = yield* sql<{
+					count: string;
+				}>`SELECT count(*)::text AS count FROM ${sql(schema)}.migrations`;
+				return { rows, failed, after, ledger };
+			}).pipe(Effect.provide(PostgresTestLayer.layer)),
+		);
+		expect(result.rows.map((row) => row.value)).toEqual([
+			'five;six',
+			'last',
+			"one;'two",
+			"three';four",
+		]);
+		expect(result.failed).toMatchObject({
+			_tag: 'Failure',
+			failure: { stage: 'apply', version: 2 },
+		});
+		expect(result.after[0]?.count).toBe('4');
+		expect(result.ledger[0]?.count).toBe('1');
+	});
+
 	it('serializes concurrent bootstrap and applies each migration once', async () => {
 		const suffix = crypto.randomUUID().replaceAll('-', '');
 		const migrations: ReadonlyArray<Migration> = [

@@ -1,4 +1,4 @@
-import * as SqlError from 'effect/unstable/sql/SqlError';
+import * as SqlError from 'effect/sql/SqlError';
 import { ConversationStorageError } from 'tfx/ConversationStorage';
 import type { TaggedError } from 'tfx/TaggedError';
 import { NetworkError, TelegramError } from 'tfx/TelegramError';

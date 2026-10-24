@@ -63,7 +63,11 @@ class LeaseSignal {
 	readonly _tag = 'LeaseSignal';
 }
 type Requirements<I extends ReadonlyArray<AnyImplementation>> =
-	I[number] extends Job.Implementation<any, infer R> ? R : never;
+	I[number] extends never
+		? never
+		: I[number] extends Job.Implementation<any, infer R>
+			? R
+			: never;
 export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 	...implementations: I
 ): Layer.Layer<JobRuntime, never, JobStore | Requirements<I>> => {

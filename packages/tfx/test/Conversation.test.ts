@@ -10,7 +10,7 @@ import { ConversationStorage } from '../src/ConversationStorage.js';
 import * as MemoryConversationStorage from '../src/MemoryConversationStorage.js';
 import * as VersionedSchema from '../src/VersionedSchema.js';
 
-class TestConversationError extends Schema.TaggedErrorClass<TestConversationError>()(
+class TestConversationError extends Schema.TaggedError<TestConversationError>()(
 	'TestConversationError',
 	{ message: Schema.String },
 ) {}

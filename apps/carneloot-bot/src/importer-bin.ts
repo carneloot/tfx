@@ -1,8 +1,8 @@
 import * as BunCrypto from '@effect/platform-bun/BunCrypto';
 import * as BunRuntime from '@effect/platform-bun/BunRuntime';
+import { Command } from 'effect/cli';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
-import { Command } from 'effect/unstable/cli';
 
 import packageJson from '../package.json' with { type: 'json' };
 import { command } from './importer/Command.js';

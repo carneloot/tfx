@@ -23,14 +23,18 @@ describe('PostgreSQL row validation schemas', () => {
 			expect(() => decode(invalid)).toThrow();
 	});
 
-	it('normalizes safe bigint numbers and strings', () => {
+	it('normalizes safe bigint, number, and string values', () => {
 		const decode = Schema.decodeUnknownSync(RawInteger);
 		expect(decode(42)).toBe(42);
 		expect(decode('42')).toBe(42);
+		expect(decode(-42n)).toBe(-42);
+		expect(decode(9007199254740991n)).toBe(Number.MAX_SAFE_INTEGER);
 		for (const invalid of [
 			'1.5',
 			'not-a-number',
 			'9007199254740992',
+			9007199254740992n,
+			-9007199254740992n,
 			Number.POSITIVE_INFINITY,
 		])
 			expect(() => decode(invalid)).toThrow();

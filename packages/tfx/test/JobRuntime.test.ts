@@ -19,7 +19,7 @@ const history = VersionedSchema.history(
 		(v) => ({ value: v.old }),
 	),
 );
-class RetryFailure extends Schema.TaggedErrorClass<RetryFailure>()(
+class RetryFailure extends Schema.TaggedError<RetryFailure>()(
 	'RetryFailure',
 	{},
 ) {}

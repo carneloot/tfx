@@ -29,7 +29,7 @@ describe('portable Node composition', () => {
 		const uuid = await Effect.runPromise(
 			Effect.gen(function* () {
 				const crypto = yield* Crypto.Crypto;
-				return yield* crypto.randomUUIDv4;
+				return yield* crypto.randomUUIDv4();
 			}).pipe(Effect.provide(NodeCrypto.layer)),
 		);
 		expect(uuid).toMatch(

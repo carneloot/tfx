@@ -1,18 +1,18 @@
+import { Flag, Param } from 'effect/cli';
 import * as Config from 'effect/Config';
 import * as Option from 'effect/Option';
-import { Flag, Param } from 'effect/unstable/cli';
 
 import type { LegacyImportConfigService } from './LegacyImportConfig.js';
 
 const required = (flag: string, environment: string, description: string) =>
-	Flag.string(flag).pipe(
+	Flag.String(flag).pipe(
 		Flag.withDescription(`${description} Falls back to ${environment}.`),
-		Flag.withFallbackConfig(Config.string(environment)),
+		Flag.withFallbackConfig(Config.String(environment)),
 	);
 
 const optionalSecret = (flag: string, environment: string) =>
-	Flag.optional(Param.redacted(Param.flagKind, flag)).pipe(
-		Flag.withFallbackConfig(Config.option(Config.redacted(environment))),
+	Flag.optional(Param.Redacted(Param.flagKind, flag)).pipe(
+		Flag.withFallbackConfig(Config.option(Config.Redacted(environment))),
 	);
 
 export const requiredSecret = (
@@ -20,9 +20,9 @@ export const requiredSecret = (
 	environment: string,
 	description: string,
 ) =>
-	Param.redacted(Param.flagKind, flag).pipe(
+	Param.Redacted(Param.flagKind, flag).pipe(
 		Flag.withDescription(`${description} Falls back to ${environment}.`),
-		Flag.withFallbackConfig(Config.redacted(environment)),
+		Flag.withFallbackConfig(Config.Redacted(environment)),
 	);
 
 export const migrationFlags = {
@@ -58,8 +58,8 @@ export const flags = {
 		'DATABASE_URL',
 		'Target PostgreSQL connection URL.',
 	),
-	dryRun: Flag.boolean('dry-run').pipe(Flag.withDefault(false)),
-	reportPath: Flag.optional(Flag.string('report')),
+	dryRun: Flag.Boolean('dry-run').pipe(Flag.withDefault(false)),
+	reportPath: Flag.optional(Flag.String('report')),
 };
 
 type Flags = {

@@ -1,7 +1,7 @@
 import * as Duration from 'effect/Duration';
 import * as Schema from 'effect/Schema';
 
-export class NetworkError extends Schema.TaggedErrorClass<NetworkError>()(
+export class NetworkError extends Schema.TaggedError<NetworkError>()(
 	'NetworkError',
 	{
 		message: Schema.String,
@@ -11,7 +11,7 @@ export class NetworkError extends Schema.TaggedErrorClass<NetworkError>()(
 	readonly retryAfter = undefined;
 }
 
-export class RateLimitError extends Schema.TaggedErrorClass<RateLimitError>()(
+export class RateLimitError extends Schema.TaggedError<RateLimitError>()(
 	'RateLimitError',
 	{
 		errorCode: Schema.Number,
@@ -25,35 +25,35 @@ export class RateLimitError extends Schema.TaggedErrorClass<RateLimitError>()(
 	}
 }
 
-export class AuthenticationError extends Schema.TaggedErrorClass<AuthenticationError>()(
+export class AuthenticationError extends Schema.TaggedError<AuthenticationError>()(
 	'AuthenticationError',
 	{ errorCode: Schema.Number, description: Schema.String },
 ) {
 	readonly isRetryable = false;
 	readonly retryAfter = undefined;
 }
-export class ForbiddenError extends Schema.TaggedErrorClass<ForbiddenError>()(
+export class ForbiddenError extends Schema.TaggedError<ForbiddenError>()(
 	'ForbiddenError',
 	{ errorCode: Schema.Number, description: Schema.String },
 ) {
 	readonly isRetryable = false;
 	readonly retryAfter = undefined;
 }
-export class InvalidRequestError extends Schema.TaggedErrorClass<InvalidRequestError>()(
+export class InvalidRequestError extends Schema.TaggedError<InvalidRequestError>()(
 	'InvalidRequestError',
 	{ errorCode: Schema.Number, description: Schema.String },
 ) {
 	readonly isRetryable = false;
 	readonly retryAfter = undefined;
 }
-export class ConflictError extends Schema.TaggedErrorClass<ConflictError>()(
+export class ConflictError extends Schema.TaggedError<ConflictError>()(
 	'ConflictError',
 	{ errorCode: Schema.Number, description: Schema.String },
 ) {
 	readonly isRetryable = true;
 	readonly retryAfter = undefined;
 }
-export class ChatMigrationError extends Schema.TaggedErrorClass<ChatMigrationError>()(
+export class ChatMigrationError extends Schema.TaggedError<ChatMigrationError>()(
 	'ChatMigrationError',
 	{
 		errorCode: Schema.Number,
@@ -64,21 +64,21 @@ export class ChatMigrationError extends Schema.TaggedErrorClass<ChatMigrationErr
 	readonly isRetryable = false;
 	readonly retryAfter = undefined;
 }
-export class InternalTelegramError extends Schema.TaggedErrorClass<InternalTelegramError>()(
+export class InternalTelegramError extends Schema.TaggedError<InternalTelegramError>()(
 	'InternalTelegramError',
 	{ errorCode: Schema.Number, description: Schema.String },
 ) {
 	readonly isRetryable = true;
 	readonly retryAfter = undefined;
 }
-export class InvalidResponseError extends Schema.TaggedErrorClass<InvalidResponseError>()(
+export class InvalidResponseError extends Schema.TaggedError<InvalidResponseError>()(
 	'InvalidResponseError',
 	{ message: Schema.String },
 ) {
 	readonly isRetryable = false;
 	readonly retryAfter = undefined;
 }
-export class UnknownError extends Schema.TaggedErrorClass<UnknownError>()(
+export class UnknownError extends Schema.TaggedError<UnknownError>()(
 	'UnknownError',
 	{ message: Schema.String },
 ) {
@@ -100,7 +100,7 @@ export const TelegramErrorReason = Schema.Union([
 ]);
 export type TelegramErrorReason = typeof TelegramErrorReason.Type;
 
-export class TelegramError extends Schema.TaggedErrorClass<TelegramError>()(
+export class TelegramError extends Schema.TaggedError<TelegramError>()(
 	'TelegramError',
 	{
 		module: Schema.Literal('Telegram'),

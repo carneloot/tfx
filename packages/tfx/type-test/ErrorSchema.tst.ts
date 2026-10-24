@@ -8,14 +8,10 @@ type Equal<A, B> =
 		? true
 		: false;
 
-class FirstError extends Schema.TaggedErrorClass<FirstError>()(
-	'FirstError',
-	{},
-) {}
-class SecondError extends Schema.TaggedErrorClass<SecondError>()(
-	'SecondError',
-	{ message: Schema.String },
-) {}
+class FirstError extends Schema.TaggedError<FirstError>()('FirstError', {}) {}
+class SecondError extends Schema.TaggedError<SecondError>()('SecondError', {
+	message: Schema.String,
+}) {}
 const Errors = Schema.Union([FirstError, SecondError]);
 
 export type VoidHasNoError = Assert<

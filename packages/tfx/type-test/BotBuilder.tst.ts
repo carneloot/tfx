@@ -25,7 +25,7 @@ class CurrentAdmin extends Context.Service<
 	CurrentAdmin,
 	{ readonly id: number }
 >()('test/CurrentAdmin') {}
-class AuthError extends Schema.TaggedErrorClass<AuthError>()('AuthError', {}) {}
+class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {}) {}
 const user = Middleware.make('user', {
 	scope: 'global',
 	provides: CurrentUser,
@@ -49,7 +49,7 @@ Command.make('invalid-kind', {
 	// @ts-expect-error commands are always message handlers
 	updateKinds: ['callback_query'],
 });
-class Allowed extends Schema.TaggedErrorClass<Allowed>()('Allowed', {}) {}
+class Allowed extends Schema.TaggedError<Allowed>()('Allowed', {}) {}
 
 const petInput = CommandInput.none as CommandInput.CommandInput<{
 	readonly name: string;

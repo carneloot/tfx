@@ -1,14 +1,16 @@
 import * as Effect from 'effect/Effect';
-import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 import * as SchemaGetter from 'effect/SchemaGetter';
 import * as SchemaIssue from 'effect/SchemaIssue';
 
 const maximum = 100_000_000n;
 const invalid = (value: string) =>
-	new SchemaIssue.InvalidValue(Option.some(value), {
-		message: 'Expected a positive food amount of at most 100kg',
-	});
+	new SchemaIssue.InvalidValue(
+		{
+			message: 'Expected a positive food amount of at most 100kg',
+		},
+		value,
+	);
 const parse = (input: string): bigint | undefined => {
 	const match = /^([0-9]+)(?:\.([0-9]+))?\s*(mg|g|kg)?$/iu.exec(input.trim());
 	if (match === null) return undefined;
@@ -34,7 +36,7 @@ export const FoodAmountMg = Schema.Number.check(
 export type FoodAmount = typeof FoodAmountMg.Type;
 export const FoodAmount = Schema.String.pipe(
 	Schema.decodeTo(FoodAmountMg, {
-		decode: SchemaGetter.transformOrFail((input) => {
+		decode: SchemaGetter.transformEffect((input) => {
 			const value = parse(input);
 			return value === undefined
 				? Effect.fail(invalid(input))

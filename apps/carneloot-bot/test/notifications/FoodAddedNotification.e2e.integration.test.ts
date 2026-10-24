@@ -230,7 +230,7 @@ else
 				const deliveries = yield* fixture.sql<{
 					status: string;
 					telegram_bot_id: string | null;
-					telegram_message_id: string | null;
+					telegram_message_id: bigint | null;
 				}>`SELECT d.status,d.telegram_bot_id,d.telegram_message_id FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.food_entry_id=${result.entry.id}::uuid`;
 				return { fixture, records, deliveries };
 			});
@@ -255,7 +255,7 @@ else
 				{
 					status: 'sent',
 					telegram_bot_id: result.fixture.botId,
-					telegram_message_id: String(ownMessageIndex + 1),
+					telegram_message_id: BigInt(ownMessageIndex + 1),
 				},
 			]);
 		});

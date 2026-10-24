@@ -22,7 +22,7 @@ const sqlMigration = (
 	version,
 	name,
 	checksum,
-	up: (sql) => sql.unsafe(source).pipe(Effect.asVoid),
+	up: (sql) => PostgresMigrator.executeSql(sql, source),
 });
 
 const migrations: ReadonlyArray<Migration> = Object.freeze([
