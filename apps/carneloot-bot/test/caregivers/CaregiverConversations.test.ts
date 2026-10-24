@@ -14,6 +14,7 @@ import * as List from '../../src/bot/conversations/ListCaregiversConversation.js
 import * as Invitations from '../../src/bot/conversations/PetInvitationsConversation.js';
 import * as Remove from '../../src/bot/conversations/RemoveCaregiverConversation.js';
 import * as Stop from '../../src/bot/conversations/StopCaringConversation.js';
+import { CurrentUser } from '../../src/bot/CurrentUser.js';
 import type {
 	CaregiverStatus,
 	PetCaregiver,
@@ -237,16 +238,27 @@ const harness = (initial: CaregiverStatus | null = 'pending') => {
 		layer,
 	};
 };
-const fresh = <A, E, R>(effect: Effect.Effect<A, E, R | Conversations>) =>
-	Effect.provide(effect, Layer.fresh(ConversationsLive.layer));
+const fresh = <A, E, R>(
+	built: Built,
+	effect: Effect.Effect<A, E, R | Conversations>,
+) =>
+	Effect.provide(effect, Layer.fresh(ConversationsLive.layer)).pipe(
+		// Direct conversation calls bypass the router's RegisteredUser middleware.
+		Effect.provideService(
+			CurrentUser,
+			built === Invitations.built || built === Stop.built ? caregiver : owner,
+		),
+	);
 const start = (built: Built, startup: object) =>
 	fresh(
+		built,
 		Effect.flatMap(Conversations, (s) =>
 			s.start(built as never, startup as never, { scope, conflict: 'replace' }),
 		),
 	);
 const resume = (built: Built, input: string, updateId: number) =>
 	fresh(
+		built,
 		Effect.flatMap(Conversations, (s) =>
 			s.resume(built as never, input, { scope, updateId }),
 		),
