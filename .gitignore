@@ -3,6 +3,7 @@ dist/
 *.tsbuildinfo
 coverage/
 .amp/portals/
+.alchemy/
 .env
 .env.*
 !.env.example

@@ -9,16 +9,14 @@ import * as PetFoodRepositoryLive from './PetFoodRepositoryLive.js';
 import * as PetRepositoryLive from './PetRepositoryLive.js';
 import * as UserRepositoryLive from './UserRepositoryLive.js';
 
-export const layer = Layer.unwrap(
-	Effect.as(
-		migrate,
-		Layer.mergeAll(
-			UserRepositoryLive.layer,
-			PetRepositoryLive.layer,
-			PetCaregiverRepositoryLive.layer,
-			PetFoodRepositoryLive.layer,
-			NotificationRepositoryLive.layer,
-			NotificationRecipientsLive.layer,
-		),
-	),
+/** Runtime-only composition. The deployment operator applies migrations first. */
+export const repositoriesLayer = Layer.mergeAll(
+	UserRepositoryLive.layer,
+	PetRepositoryLive.layer,
+	PetCaregiverRepositoryLive.layer,
+	PetFoodRepositoryLive.layer,
+	NotificationRepositoryLive.layer,
+	NotificationRecipientsLive.layer,
 );
+
+export const layer = Layer.unwrap(Effect.as(migrate, repositoriesLayer));

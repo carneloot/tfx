@@ -17,6 +17,15 @@ import type { Options } from './Options.js';
 import * as PostgresConversationStorage from './PostgresConversationStorage.js';
 import * as PostgresJobStore from './PostgresJobStore.js';
 import * as PostgresUpdateDeduplicator from './PostgresUpdateDeduplicator.js';
+
+/** Acquires runtime services without applying schema migrations. */
+export const servicesLayer = (options: Options = {}) =>
+	Layer.mergeAll(
+		PostgresConversationStorage.layer(options),
+		PostgresJobStore.layer(options),
+		PostgresUpdateDeduplicator.layer(options),
+	);
+
 export const layer = (
 	options: Options = {},
 ): Layer.Layer<
@@ -36,10 +45,6 @@ export const layer = (
 						),
 				),
 			),
-			Layer.mergeAll(
-				PostgresConversationStorage.layer(options),
-				PostgresJobStore.layer(options),
-				PostgresUpdateDeduplicator.layer(options),
-			),
+			servicesLayer(options),
 		),
 	);

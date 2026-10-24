@@ -1,6 +1,8 @@
 # Carneloot bot
 
-Private Bun application for owned-pet registration, food tracking, and durable feeding reminders.
+Private Telegram application for owned-pet registration, food tracking, and durable feeding reminders.
+
+The Cloudflare runtime uses Alchemy v2, Hyperdrive, per-chat Durable Objects, and bounded minute cron passes. See [deployment and cutover](../../docs/deploy-cloudflare.md) and [runtime reliability semantics](../../docs/cloudflare-runtime.md). The Bun polling runtime remains available below for local development and transport rollback.
 
 ## Setup
 

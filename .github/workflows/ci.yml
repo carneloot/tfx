@@ -53,6 +53,7 @@ jobs:
           install: true
           cache: true
       - run: pnpm install --frozen-lockfile
+      - run: pnpm check
       - run: pnpm format
       - run: pnpm lint
       - run: pnpm test:unit
