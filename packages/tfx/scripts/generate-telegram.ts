@@ -1,6 +1,18 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import {
+	execFileSync,
+	spawnSync,
+	type SpawnSyncReturns,
+} from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import {
+	closeSync,
+	mkdtempSync,
+	openSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '../../..');
@@ -57,11 +69,28 @@ const args = [
 		resolve(root, 'packages/tfx/openapi/patches', name),
 	]),
 ];
-const generated = spawnSync('corepack', ['pnpm', ...args], {
-	cwd: root,
-	encoding: 'utf8',
-	maxBuffer: 64 * 1024 * 1024,
-});
+const outputDirectory = mkdtempSync(resolve(tmpdir(), 'tfx-openapi-'));
+const outputPath = resolve(outputDirectory, 'source.ts');
+let generated: SpawnSyncReturns<string>;
+let source: string;
+try {
+	const stdout = openSync(outputPath, 'w');
+	try {
+		// Bun 1.3.14 can truncate this large child stdout pipe at 1 MiB even
+		// with maxBuffer set. A regular file preserves the complete source.
+		generated = spawnSync('corepack', ['pnpm', ...args], {
+			cwd: root,
+			encoding: 'utf8',
+			maxBuffer: 64 * 1024 * 1024,
+			stdio: ['pipe', stdout, 'pipe'],
+		});
+	} finally {
+		closeSync(stdout);
+	}
+	source = readFileSync(outputPath, 'utf8');
+} finally {
+	rmSync(outputDirectory, { recursive: true, force: true });
+}
 if (generated.status !== 0)
 	throw new Error(generated.stderr || `openapigen exited ${generated.status}`);
 const normalizeLines = (value: string) =>
@@ -100,7 +129,7 @@ for (const pathItem of Object.values(document.paths) as Array<
 	}
 }
 
-let normalized = normalizeLines(generated.stdout);
+let normalized = normalizeLines(source);
 normalized = normalized.replaceAll(
 	'HttpClientRequest.bodyUrlParams(options.payload as any)',
 	'HttpClientRequest.bodyJsonUnsafe(options.payload as any)',
