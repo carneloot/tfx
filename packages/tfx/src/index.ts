@@ -33,6 +33,8 @@ export * as Job from './Job.js';
 export * as JobOutcome from './JobOutcome.js';
 export * as JobStore from './JobStore.js';
 export * as JobRuntime from './JobRuntime.js';
+export * as JobScheduler from './JobScheduler.js';
+export * as JobWakeup from './JobWakeup.js';
 export * as MemoryJobStore from './MemoryJobStore.js';
 export * as DispatchOutcome from './DispatchOutcome.js';
 export * as ErrorSchema from './ErrorSchema.js';

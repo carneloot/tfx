@@ -7,15 +7,20 @@ import {
 import * as Migrations from '@tfx/postgres/Migrations';
 import * as PostgresJobStore from '@tfx/postgres/PostgresJobStore';
 import * as DateTime from 'effect/DateTime';
+import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Redacted from 'effect/Redacted';
 import { build } from 'esbuild';
 import {
 	Miniflare,
+	type MiniflareOptions,
 	type Request as MockRequest,
 	Response as MockResponse,
 } from 'miniflare';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { JobStore } from 'tfx/JobStore';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -58,6 +63,8 @@ describe.skipIf(!enabled)(
 	() => {
 		let container: StartedPostgreSqlContainer | undefined;
 		let emulator: Miniflare;
+		let emulatorOptions: MiniflareOptions;
+		let storagePath: string;
 		let workers: Awaited<ReturnType<Miniflare['getWorker']>>[] = [];
 		let postgres: ReturnType<typeof PgClient.layer<never>>;
 		let sends = 0;
@@ -79,6 +86,15 @@ describe.skipIf(!enabled)(
 				).pipe(Effect.provide(postgres)),
 			);
 		const cron = () => workers[0]!.scheduled({ cron: '* * * * *' });
+		const wakeup = async (path: string) => {
+			const namespace = await emulator.getDurableObjectNamespace(
+				'JOB_WAKEUP',
+				'host',
+			);
+			return namespace
+				.get(namespace.idFromName('carneloot'))
+				.fetch(`https://wakeup.test${path}`);
+		};
 
 		beforeAll(async () => {
 			const url =
@@ -116,7 +132,7 @@ describe.skipIf(!enabled)(
 			runtimeUrl.username = runtimeRole;
 			runtimeUrl.password = 'local-runtime-test-only';
 			const result = await build({
-				entryPoints: ['apps/carneloot-bot/src/cloudflare/Worker.ts'],
+				entryPoints: ['apps/carneloot-bot/test/cloudflare/Worker.ts'],
 				bundle: true,
 				write: false,
 				format: 'esm',
@@ -125,7 +141,9 @@ describe.skipIf(!enabled)(
 				external: ['node:*'],
 			});
 			const script = result.outputFiles[0]!.text;
-			emulator = new Miniflare({
+			storagePath = await mkdtemp(join(tmpdir(), 'tfx-cloudflare-'));
+			emulatorOptions = {
+				durableObjectsPersist: storagePath,
 				workers: ['host', 'gateway'].map((name) => ({
 					name,
 					modules: true,
@@ -165,6 +183,7 @@ describe.skipIf(!enabled)(
 					},
 					durableObjects: {
 						CHAT_DISPATCH: { className: 'ChatDispatch', scriptName: 'host' },
+						JOB_WAKEUP: { className: 'JobWakeup', scriptName: 'host' },
 					},
 					bindings: {
 						BOT_TOKEN: 'test-token',
@@ -174,7 +193,8 @@ describe.skipIf(!enabled)(
 						TFX_POSTGRES_TABLE_PREFIX: options.tablePrefix,
 					},
 				})),
-			});
+			};
+			emulator = new Miniflare(emulatorOptions);
 			workers = await Promise.all(
 				['host', 'gateway'].map((name) => emulator.getWorker(name)),
 			);
@@ -182,6 +202,8 @@ describe.skipIf(!enabled)(
 
 		afterAll(async () => {
 			await emulator?.dispose();
+			if (storagePath !== undefined)
+				await rm(storagePath, { recursive: true, force: true });
 			if (roleCreated) {
 				await query(`DROP OWNED BY ${runtimeRole}`);
 				await query(`DROP ROLE ${runtimeRole}`);
@@ -396,7 +418,7 @@ describe.skipIf(!enabled)(
 			}
 		});
 
-		it('delivers a persisted reminder from cron once without starting a polling worker', async () => {
+		it('delivers a persisted reminder from a native alarm once, including duplicate wakeups', async () => {
 			let id = 3_000;
 			for (const text of [
 				'/configurar_atraso_notificacao',
@@ -407,22 +429,27 @@ describe.skipIf(!enabled)(
 				expect((await post(workers[id % 2]!, update(id++, text))).status).toBe(
 					200,
 				);
+			const before = sends;
 			expect((await post(workers[0]!, update(id++, '/todos 29g'))).status).toBe(
 				200,
 			);
-			const before = sends;
-			expect((await cron()).outcome).toBe('ok');
-			expect(sends - before).toBe(1);
-			expect(
-				await query(
-					"SELECT d.status FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.kind='feeding-reminder'",
-				),
-			).toEqual([{ status: 'sent' }]);
-			expect((await cron()).outcome).toBe('ok');
-			expect(sends - before).toBe(1);
+			await expect
+				.poll(
+					() =>
+						query(
+							"SELECT d.status FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.kind='feeding-reminder'",
+						),
+					{ timeout: 5_000 },
+				)
+				.toEqual([{ status: 'sent' }]);
+			// One command response and one reminder, not two reminder sends.
+			expect(sends - before).toBe(2);
+			expect((await wakeup('/alarm')).status).toBe(200);
+			expect((await wakeup('/alarm')).status).toBe(200);
+			expect(sends - before).toBe(2);
 		});
 
-		it('recovers ambiguous sending as unknown without resending and drains at most 50 jobs per cron', async () => {
+		it('recovers ambiguous sending as unknown and a missed post-commit handoff without cron executing jobs', async () => {
 			await query(`INSERT INTO carneloot.notification_events
 			(id,bot_id,kind,owner_user_id,pet_id,food_entry_id,status,dedupe_key,created_at,updated_at)
 			SELECT gen_random_uuid(),'carneloot','feeding-reminder',p.owner_id,p.id,f.id,'scheduled','cloudflare-expired-send-test',now(),now()
@@ -464,20 +491,138 @@ describe.skipIf(!enabled)(
 			const started = Date.now();
 			expect((await cron()).outcome).toBe('ok');
 			expect(Date.now() - started).toBeLessThan(10_000);
+			await expect
+				.poll(
+					() =>
+						query(
+							"SELECT count(*)::int AS count FROM tfx_cloudflare_test.bot_jobs WHERE declaration='unknown-cloudflare-test-job' AND status='quarantined'",
+						),
+					{ timeout: 10_000 },
+				)
+				.toEqual([{ count: 55 }]);
+			expect(sends).toBe(before);
+		});
+
+		it('keeps a committed reminder and its outbox when native handoff fails, then recovers without replaying output', async () => {
+			expect((await wakeup('/fail-next-handoff')).status).toBe(200);
+			const before = sends;
+			const food = update(4000, '/todos 31g');
+			expect((await post(workers[0]!, food)).status).toBe(200);
+			expect(sends - before).toBe(1);
 			expect(
 				await query(
-					"SELECT status,count(*)::int AS count FROM tfx_cloudflare_test.bot_jobs WHERE declaration='unknown-cloudflare-test-job' GROUP BY status ORDER BY status",
+					'SELECT count(*)::int AS count FROM tfx_cloudflare_test.bot_job_wakeups',
 				),
-			).toEqual([
-				{ status: 'quarantined', count: 50 },
-				{ status: 'scheduled', count: 5 },
-			]);
+			).toEqual([{ count: 1 }]);
+			expect(await (await wakeup('/state')).json()).toEqual({ alarm: null });
 			expect((await cron()).outcome).toBe('ok');
+			await expect
+				.poll(
+					() =>
+						query(
+							"SELECT count(*)::int AS count FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.kind='feeding-reminder' AND d.status='sent'",
+						),
+					{ timeout: 5000 },
+				)
+				.toEqual([{ count: 2 }]);
+			expect(sends - before).toBe(2);
+			expect((await post(workers[1]!, food)).status).toBe(200);
+			expect(sends - before).toBe(2);
+		});
+
+		it('replaces and cancels schedules, then survives an isolate restart with only the earliest SQL deadline armed', async () => {
+			const ids = await Effect.runPromise(
+				Effect.gen(function* () {
+					const store = yield* JobStore;
+					const now = yield* DateTime.now;
+					const request = {
+						name: 'restart-test',
+						payload: {},
+						payloadVersion: 1,
+						maxAttempts: 1,
+						now,
+						conflictKey: 'pet-1',
+					};
+					const first = yield* store.schedule({
+						...request,
+						runAt: DateTime.addDuration(now, '1 hour'),
+					});
+					const replacement = yield* store.schedule({
+						...request,
+						runAt: DateTime.addDuration(now, '4 seconds'),
+					});
+					const cancelled = yield* store.schedule({
+						...request,
+						conflictKey: 'pet-2',
+						runAt: now,
+					});
+					yield* store.cancel(cancelled.record.id, now);
+					const interrupted = yield* store.schedule({
+						...request,
+						name: 'interrupted-test',
+						runAt: now,
+						maxAttempts: 2,
+					});
+					const claim = yield* store.claimForMigration(
+						now,
+						Duration.seconds(5),
+					);
+					if (claim?.record.id !== interrupted.record.id)
+						throw new Error('Expected interrupted job claim');
+					yield* store.promoteToRunning(
+						claim.token,
+						{},
+						1,
+						now,
+						Duration.seconds(5),
+					);
+					return {
+						first: first.record.id,
+						replacement: replacement.record.id,
+						cancelled: cancelled.record.id,
+						deadline: DateTime.toEpochMillis(replacement.record.runAt),
+						interrupted: interrupted.record.id,
+					};
+				}).pipe(
+					Effect.provide(
+						Layer.provide(PostgresJobStore.layer(options), postgres),
+					),
+				),
+			);
+			expect((await cron()).outcome).toBe('ok');
+			expect(await (await wakeup('/state')).json()).toEqual({
+				alarm: ids.deadline,
+			});
+			await emulator.dispose();
+			emulator = new Miniflare(emulatorOptions);
+			workers = await Promise.all(
+				['host', 'gateway'].map((name) => emulator.getWorker(name)),
+			);
+			await expect
+				.poll(
+					() =>
+						query(
+							`SELECT status FROM tfx_cloudflare_test.bot_jobs WHERE id='${ids.replacement}'`,
+						),
+					{ timeout: 10_000 },
+				)
+				.toEqual([{ status: 'quarantined' }]);
 			expect(
 				await query(
-					"SELECT count(*)::int AS count FROM tfx_cloudflare_test.bot_jobs WHERE declaration='unknown-cloudflare-test-job' AND status='quarantined'",
+					`SELECT status FROM tfx_cloudflare_test.bot_jobs WHERE id IN ('${ids.first}','${ids.cancelled}')`,
 				),
-			).toEqual([{ count: 55 }]);
+			).toEqual([{ status: 'cancelled' }, { status: 'cancelled' }]);
+			await expect
+				.poll(
+					() =>
+						query(
+							`SELECT status,attempts FROM tfx_cloudflare_test.bot_jobs WHERE id='${ids.interrupted}'`,
+						),
+					{ timeout: 5000 },
+				)
+				.toEqual([{ status: 'quarantined', attempts: 1 }]);
+			expect((await wakeup('/alarm')).status).toBe(200);
+			expect(await (await wakeup('/state')).json()).toEqual({ alarm: null });
 		});
 	},
 );

@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
 const require = createRequire(import.meta.url);
-for (const packageName of ['tfx', '@tfx/postgres']) {
+for (const packageName of ['tfx', '@tfx/postgres', '@tfx/cloudflare']) {
 	const manifestPath = join(
 		dirname(require.resolve(packageName)),
 		'..',
@@ -18,6 +18,8 @@ for (const packageName of ['tfx', '@tfx/postgres']) {
 	};
 	for (const subpath of Object.keys(manifest.exports)) {
 		if (subpath === './package.json') continue;
+		// Deployment-only Alchemy peers are optional for runtime consumers.
+		if (packageName === '@tfx/cloudflare' && subpath === './Alchemy') continue;
 		await import(
 			subpath === '.' ? packageName : `${packageName}/${subpath.slice(2)}`
 		);

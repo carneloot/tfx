@@ -10,6 +10,7 @@
 	"references": [
 		{ "path": "../../packages/tfx" },
 		{ "path": "../../packages/postgres-migrator" },
-		{ "path": "../../packages/postgres" }
+		{ "path": "../../packages/postgres" },
+		{ "path": "../../packages/cloudflare" }
 	]
 }

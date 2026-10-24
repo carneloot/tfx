@@ -16,6 +16,7 @@
 		{ "path": "." },
 		{ "path": "../../packages/tfx" },
 		{ "path": "../../packages/postgres" },
-		{ "path": "../../packages/postgres-migrator" }
+		{ "path": "../../packages/postgres-migrator" },
+		{ "path": "../../packages/cloudflare" }
 	]
 }

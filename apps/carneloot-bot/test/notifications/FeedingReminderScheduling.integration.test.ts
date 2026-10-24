@@ -5,8 +5,9 @@ import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as TestClock from 'effect/testing/TestClock';
 import * as Job from 'tfx/Job';
-import { JobRuntime, type JobRuntimeService } from 'tfx/JobRuntime';
+import { JobRuntime } from 'tfx/JobRuntime';
 import * as JobRuntimeLive from 'tfx/JobRuntime';
+import { JobScheduler, type JobSchedulerService } from 'tfx/JobScheduler';
 import { JobStoreError } from 'tfx/JobStore';
 import { describe, expect, it } from 'vitest';
 
@@ -322,19 +323,17 @@ else
 		});
 
 		it('rolls back an event when JobStore scheduling fails', async () => {
-			const failingJobs: JobRuntimeService = {
-				problems: Effect.succeed([]),
+			const failingJobs: JobSchedulerService = {
 				schedule: () =>
 					Effect.fail(
 						new JobStoreError('PersistenceFailure', 'forced store failure'),
 					),
-				runOne: () => Effect.succeed(undefined),
 				cancel: () => Effect.succeed(false),
-				releaseFailed: () => Effect.die('unused'),
+				inspect: () => Effect.die('unused'),
 			};
 			const failingScheduler = Layer.provide(
 				ReminderSchedulerLive.layer,
-				Layer.succeed(JobRuntime, failingJobs),
+				Layer.succeed(JobScheduler, failingJobs),
 			);
 			const program = Effect.gen(function* () {
 				yield* TestClock.setTime(2_000);

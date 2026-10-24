@@ -3,7 +3,7 @@ import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
-import { JobRuntime } from 'tfx/JobRuntime';
+import { JobScheduler } from 'tfx/JobScheduler';
 import { traceService } from 'tfx/TraceService';
 
 import { DeliveryId } from '../domain/notifications/NotificationDelivery.js';
@@ -53,7 +53,7 @@ export const layer = Layer.effect(
 	Effect.gen(function* () {
 		const recipients = yield* NotificationRecipients;
 		const notifications = yield* NotificationRepository;
-		const jobs = yield* JobRuntime;
+		const jobs = yield* JobScheduler;
 		const crypto = yield* Crypto.Crypto;
 
 		const service = {

@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import * as Job from '../src/Job.js';
 import { JobRuntime } from '../src/JobRuntime.js';
 import * as JobRuntimeLive from '../src/JobRuntime.js';
+import { JobScheduler } from '../src/JobScheduler.js';
 import { JobStore, JobStoreError } from '../src/JobStore.js';
 import * as MemoryJobStore from '../src/MemoryJobStore.js';
 import * as VersionedSchema from '../src/VersionedSchema.js';
@@ -43,7 +44,7 @@ const makeSpanCollector = () => {
 	};
 };
 const provide = <A, E>(
-	effect: Effect.Effect<A, E, JobRuntime | JobStore>,
+	effect: Effect.Effect<A, E, JobRuntime | JobStore | JobScheduler>,
 	implementation: Job.Implementation<typeof declaration, never>,
 ) =>
 	Effect.provide(
@@ -51,7 +52,7 @@ const provide = <A, E>(
 		MemoryJobStore.layer,
 	);
 const withCountingStore = <A, E>(
-	effect: Effect.Effect<A, E, JobRuntime | JobStore>,
+	effect: Effect.Effect<A, E, JobRuntime | JobStore | JobScheduler>,
 	implementation: Job.Implementation<typeof declaration, never>,
 	onHeartbeat: Effect.Effect<void>,
 ): Effect.Effect<A, E, never> =>
@@ -80,7 +81,10 @@ describe('JobRuntime', () => {
 			const runtime = yield* JobRuntime;
 			expect(yield* runtime.runOne()).toBeUndefined();
 			expect(spans).toEqual([]);
-			const scheduled = yield* runtime.schedule(declaration, { value: 'work' });
+			const scheduler = yield* JobScheduler;
+			const scheduled = yield* scheduler.schedule(declaration, {
+				value: 'work',
+			});
 			expect(yield* runtime.runOne()).toMatchObject({
 				id: scheduled.id,
 				status: 'completed',
@@ -150,7 +154,10 @@ describe('JobRuntime', () => {
 		const program = Effect.gen(function* () {
 			const runtime = yield* JobRuntime;
 			const store = yield* JobStore;
-			const scheduled = yield* runtime.schedule(declaration, { value: 'wait' });
+			const scheduler = yield* JobScheduler;
+			const scheduled = yield* scheduler.schedule(declaration, {
+				value: 'wait',
+			});
 			const worker = yield* Effect.forkChild(
 				runtime.runOne({ leaseDuration: Duration.millis(30) }),
 			);
@@ -163,7 +170,7 @@ describe('JobRuntime', () => {
 					),
 			);
 			yield* awaitRunning;
-			expect(yield* runtime.cancel(scheduled.id)).toBe(true);
+			expect(yield* scheduler.cancel(scheduled.id)).toBe(true);
 			yield* TestClock.adjust('11 millis');
 			expect(yield* Fiber.join(worker)).toMatchObject({
 				status: 'cancelled',
@@ -183,7 +190,8 @@ describe('JobRuntime', () => {
 				Effect.gen(function* () {
 					const runtime = yield* JobRuntime;
 					const store = yield* JobStore;
-					const scheduled = yield* runtime.schedule(declaration, {
+					const scheduler = yield* JobScheduler;
+					const scheduled = yield* scheduler.schedule(declaration, {
 						value: 'wait',
 					});
 					const worker = yield* Effect.forkChild(
@@ -228,7 +236,10 @@ describe('JobRuntime', () => {
 		const program = Effect.gen(function* () {
 			const runtime = yield* JobRuntime;
 			const store = yield* JobStore;
-			const scheduled = yield* runtime.schedule(declaration, { value: 'wait' });
+			const scheduler = yield* JobScheduler;
+			const scheduled = yield* scheduler.schedule(declaration, {
+				value: 'wait',
+			});
 			const worker = yield* Effect.forkChild(
 				runtime.runOne({ leaseDuration: Duration.millis(100) }),
 			);
@@ -325,7 +336,8 @@ describe('JobRuntime', () => {
 		);
 		const program = Effect.gen(function* () {
 			const runtime = yield* JobRuntime;
-			yield* runtime.schedule(retrying, { value: 'retry' });
+			const scheduler = yield* JobScheduler;
+			yield* scheduler.schedule(retrying, { value: 'retry' });
 			const result = yield* runtime.runOne();
 			expect(result?.status).toBe('scheduled');
 			if (result?.status === 'scheduled')
@@ -374,7 +386,8 @@ describe('JobRuntime', () => {
 			);
 			const program = Effect.gen(function* () {
 				const runtime = yield* JobRuntime;
-				yield* runtime.schedule(invalid, { value: 'bad' });
+				const scheduler = yield* JobScheduler;
+				yield* scheduler.schedule(invalid, { value: 'bad' });
 				expect(yield* runtime.runOne()).toMatchObject({
 					status: 'quarantined',
 					attempts: 1,
@@ -413,7 +426,8 @@ describe('JobRuntime', () => {
 			);
 			const program = Effect.gen(function* () {
 				const runtime = yield* JobRuntime;
-				yield* runtime.schedule(invalid, { value: 'bad' });
+				const scheduler = yield* JobScheduler;
+				yield* scheduler.schedule(invalid, { value: 'bad' });
 				expect(yield* runtime.runOne()).toMatchObject({
 					status: 'quarantined',
 					attempts: 1,

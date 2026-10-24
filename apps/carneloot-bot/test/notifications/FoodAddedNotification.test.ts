@@ -1,5 +1,5 @@
 import { Duration, Effect, Layer, Schema } from 'effect';
-import { JobRuntime, type JobRuntimeService } from 'tfx/JobRuntime';
+import { JobScheduler, type JobSchedulerService } from 'tfx/JobScheduler';
 import { describe, expect, it } from 'vitest';
 
 import * as DispatchNotificationDelivery from '../../src/application/DispatchNotificationDelivery.js';
@@ -90,12 +90,10 @@ describe('FoodAddedNotificationJob declaration', () => {
 		const foodEntryId = Schema.decodeUnknownSync(FoodEntryId)(
 			'00000000-0000-4000-8000-000000000003',
 		);
-		const jobs: JobRuntimeService = {
+		const jobs: JobSchedulerService = {
 			schedule: () => Effect.die('unused'),
-			runOne: () => Effect.die('unused'),
-			problems: Effect.succeed([]),
 			cancel: () => Effect.die('unused'),
-			releaseFailed: () => Effect.die('unused'),
+			inspect: () => Effect.die('unused'),
 		};
 		const recipients = Layer.succeed(NotificationRecipients, {
 			resolveOwner: () => Effect.die('unused'),
@@ -133,7 +131,7 @@ describe('FoodAddedNotificationJob declaration', () => {
 				Layer.mergeAll(
 					recipients,
 					repository,
-					Layer.succeed(JobRuntime, jobs),
+					Layer.succeed(JobScheduler, jobs),
 					DeterministicCrypto.layer(),
 				),
 			);

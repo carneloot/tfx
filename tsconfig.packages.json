@@ -4,6 +4,7 @@
 		{ "path": "packages/tfx" },
 		{ "path": "packages/postgres-migrator" },
 		{ "path": "packages/postgres" },
+		{ "path": "packages/cloudflare" },
 		{ "path": "apps/carneloot-bot" }
 	]
 }

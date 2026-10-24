@@ -4,7 +4,7 @@ import {
 	ConversationStorage,
 	ConversationStorageError,
 } from '../src/ConversationStorage.js';
-import { JobRuntime } from '../src/JobRuntime.js';
+import { JobScheduler } from '../src/JobScheduler.js';
 import { JobStoreError } from '../src/JobStore.js';
 import {
 	UpdateDeduplicator,
@@ -19,8 +19,9 @@ const _conversationError: Effect.Effect<
 	ConversationStorageError,
 	ConversationStorage
 > = conversationLoad;
-const jobCancel = JobRuntime.use((runtime) => runtime.cancel('id'));
-const _jobError: Effect.Effect<boolean, JobStoreError, JobRuntime> = jobCancel;
+const jobCancel = JobScheduler.use((scheduler) => scheduler.cancel('id'));
+const _jobError: Effect.Effect<boolean, JobStoreError, JobScheduler> =
+	jobCancel;
 const dedupClaim = UpdateDeduplicator.use((dedup) => dedup.claim(1));
 const _dedupError: Effect.Effect<
 	unknown,
