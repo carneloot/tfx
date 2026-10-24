@@ -364,7 +364,7 @@ describe.skipIf(!enabled)(
 					.poll(
 						async () =>
 							query(
-								"SELECT count(*)::int AS count FROM pg_stat_activity WHERE wait_event='PgSleep'",
+								`SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname=current_database() AND usename='${runtimeRole}' AND wait_event='PgSleep'`,
 							),
 						{ timeout: 5_000 },
 					)
