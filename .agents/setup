@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
+cd "$repo_root"
+
+export PATH="$HOME/.local/bin:$PATH"
+export MISE_ENV=development
+export MISE_YES=1
+
+if ! command -v mise >/dev/null 2>&1; then
+	printf '\nInstalling mise\n'
+	curl --fail --silent --show-error --location https://mise.run | sh
+fi
+
+printf '\nInstalling the repository-pinned toolchain\n'
+mise trust
+time mise install
+mise reshim
+
+# Amp and supervised services start in fresh, noninteractive login shells.
+profile_marker='# tfx orb toolchain'
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
+	cat >> "$HOME/.bash_profile" <<EOF
+
+$profile_marker
+if [[ "\$PWD" == "$repo_root" || "\$PWD" == "$repo_root/"* ]]; then
+    export PATH="\$HOME/.local/share/mise/shims:\$HOME/.local/bin:\$PATH"
+    export MISE_ENV=development
+fi
+EOF
+fi
+
+printf '\nInitializing the Telegram API schema submodule\n'
+time git submodule update --init .repos/telegram-api
+
+printf '\nInstalling dependencies from the lockfile\n'
+time mise exec -- env CI=true pnpm install --frozen-lockfile
+
+printf '\nOrb setup complete. No services started or credentials configured.\n'
