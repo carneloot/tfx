@@ -1,4 +1,5 @@
 import * as NodeCrypto from '@effect/platform-node/NodeCrypto';
+import * as NodeFileSystem from '@effect/platform-node/NodeFileSystem';
 import * as PgClient from '@effect/sql-pg/PgClient';
 import {
 	PostgreSqlContainer,
@@ -9,8 +10,11 @@ import * as PostgresJobStore from '@tfx/postgres/PostgresJobStore';
 import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
+import * as Exit from 'effect/Exit';
+import * as FileSystem from 'effect/FileSystem';
 import * as Layer from 'effect/Layer';
 import * as Redacted from 'effect/Redacted';
+import * as Scope from 'effect/Scope';
 import { build } from 'esbuild';
 import {
 	Miniflare,
@@ -18,9 +22,6 @@ import {
 	type Request as MockRequest,
 	Response as MockResponse,
 } from 'miniflare';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { JobStore } from 'tfx/JobStore';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -64,7 +65,7 @@ describe.skipIf(!enabled)(
 		let container: StartedPostgreSqlContainer | undefined;
 		let emulator: Miniflare;
 		let emulatorOptions: MiniflareOptions;
-		let storagePath: string;
+		const storageScope = Effect.runSync(Scope.make());
 		let workers: Awaited<ReturnType<Miniflare['getWorker']>>[] = [];
 		let postgres: ReturnType<typeof PgClient.layer<never>>;
 		let sends = 0;
@@ -141,7 +142,17 @@ describe.skipIf(!enabled)(
 				external: ['node:*'],
 			});
 			const script = result.outputFiles[0]!.text;
-			storagePath = await mkdtemp(join(tmpdir(), 'tfx-cloudflare-'));
+			const storagePath = await Effect.runPromise(
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					return yield* fs.makeTempDirectoryScoped({
+						prefix: 'tfx-cloudflare-',
+					});
+				}).pipe(
+					Effect.provideService(Scope.Scope, storageScope),
+					Effect.provide(NodeFileSystem.layer),
+				),
+			);
 			emulatorOptions = {
 				durableObjectsPersist: storagePath,
 				workers: ['host', 'gateway'].map((name) => ({
@@ -201,9 +212,11 @@ describe.skipIf(!enabled)(
 		}, 60_000);
 
 		afterAll(async () => {
-			await emulator?.dispose();
-			if (storagePath !== undefined)
-				await rm(storagePath, { recursive: true, force: true });
+			try {
+				await emulator?.dispose();
+			} finally {
+				await Effect.runPromise(Scope.close(storageScope, Exit.void));
+			}
 			if (roleCreated) {
 				await query(`DROP OWNED BY ${runtimeRole}`);
 				await query(`DROP ROLE ${runtimeRole}`);
