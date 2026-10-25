@@ -8,6 +8,7 @@ import * as Option from 'effect/Option';
 
 import type * as Bot from './Bot.js';
 import type { DispatchOutcome } from './DispatchOutcome.js';
+import * as DeduplicatedDispatch from './internal/runtime/DeduplicatedDispatch.js';
 import * as Dispatcher from './internal/runtime/Dispatcher.js';
 import * as Router from './internal/runtime/Router.js';
 import type { Update } from './internal/telegram/generated/TelegramApi.types.js';
@@ -28,6 +29,25 @@ export class BotRuntime extends Context.Service<
 	BotRuntime,
 	BotRuntimeService
 >()('tfx/BotRuntime') {}
+
+/**
+ * One request, using the same durable claim, heartbeat, and outcome protocol as
+ * the polling runtime. Starts no source or executor fibers. Unlike `layer`,
+ * this does not serialize different updates by partition: the transport must
+ * arrange ordering, and storage must coordinate concurrent mutations.
+ */
+export const dispatch = Effect.fn('BotRuntime.dispatch')(function* (
+	update: Update,
+	router: Router.Router,
+) {
+	const deduplicator = yield* UpdateDeduplicator;
+	return yield* DeduplicatedDispatch.dispatch(
+		deduplicator,
+		update,
+		router.route(update),
+	);
+});
+
 export interface Options<
 	D extends UpdateDelivery.UpdateDelivery<any, any, any>,
 > {

@@ -1,0 +1,21 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"composite": false,
+		"lib": ["ES2024", "ESNext.Disposable"],
+		"types": ["@cloudflare/workers-types", "node"],
+		"skipLibCheck": true
+	},
+	"include": [
+		"alchemy.run.ts",
+		"src/cloudflare/Worker.ts",
+		"test/cloudflare/**/*.ts"
+	],
+	"references": [
+		{ "path": "." },
+		{ "path": "../../packages/tfx" },
+		{ "path": "../../packages/postgres" },
+		{ "path": "../../packages/postgres-migrator" }
+	]
+}

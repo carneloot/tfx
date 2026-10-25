@@ -5,7 +5,7 @@
 		"postinstall": "node scripts/setup-effect-tsgo.mjs",
 		"build": "tsc -b tsconfig.packages.json && node packages/tfx/scripts/copy-telegram-runtime.ts",
 		"dev": "pnpm --filter carneloot-bot demo",
-		"check": "tsc -b tsconfig.json --pretty false",
+		"check": "tsc -b tsconfig.json --pretty false && pnpm exec tsc -p apps/carneloot-bot/tsconfig.cloudflare.json --pretty false",
 		"test": "vitest run",
 		"test:unit": "vitest run --exclude '**/*.integration.test.ts' --exclude '**/*.e2e.test.ts'",
 		"test:integration": "vitest run --config vitest.integration.config.ts --reporter verbose",
