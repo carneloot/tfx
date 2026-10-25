@@ -62,6 +62,9 @@ importers:
       '@libsql/client':
         specifier: 0.15.15
         version: 0.15.15
+      '@tfx/cloudflare':
+        specifier: workspace:^
+        version: link:../../packages/cloudflare
       '@tfx/postgres':
         specifier: workspace:^
         version: link:../../packages/postgres
@@ -96,6 +99,34 @@ importers:
       miniflare:
         specifier: 4.20260730.0
         version: 4.20260730.0
+
+  packages/cloudflare:
+    dependencies:
+      '@cloudflare/workers-types':
+        specifier: 5.20261012.1
+        version: 5.20261012.1
+      '@effect/platform-node':
+        specifier: 4.0.6
+        version: 4.0.6(effect@4.0.6)(redis@6.3.0)
+      '@effect/sql-pg':
+        specifier: 4.0.6
+        version: 4.0.6(effect@4.0.6)
+      '@tfx/postgres':
+        specifier: workspace:^
+        version: link:../postgres
+      effect:
+        specifier: 4.0.6
+        version: 4.0.6
+      tfx:
+        specifier: workspace:^
+        version: link:../tfx
+    devDependencies:
+      '@alchemy.run/cloudflare':
+        specifier: 2.0.0-beta.84
+        version: 2.0.0-beta.84(@effect/platform-bun@4.0.6(effect@4.0.6))(@effect/platform-node@4.0.6(effect@4.0.6)(redis@6.3.0))(@effect/sql-pg@4.0.6(effect@4.0.6))(@types/node@24.13.3)(alchemy@2.0.0-beta.84(@effect/platform-bun@4.0.6(effect@4.0.6))(@effect/platform-node@4.0.6(effect@4.0.6)(redis@6.3.0))(effect@4.0.6)(vite@8.1.4(@types/node@24.13.3)(esbuild@0.28.2)(yaml@2.9.1))(ws@8.22.0))(effect@4.0.6)(typescript@7.0.2)(vite@8.1.4(@types/node@24.13.3)(esbuild@0.28.2)(yaml@2.9.1))
+      alchemy:
+        specifier: 2.0.0-beta.84
+        version: 2.0.0-beta.84(@effect/platform-bun@4.0.6(effect@4.0.6))(@effect/platform-node@4.0.6(effect@4.0.6)(redis@6.3.0))(effect@4.0.6)(vite@8.1.4(@types/node@24.13.3)(esbuild@0.28.2)(yaml@2.9.1))(ws@8.22.0)
 
   packages/postgres:
     dependencies:

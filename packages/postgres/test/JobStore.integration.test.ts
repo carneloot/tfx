@@ -1,11 +1,13 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
 import { DateTime, Deferred, Duration, Effect, Fiber, Layer } from 'effect';
+import { JobWakeup } from 'tfx/JobWakeup';
 import { describe, expect, it } from 'vitest';
 
 import { JobStore } from '../../tfx/src/JobStore.js';
 import { jobStoreConformance } from '../../tfx/test/internal/JobStoreConformance.js';
 import { migrate } from '../src/Migrations.js';
 import * as PostgresJobStore from '../src/PostgresJobStore.js';
+import * as PostgresJobWakeup from '../src/PostgresJobWakeup.js';
 import * as PostgresTestLayer from './internal/PostgresTestLayer.js';
 const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
@@ -15,7 +17,13 @@ const options = {
 	tablePrefix: 'case_',
 };
 const adapter = Layer.unwrap(
-	Effect.as(migrate(options), PostgresJobStore.layer(options)),
+	Effect.as(
+		migrate(options),
+		Layer.merge(
+			PostgresJobStore.layer(options),
+			PostgresJobWakeup.layer(options),
+		),
+	),
 );
 const layer = () => Layer.provide(adapter, PostgresTestLayer.layer);
 const diagnosticLayer = Layer.provideMerge(adapter, PostgresTestLayer.layer);
@@ -26,6 +34,104 @@ if (!enabled)
 else {
 	jobStoreConformance('postgres', layer);
 	describe('PostgreSQL job claim coordination', () => {
+		it('commits wakeup intents atomically and fences acknowledgements against later changes', async () => {
+			const program = Effect.gen(function* () {
+				const store = yield* JobStore;
+				const wakeup = yield* JobWakeup;
+				const sql = yield* PgClient.PgClient;
+				const now = DateTime.makeUnsafe(1000);
+				const request = {
+					name: 'outbox',
+					payload: {},
+					payloadVersion: 1,
+					maxAttempts: 3,
+					now,
+					runAt: now,
+					conflictKey: 'shared-pet',
+				};
+				yield* sql
+					.withTransaction(
+						Effect.gen(function* () {
+							yield* store.schedule(request);
+							return yield* Effect.fail('rollback');
+						}),
+					)
+					.pipe(Effect.ignore);
+				expect(yield* wakeup.snapshot).toEqual({
+					receipts: [],
+					deadline: undefined,
+				});
+				const first = yield* store.schedule(request);
+				const committed = yield* wakeup.snapshot;
+				expect(committed.deadline).toBe(1000);
+				expect(committed.receipts.map((r) => r.id)).toEqual([first.record.id]);
+				// SQL commit with no native handoff leaves a recoverable intent.
+				expect(yield* wakeup.snapshot).toEqual(committed);
+				const replacement = yield* store.schedule({
+					...request,
+					runAt: DateTime.makeUnsafe(8000),
+				});
+				yield* wakeup.acknowledge(committed);
+				const changed = yield* wakeup.snapshot;
+				expect(changed.deadline).toBe(8000);
+				expect(new Set(changed.receipts.map((r) => r.id))).toEqual(
+					new Set([first.record.id, replacement.record.id]),
+				);
+				yield* store.cancel(replacement.record.id, now);
+				yield* wakeup.acknowledge(changed);
+				const cancelled = yield* wakeup.snapshot;
+				expect(cancelled.deadline).toBeUndefined();
+				expect(cancelled.receipts.map((r) => r.id)).toEqual([
+					replacement.record.id,
+				]);
+				yield* wakeup.acknowledge(cancelled);
+				expect(yield* wakeup.snapshot).toEqual({
+					receipts: [],
+					deadline: undefined,
+				});
+			});
+			await Effect.runPromise(Effect.provide(program, diagnosticLayer));
+		});
+
+		it('wakes at migration and execution lease expiry, then at a retry deadline', async () => {
+			const program = Effect.gen(function* () {
+				const store = yield* JobStore;
+				const wakeup = yield* JobWakeup;
+				const now = DateTime.makeUnsafe(1000);
+				yield* store.schedule({
+					name: 'leases',
+					payload: {},
+					payloadVersion: 1,
+					maxAttempts: 3,
+					now,
+					runAt: now,
+				});
+				const claim = yield* store.claimForMigration(now, Duration.millis(400));
+				if (claim === undefined) throw new Error('Expected a claim');
+				expect((yield* wakeup.snapshot).deadline).toBe(1400);
+				yield* store.promoteToRunning(
+					claim.token,
+					{},
+					1,
+					DateTime.makeUnsafe(1100),
+					Duration.millis(700),
+				);
+				expect((yield* wakeup.snapshot).deadline).toBe(1800);
+				yield* store.finalize(
+					claim.token,
+					{
+						_tag: 'RetryableFailure',
+						error: 'retry',
+						retryAfter: Duration.millis(2000),
+					},
+					DateTime.makeUnsafe(1200),
+					DateTime.makeUnsafe(3200),
+				);
+				expect((yield* wakeup.snapshot).deadline).toBe(3200);
+			});
+			await Effect.runPromise(Effect.provide(program, diagnosticLayer));
+		});
+
 		it('preserves numeric retry duration JSON encoding', async () => {
 			const id = crypto.randomUUID();
 			const now = DateTime.makeUnsafe('2024-01-02T03:04:05.000Z');

@@ -1,0 +1,51 @@
+{
+	"name": "@tfx/cloudflare",
+	"version": "0.0.0",
+	"license": "MIT",
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"sideEffects": [],
+	"exports": {
+		".": "./src/index.ts",
+		"./Worker": "./src/Worker.ts",
+		"./Runtime": "./src/Runtime.ts",
+		"./Postgres": "./src/Postgres.ts",
+		"./Alchemy": "./src/Alchemy.ts"
+	},
+	"publishConfig": {
+		"exports": {
+			".": "./dist/index.js",
+			"./Worker": "./dist/Worker.js",
+			"./Runtime": "./dist/Runtime.js",
+			"./Postgres": "./dist/Postgres.js",
+			"./Alchemy": "./dist/Alchemy.js"
+		},
+		"access": "public"
+	},
+	"dependencies": {
+		"@cloudflare/workers-types": "5.20261012.1",
+		"@tfx/postgres": "workspace:^",
+		"tfx": "workspace:^"
+	},
+	"devDependencies": {
+		"@alchemy.run/cloudflare": "2.0.0-beta.84",
+		"alchemy": "2.0.0-beta.84"
+	},
+	"peerDependencies": {
+		"@alchemy.run/cloudflare": "2.0.0-beta.84",
+		"@effect/platform-node": "4.0.6",
+		"@effect/sql-pg": "4.0.6",
+		"alchemy": "2.0.0-beta.84",
+		"effect": "4.0.6"
+	},
+	"peerDependenciesMeta": {
+		"@alchemy.run/cloudflare": {
+			"optional": true
+		},
+		"alchemy": {
+			"optional": true
+		}
+	}
+}

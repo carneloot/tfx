@@ -1,4 +1,5 @@
 import * as Cloudflare from '@alchemy.run/cloudflare';
+import * as TfxCloudflare from '@tfx/cloudflare/Alchemy';
 import * as Alchemy from 'alchemy';
 import * as Config from 'effect/Config';
 import * as Effect from 'effect/Effect';
@@ -19,14 +20,10 @@ export default Alchemy.Stack(
 			// Access checks, dedup claims and job fencing must never read cached rows.
 			caching: { disabled: true },
 		});
-		const worker = yield* Cloudflare.Worker('Bot', {
+		const worker = yield* TfxCloudflare.worker('Bot', {
 			main: './src/cloudflare/Worker.ts',
-			compatibility: { date: '2026-07-30', flags: ['nodejs_compat'] },
-			crons: ['* * * * *'],
-			limits: { cpuMs: 30_000 },
 			env: {
 				HYPERDRIVE: database,
-				CHAT_DISPATCH: Cloudflare.DurableObject('ChatDispatch'),
 				BOT_TOKEN: Config.Redacted('BOT_TOKEN'),
 				BOT_USERNAME: Config.String('BOT_USERNAME'),
 				WEBHOOK_SECRET: Config.Redacted('WEBHOOK_SECRET'),

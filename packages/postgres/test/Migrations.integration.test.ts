@@ -50,6 +50,7 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 		expect(rows.tables.map((row) => row.table_name)).toEqual([
 			'case_conversations',
 			'case_job_attempts',
+			'case_job_wakeups',
 			'case_jobs',
 			'case_migrations',
 			'case_update_deduplication',
@@ -74,6 +75,11 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 				version: 4,
 				name: 'conversation-trace-context',
 				checksum: sourceChecksum('Migration0004.ts'),
+			},
+			{
+				version: 5,
+				name: 'job-wakeup-outbox',
+				checksum: sourceChecksum('Migration0005.ts'),
 			},
 		]);
 		expect(
@@ -104,7 +110,7 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 				stage: 'ledger_validation',
 			},
 		});
-		expect(result.count).toBe('4');
+		expect(result.count).toBe('5');
 	});
 
 	it('rejects unknown future versions and missing applied prefixes', async () => {
@@ -138,6 +144,9 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 			yield* migrate(options);
 			const sql = yield* PgClient.PgClient;
 			yield* sql`ALTER TABLE tfx_corrupt_test.case_jobs DROP CONSTRAINT case_jobs_state_chk`;
+			yield* sql`DROP TRIGGER job_wakeup ON tfx_corrupt_test.case_jobs`;
+			yield* sql`DROP FUNCTION tfx_corrupt_test.case_notify_job_wakeup()`;
+			yield* sql`DROP TABLE tfx_corrupt_test.case_job_wakeups`;
 			// Restore the version-2 schema as well as its ledger before replaying 3/4.
 			yield* sql`ALTER TABLE tfx_corrupt_test.case_conversations
 				DROP COLUMN instance_id,
@@ -175,6 +184,6 @@ describe.skipIf(!enabled)('PostgreSQL migrations', () => {
 			},
 		});
 		expect(result.failedCount).toBe('2');
-		expect(result.repairedCount).toBe('4');
+		expect(result.repairedCount).toBe('5');
 	});
 });

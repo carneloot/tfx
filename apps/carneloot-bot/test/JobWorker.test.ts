@@ -24,10 +24,8 @@ const runtime = (
 	problems = Effect.succeed([]),
 ) =>
 	Layer.succeed(JobRuntime, {
-		schedule: () => Effect.die('unused'),
 		runOne,
 		problems,
-		cancel: () => Effect.die('unused'),
 		releaseFailed: () => Effect.die('unused'),
 	});
 const notifications = (recovered: number) =>

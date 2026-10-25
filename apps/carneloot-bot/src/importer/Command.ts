@@ -4,7 +4,7 @@ import { Command } from 'effect/cli';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import type * as Redacted from 'effect/Redacted';
-import * as JobRuntimeLive from 'tfx/JobRuntime';
+import * as JobScheduler from 'tfx/JobScheduler';
 
 import { migrate } from '../postgres/AppMigrator.js';
 import * as NotificationRepositoryLive from '../postgres/NotificationRepositoryLive.js';
@@ -59,7 +59,7 @@ const targetInfrastructure = (
 		tablePrefix: 'carneloot_',
 		botId,
 	});
-	const jobs = Layer.provideMerge(JobRuntimeLive.layer(), persistence);
+	const jobs = Layer.provideMerge(JobScheduler.layer, persistence);
 	const repositories = Layer.merge(
 		PetFoodRepositoryLive.layer,
 		NotificationRepositoryLive.layer,

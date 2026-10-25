@@ -7,14 +7,16 @@ trap 'rm -rf "$PACKDIR" "$CONSUMER"' EXIT
 PNPM_CONFIG_IGNORE_SCRIPTS=true pnpm --filter tfx pack --pack-destination "$PACKDIR"
 PNPM_CONFIG_IGNORE_SCRIPTS=true pnpm --filter @tfx/postgres-migrator pack --pack-destination "$PACKDIR"
 PNPM_CONFIG_IGNORE_SCRIPTS=true pnpm --filter @tfx/postgres pack --pack-destination "$PACKDIR"
+PNPM_CONFIG_IGNORE_SCRIPTS=true pnpm --filter @tfx/cloudflare pack --pack-destination "$PACKDIR"
 for archive in "$PACKDIR"/*.tgz; do
   node "$ROOT/scripts/check-packed-package.ts" "$archive"
 done
 TFX_ARCHIVE=$(find "$PACKDIR" -maxdepth 1 -name 'tfx-[0-9]*.tgz' -print -quit)
 MIGRATOR_ARCHIVE=$(find "$PACKDIR" -maxdepth 1 -name 'tfx-postgres-migrator-*.tgz' -print -quit)
 POSTGRES_ARCHIVE=$(find "$PACKDIR" -maxdepth 1 -name 'tfx-postgres-*.tgz' -print -quit)
+CLOUDFLARE_ARCHIVE=$(find "$PACKDIR" -maxdepth 1 -name 'tfx-cloudflare-*.tgz' -print -quit)
 cat > "$CONSUMER/package.json" <<JSON
-{"private":true,"type":"module","dependencies":{"tfx":"file:$TFX_ARCHIVE","@tfx/postgres-migrator":"file:$MIGRATOR_ARCHIVE","@tfx/postgres":"file:$POSTGRES_ARCHIVE","effect":"4.0.6","@effect/sql-pg":"4.0.6"}}
+{"private":true,"type":"module","dependencies":{"tfx":"file:$TFX_ARCHIVE","@tfx/postgres-migrator":"file:$MIGRATOR_ARCHIVE","@tfx/postgres":"file:$POSTGRES_ARCHIVE","@tfx/cloudflare":"file:$CLOUDFLARE_ARCHIVE","effect":"4.0.6","@effect/platform-node":"4.0.6","@effect/sql-pg":"4.0.6"}}
 JSON
 cat > "$CONSUMER/pnpm-workspace.yaml" <<YAML
 packages:
@@ -22,6 +24,7 @@ packages:
 overrides:
   tfx: file:$TFX_ARCHIVE
   '@tfx/postgres-migrator': file:$MIGRATOR_ARCHIVE
+  '@tfx/postgres': file:$POSTGRES_ARCHIVE
 YAML
 cp "$ROOT/scripts/check-packed-consumer.ts" "$CONSUMER/"
 (

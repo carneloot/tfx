@@ -4,7 +4,7 @@ import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
-import { JobRuntime } from 'tfx/JobRuntime';
+import { JobScheduler } from 'tfx/JobScheduler';
 import { traceService } from 'tfx/TraceService';
 
 import type { BotId, PetId } from '../domain/Ids.js';
@@ -55,7 +55,7 @@ export const layer = Layer.effect(
 		const sql = yield* PgClient.PgClient;
 		const notifications = yield* NotificationRepository;
 		const food = yield* PetFoodRepository;
-		const jobs = yield* JobRuntime;
+		const jobs = yield* JobScheduler;
 		const crypto = yield* Crypto.Crypto;
 		const cancelJobs = (
 			events: ReadonlyArray<{ readonly jobId: string | null }>,

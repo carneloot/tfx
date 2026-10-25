@@ -12,6 +12,7 @@ import * as Schema from 'effect/Schema';
 
 import * as Job from './Job.js';
 import * as JobOutcome from './JobOutcome.js';
+import * as JobScheduler from './JobScheduler.js';
 import { JobStore, JobStoreError, type JobRecord } from './JobStore.js';
 import { VersionedSchemaError } from './VersionedSchema.js';
 export class JobRuntimeOptionsError extends Data.TaggedError(
@@ -23,20 +24,11 @@ export class JobRuntimeOptionsError extends Data.TaggedError(
 export type JobRuntimeError = JobStoreError | JobRuntimeOptionsError;
 
 export interface JobRuntimeService {
-	readonly schedule: <J extends Job.Job<any, any, any>>(
-		job: J,
-		payload: Job.Payload<J>,
-		options?: { readonly runAt?: DateTime.Utc; readonly conflictKey?: string },
-	) => Effect.Effect<
-		{ readonly id: string; readonly replacedId?: string },
-		JobStoreError
-	>;
 	readonly runOne: (options?: {
 		readonly leaseDuration?: Duration.Input;
 		readonly heartbeatInterval?: Duration.Input;
 	}) => Effect.Effect<JobRecord | undefined, JobRuntimeError>;
 	readonly problems: Effect.Effect<ReadonlyArray<JobRecord>, JobStoreError>;
-	readonly cancel: (id: string) => Effect.Effect<boolean, JobStoreError>;
 	readonly releaseFailed: (
 		id: string,
 		options: { readonly reason: string; readonly resetAttempts?: boolean },
@@ -70,7 +62,11 @@ type Requirements<I extends ReadonlyArray<AnyImplementation>> =
 			: never;
 export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 	...implementations: I
-): Layer.Layer<JobRuntime, never, JobStore | Requirements<I>> => {
+): Layer.Layer<
+	JobRuntime | JobScheduler.JobScheduler,
+	never,
+	JobStore | Requirements<I>
+> => {
 	const names = new Set<string>();
 	for (const implementation of implementations) {
 		const name = implementation.declaration.name;
@@ -78,7 +74,7 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 			throw new TypeError(`Duplicate job declaration '${name}'`);
 		names.add(name);
 	}
-	return Layer.effect(
+	const runtime = Layer.effect(
 		JobRuntime,
 		Effect.gen(function* () {
 			const store = yield* JobStore;
@@ -121,37 +117,6 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 			});
 			const service: JobRuntimeService = {
 				problems: store.problems(),
-				schedule: Effect.fn('JobRuntime.schedule')(function* (
-					job,
-					payload,
-					options = {},
-				) {
-					const now = yield* DateTime.now;
-					const result = yield* store.schedule({
-						name: job.name,
-						payload,
-						payloadVersion: job.payload.latest.version,
-						maxAttempts: job.maxAttempts,
-						runAt: options.runAt ?? now,
-						now,
-						...(options.conflictKey === undefined
-							? {}
-							: { conflictKey: options.conflictKey }),
-					});
-					yield* Effect.logInfo('tfx.job.scheduled').pipe(
-						Effect.annotateLogs({
-							jobId: result.record.id,
-							jobName: result.record.name,
-							replaced: result.replacedId !== undefined,
-						}),
-					);
-					return {
-						id: result.record.id,
-						...(result.replacedId === undefined
-							? {}
-							: { replacedId: result.replacedId }),
-					};
-				}),
 				runOne: Effect.fnUntraced(function* (options = {}) {
 					const leaseDuration = Option.getOrElse(
 						Duration.fromInput(options.leaseDuration ?? Duration.seconds(30)),
@@ -418,16 +383,6 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 						}),
 					);
 				}),
-				cancel: Effect.fn('JobRuntime.cancel')(function* (id) {
-					const cancelled = yield* Effect.flatMap(DateTime.now, (now) =>
-						store.cancel(id, now),
-					);
-					if (cancelled)
-						yield* Effect.logInfo('tfx.job.cancellation_requested').pipe(
-							Effect.annotateLogs({ jobId: id }),
-						);
-					return cancelled;
-				}),
 				releaseFailed: Effect.fn('JobRuntime.releaseFailed')(
 					function* (id, options) {
 						const record = yield* store.get(id);
@@ -461,4 +416,5 @@ export const layer = <const I extends ReadonlyArray<AnyImplementation>>(
 			return service;
 		}),
 	);
+	return Layer.merge(JobScheduler.layer, runtime);
 };

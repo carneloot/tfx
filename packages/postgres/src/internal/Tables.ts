@@ -6,6 +6,8 @@ export interface Tables {
 	readonly conversations: Identifier;
 	readonly jobs: Identifier;
 	readonly jobAttempts: Identifier;
+	readonly jobWakeups: Identifier;
+	readonly jobWakeupFunction: Identifier;
 	readonly deduplication: Identifier;
 	readonly activeConflictIndex: Identifier;
 	readonly dedupOutcomeConstraint: Identifier;
@@ -23,6 +25,8 @@ export const make = (options: Options = {}): Tables => {
 		conversations: composed(prefix, 'conversations'),
 		jobs: composed(prefix, 'jobs'),
 		jobAttempts: composed(prefix, 'job_attempts'),
+		jobWakeups: composed(prefix, 'job_wakeups'),
+		jobWakeupFunction: composed(prefix, 'notify_job_wakeup'),
 		deduplication: composed(prefix, 'update_deduplication'),
 		activeConflictIndex: composed(prefix, 'jobs_active_conflict_idx'),
 		dedupOutcomeConstraint: composed(prefix, 'dedup_outcome_chk'),

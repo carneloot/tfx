@@ -6,11 +6,12 @@ Effect-based TypeScript workspace for portable Telegram bot infrastructure and C
 
 - `packages/tfx`: portable core. It may depend on Effect, but not Node, Bun, or PostgreSQL implementations.
 - `packages/postgres`: `@tfx/postgres` adapters. It depends on `tfx` and peers on Effect SQL.
-- `apps/carneloot-bot`: private Telegram application with Bun polling and Cloudflare webhook runtimes consuming both public packages.
+- `packages/cloudflare`: `@tfx/cloudflare` event hosting, PostgreSQL-backed native job alarms, and Alchemy deployment bindings.
+- `apps/carneloot-bot`: private Telegram application consuming these packages through Bun polling or Cloudflare webhook hosting.
 
 Runtime integrations use Effect platform Layers directly. `tfx` does not wrap Node or Bun platform packages. Tests remain private workspace files and are not package exports.
 
-Cloudflare deployment uses [Alchemy v2](docs/deploy-cloudflare.md), retaining PostgreSQL repositories, conversations, and durable jobs. See the [ordering, acknowledgement, and reminder-timing changes](docs/cloudflare-runtime.md).
+Cloudflare deployment uses [Alchemy v2](docs/deploy-cloudflare.md). PostgreSQL remains authoritative for repositories, conversations, and durable jobs; a transactional wakeup outbox drives Durable Object alarms. See the [hosting API, ordering, acknowledgement, and recovery guarantees](docs/cloudflare-runtime.md).
 
 ## Effect 4 stable
 

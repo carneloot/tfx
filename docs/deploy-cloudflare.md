@@ -1,6 +1,6 @@
 # Deploy Carneloot to Cloudflare
 
-Use this procedure after local validation and approval for the named external actions. The implementation does not deploy, register a webhook, change secrets, or migrate a live database automatically. Read the [runtime semantics and changed reminder timing](cloudflare-runtime.md) before cutover.
+Use this procedure after local validation and approval for the named external actions. The implementation does not deploy, register a webhook, change secrets, or migrate a live database automatically. Read the [native runtime and scheduling semantics](cloudflare-runtime.md) before cutover.
 
 ## Validate without cloud access
 
@@ -9,6 +9,7 @@ Use the repository's pinned runtimes and install the lockfile:
 ```sh
 mise exec -- pnpm install --frozen-lockfile
 mise exec -- pnpm check
+mise exec -- pnpm exec tsc -p apps/carneloot-bot/tsconfig.cloudflare.json --pretty false
 mise exec -- pnpm exec vitest run packages/tfx/test/RequestDispatch.test.ts
 RUN_TESTCONTAINERS=true mise exec -- pnpm exec vitest run --config vitest.integration.config.ts apps/carneloot-bot/test/cloudflare/Worker.integration.test.ts
 ```
@@ -20,7 +21,7 @@ Do not use `alchemy dev` as a cloud-free emulator. With this stack's `Cloudflare
 ## Prepare the target
 
 1. Obtain approval for Cloudflare provisioning, deployment, application-secret writes, SQL migrations, and Telegram webhook registration separately from local implementation.
-2. Verify that the Cloudflare account supports Hyperdrive, Durable Objects, and the configured Worker limits. Keep PostgreSQL reachable from Hyperdrive with verified TLS and sufficient connections. Use a direct database origin, not another session-less pooler.
+2. Verify that the Cloudflare account supports Hyperdrive, Durable Objects with alarms, and the configured Worker limits. Keep PostgreSQL reachable from Hyperdrive with verified TLS and sufficient connections. Use a direct database origin, not another session-less pooler.
 3. Back up PostgreSQL and verify restoration. Preserve the current tfx schema and table prefix. Use an origin role with schema usage and table read/write privileges, but no schema-creation or ownership privileges. Keep migration credentials separate.
 4. Copy `apps/carneloot-bot/cloudflare.env.example` to its gitignored `.env.cloudflare`. Fill non-secret values, and supply `BOT_TOKEN`, `WEBHOOK_SECRET`, and `POSTGRES_PASSWORD` through the approved secret manager or protected environment file. Keep `DATABASE_URL` for the migration operator only. Generate a separate webhook secret with at least 32 URL-safe characters.
 5. From the app directory, configure a saved Alchemy credential profile using the [official Cloudflare setup](https://alchemy.run/cloudflare/setup):
@@ -35,7 +36,7 @@ Alchemy stores deployment credentials in the profile, not Worker bindings. `Conf
 ## Cut over after approval
 
 1. Stop the existing Bun poller and its continuous job worker. Do not run them alongside the webhook runtime.
-2. Export the approved operator environment, including direct `DATABASE_URL` and the existing `TFX_POSTGRES_SCHEMA` and `TFX_POSTGRES_TABLE_PREFIX`. Apply the existing checksummed migrations:
+2. Export the approved operator environment, including direct `DATABASE_URL` and the existing `TFX_POSTGRES_SCHEMA` and `TFX_POSTGRES_TABLE_PREFIX`. Apply the checksummed migrations, including tfx migration 5 for the transactional wakeup outbox:
 
 ```sh
 mise exec -- pnpm --filter carneloot-bot cloudflare:migrate
@@ -59,12 +60,12 @@ mise exec -- pnpm --filter carneloot-bot cloudflare:webhook
 The registration command enforces `max_connections=1` and `drop_pending_updates=false`. Registration is an explicit Telegram write, not part of Alchemy deployment.
 
 6. Inspect Telegram's `getWebhookInfo` through your approved API tooling. Check the URL, pending count, and last delivery error without putting the bot token in shell history or logs.
-7. Exercise registration, a persisted pet conversation, food recording, and a reminder with a test user. Check SQL food identities and message-time timestamps. Inspect Worker logs for update outcomes, cron passes, failed or quarantined jobs, and unknown deliveries. Do not manually resend unknown deliveries without reconciliation.
+7. Exercise registration, a persisted pet conversation, food recording, and a reminder with a test user. Check SQL food identities and message-time timestamps. Verify that the reminder executes from an alarm without waiting for cron. Inspect SQL job outcomes, wakeup intents, failed or quarantined jobs, and unknown deliveries. Do not manually resend unknown deliveries without reconciliation.
 
 ## Roll back transport after approval
 
 1. Stop webhook admission using Telegram's `deleteWebhook` with `drop_pending_updates=false` through approved API tooling.
-2. Drain accepted requests, then disable the Cloudflare cron and Worker route with an approved deployment. Do not start a second scheduler before the first has stopped.
+2. Drain accepted requests, then disable the Cloudflare cron, Worker route, and `JobWakeup` alarms with an approved deployment. Disabling cron alone does not stop native execution. Do not start a second scheduler before the first has stopped.
 3. Restart the previous Bun polling runtime against the same database and tfx namespace. Preserve completed deduplication rows, conversation state, and notification-delivery outcomes.
 
 Do not restore an old database snapshot merely to change transports. Do not remove the Alchemy state store, Hyperdrive, or Durable Object namespace while the Worker still handles traffic.
