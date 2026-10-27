@@ -12,6 +12,10 @@ export {
 	complete,
 	cancelled,
 } from './internal/conversation/Transition.js';
+export type {
+	AfterCommit,
+	Transition,
+} from './internal/conversation/Transition.js';
 
 type StepsOf<C> =
 	C extends Conversation.Conversation<any, any, infer S, any, any, any>
@@ -22,22 +26,45 @@ type ProvidedBy<C> =
 	C extends Conversation.Conversation<any, any, any, any, any, infer M>
 		? Middleware.ProvidedBy<M>
 		: never;
-type AnyTransition<S extends Readonly<Record<string, Conversation.AnyStep>>> =
+type AnyTransition<
+	S extends Readonly<Record<string, Conversation.AnyStep>>,
+	E extends TaggedError = TaggedError,
+> =
 	| {
 			[K in keyof S & string]: Transition.Transition<
 				K,
 				Conversation.StateOf<S[K]>,
-				TaggedError,
+				E,
 				any
 			>;
 	  }[keyof S & string]
-	| Transition.Transition<never, never, TaggedError, any>;
+	| Transition.Transition<never, never, E, any>;
+// Contextualize targets without widening afterCommit services; validate full results after inference.
+type TransitionTarget<
+	S extends Readonly<Record<string, Conversation.AnyStep>>,
+> =
+	| (Conversation.Persisted<S> & { readonly _tag: 'To' })
+	| { readonly _tag: 'Stay' | 'Complete' | 'Cancelled' };
+type ValidatedHandlers<
+	H,
+	S extends Readonly<Record<string, Conversation.AnyStep>>,
+	E extends TaggedError,
+> = {
+	[K in keyof H]: K extends 'onInput' | 'onInvalid'
+		? NonNullable<H[K]> extends (
+				...args: any[]
+			) => Effect.Effect<AnyTransition<S, E>, E, any>
+			? H[K]
+			: never
+		: H[K];
+};
 export interface StepHandlers<
 	S extends Conversation.AnyStep,
 	Steps extends Readonly<Record<string, Conversation.AnyStep>>,
 	E extends TaggedError,
 	R,
 	Available = any,
+	Result = AnyTransition<Steps, E>,
 > {
 	readonly enter: (
 		state: Conversation.StateOf<S>,
@@ -45,52 +72,77 @@ export interface StepHandlers<
 	readonly onInput: (
 		state: Conversation.StateOf<S>,
 		input: Conversation.InputOf<S>,
-	) => Effect.Effect<AnyTransition<Steps>, E, R | Available>;
+	) => Effect.Effect<Result, E, R | Available>;
 	readonly onInvalid?: (
 		state: Conversation.StateOf<S>,
 		error: unknown,
-	) => Effect.Effect<AnyTransition<Steps>, E, R | Available>;
+	) => Effect.Effect<Result, E, R | Available>;
 }
+export type AnyStepHandlers = StepHandlers<
+	Conversation.Step<
+		string,
+		any,
+		ConversationInput.ConversationInput<any, any, any>
+	>,
+	any,
+	any,
+	any
+>;
+type HandlerRequirements<H> = {
+	[K in keyof H]-?: NonNullable<H[K]> extends (
+		...args: any[]
+	) => Effect.Effect<infer A, any, infer R>
+		?
+				| R
+				| (A extends {
+						readonly afterCommit?: Effect.Effect<void, any, infer O>;
+				  }
+						? O
+						: never)
+		: never;
+}[keyof H];
 export interface Builder<
 	C extends Conversation.Conversation<any, any, any, any, any, any>,
 	Remaining extends keyof StepsOf<C>,
 	R,
-	Implementations extends Readonly<
-		Record<string, StepHandlers<any, any, any, any>>
-	>,
+	Implementations extends Readonly<Record<string, AnyStepHandlers>>,
 > {
 	readonly declaration: C;
 	readonly implementations: Implementations;
 	readonly _remaining: Remaining;
 	readonly _requirements: R;
-	step<const Id extends Remaining, SR>(
-		id: Id,
-		handlers: StepHandlers<
+	step<
+		const Id extends Remaining,
+		const H extends StepHandlers<
 			StepsOf<C>[Id],
 			StepsOf<C>,
 			ErrorOf<C>,
-			SR,
-			ProvidedBy<C>
+			any,
+			any,
+			TransitionTarget<StepsOf<C>>
 		>,
+	>(
+		id: Id,
+		handlers: H & NoInfer<ValidatedHandlers<H, StepsOf<C>, ErrorOf<C>>>,
 	): Builder<
 		C,
 		Exclude<Remaining, Id>,
 		| R
 		| Exclude<
-				SR,
+				HandlerRequirements<H>,
 				| ConversationInput.ContextService<StepsOf<C>[Id]['input']>
 				| UpdateContext.UpdateContext
 				| ProvidedBy<C>
 		  >
 		| ConversationInput.Requirements<StepsOf<C>[Id]['input']>,
-		Implementations & { readonly [K in Id]: typeof handlers }
+		Implementations & { readonly [K in Id]: H }
 	>;
 }
 const build = <
 	C extends Conversation.Conversation<any, any, any, any, any, any>,
 	Remaining extends keyof StepsOf<C>,
 	R,
-	I extends Readonly<Record<string, StepHandlers<any, any, any, any>>>,
+	I extends Readonly<Record<string, AnyStepHandlers>>,
 >(
 	declaration: C,
 	implementations: I,
@@ -116,7 +168,7 @@ export const make = <
 export const done = <
 	C extends Conversation.Conversation<any, any, any, any, any, any>,
 	R,
-	I extends Readonly<Record<string, StepHandlers<any, any, any, any>>>,
+	I extends Readonly<Record<string, AnyStepHandlers>>,
 >(
 	builder: Builder<C, never, R, I>,
 ) =>

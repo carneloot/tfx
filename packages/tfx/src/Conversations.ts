@@ -38,7 +38,7 @@ export interface BuiltConversation<
 > {
 	readonly declaration: C;
 	readonly implementations: Readonly<
-		Record<string, ConversationBuilder.StepHandlers<any, any, any, any>>
+		Record<string, ConversationBuilder.AnyStepHandlers>
 	>;
 	readonly _requirements: R;
 }

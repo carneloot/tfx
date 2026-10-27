@@ -39,10 +39,9 @@ export interface RouterOptions {
 	) => Effect.Effect<DispatchOutcome.DispatchOutcome, never>;
 }
 type RecordValue = Readonly<Record<string, any>>;
-const root = (update: Update) => update as unknown as RecordValue;
 export const make = (options: RouterOptions = {}): Router => ({
 	route: (update) => {
-		const value = root(update);
+		const value = update as unknown as RecordValue;
 		if (
 			value.my_chat_member !== undefined ||
 			value.chat_member !== undefined ||

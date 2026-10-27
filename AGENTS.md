@@ -6,6 +6,14 @@
 - Prefer clean designs and direct breaking changes over compatibility shims, deprecation layers, or legacy migrations.
 - Do not preserve existing APIs, database schemas, migration ledgers, or persisted development data unless the user explicitly requests it.
 
+## Helpers and Readability
+
+- Keep straightforward logic at its call site. Do not extract a single-use helper that merely renames an expression, wraps a reply or transition, or forwards arguments to another function. Readers should not need to jump elsewhere to understand a conversation step.
+- Before extracting a helper, identify what it earns: meaningful reuse or a distinct responsibility such as parsing, authorization, or resource lifetime management. A name, a shorter callback, or a smaller line count alone is not a reason to extract it.
+- In conversations, keep prompts, transitions, and short `afterCommit` effects in the step that owns them. Call shared APIs directly rather than creating local aliases such as `const reply = ConversationUi.reply`.
+- Do not add identity functions such as `widen(effect)` or wrappers that only yield unused services to influence Effect inference. Express the required contract through types or fix the owning builder API instead of hiding it in runtime plumbing.
+- When editing existing code, inline helpers that fail these rules within the affected flow. Preserve transaction, authorization, and post-commit boundaries; do not turn the change into an unrelated cleanup.
+
 ## Testing
 
 - `pnpm --filter <package> test -- <file>` may still run the package's entire configured suite. For exact files, use `pnpm exec vitest run path/to/test.ts`.

@@ -23,7 +23,6 @@ const Timestamp = Schema.Union([
 	Schema.DateTimeUtcFromString,
 	Schema.DateTimeUtcFromMillis,
 ]);
-const DurationMillis = Schema.DurationFromMillis;
 const safeInteger = (value: unknown, minimum = 0) => {
 	const result = typeof value === 'number' ? value : Number(value);
 	if (!Number.isSafeInteger(result) || result < minimum)
@@ -108,7 +107,7 @@ const decodeSettings = (raw: unknown) => {
 		reminderDelay:
 			row.reminder_delay_ms === null
 				? null
-				: Schema.decodeUnknownSync(DurationMillis)(
+				: Schema.decodeUnknownSync(Schema.DurationFromMillis)(
 						safeInteger(row.reminder_delay_ms, 1),
 					),
 		createdAt: row.created_at,

@@ -12,8 +12,6 @@ import * as GenerateApiKey from '../../application/GenerateApiKey.js';
 import { ApplicationError } from '../../domain/ApplicationError.js';
 import { InvalidDomainInput } from '../../domain/DomainError.js';
 import { UserId } from '../../domain/Ids.js';
-import { ApiKeyRepository } from '../../ports/ApiKeyRepository.js';
-import { UserRepository } from '../../ports/UserRepository.js';
 import { CurrentUser } from '../CurrentUser.js';
 import { RegisteredUser } from '../Declaration.js';
 import * as ConversationUi from './ConversationUi.js';
@@ -64,47 +62,34 @@ export const declaration = Conversation.make('generate-api-key', {
 	error: ApplicationError,
 });
 
-const required = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-	Effect.gen(function* () {
-		yield* CurrentUser;
-		yield* ApiKeyRepository;
-		yield* UserRepository;
-		return yield* effect;
-	});
 export const built = ConversationBuilder.done(
 	ConversationBuilder.make(declaration).step('confirm', {
 		enter: () =>
-			required(
-				ConversationUi.promptChoice(
-					'Você já possui uma API Key. Deseja gerar uma nova? A outra chave será invalidada.',
-					choice,
-				),
+			ConversationUi.promptChoice(
+				'Você já possui uma API Key. Deseja gerar uma nova? A outra chave será invalidada.',
+				choice,
 			),
 		onInput: (state, selected) =>
-			required(
-				Effect.gen(function* () {
-					const current = yield* CurrentUser;
-					if (current.user.id !== state.actorId)
-						return yield* new InvalidDomainInput({
-							message: 'API key confirmation actor mismatch',
-						});
-					if (selected._tag === 'Cancelled')
-						return ConversationBuilder.cancelled({
-							afterCommit: ConversationUi.replyRemovingKeyboard('Okay!'),
-						});
-					// The secret exists only after the transition commits. It never enters conversation state.
-					return ConversationBuilder.complete({
-						afterCommit: issue(true).pipe(Effect.asVoid),
+			Effect.gen(function* () {
+				const current = yield* CurrentUser;
+				if (current.user.id !== state.actorId)
+					return yield* new InvalidDomainInput({
+						message: 'API key confirmation actor mismatch',
 					});
-				}),
-			),
+				if (selected._tag === 'Cancelled')
+					return ConversationBuilder.cancelled({
+						afterCommit: ConversationUi.replyRemovingKeyboard('Okay!'),
+					});
+				// The secret exists only after the transition commits. It never enters conversation state.
+				return ConversationBuilder.complete({
+					afterCommit: issue(true).pipe(Effect.asVoid),
+				});
+			}),
 		onInvalid: () =>
-			required(
-				Effect.succeed(
-					ConversationBuilder.stay({
-						afterCommit: ConversationUi.reply('Por favor, escolha uma opção'),
-					}),
-				),
+			Effect.succeed(
+				ConversationBuilder.stay({
+					afterCommit: ConversationUi.reply('Por favor, escolha uma opção'),
+				}),
 			),
 	}),
 );
