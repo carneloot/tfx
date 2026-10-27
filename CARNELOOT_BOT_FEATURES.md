@@ -672,6 +672,30 @@ Rules:
 
 Source: `.repos/carneloot-bot/src/common/utils/parse-pet-food-weight-and-time.ts`.
 
+### Relative minutes, upstream update
+
+The pinned snapshot above predates relative timestamps. Upstream
+[`08dbb5e`](https://github.com/carneloot/carneloot-bot/commit/08dbb5e36f3e5b2abd7f5bac0b3925423d2ff585)
+also supports quantity followed by `-Nmin`, for example `/todos 8 -5min`.
+`N` is a nonnegative whole number of elapsed minutes. Zero keeps the anchor
+unchanged. Relative subtraction preserves seconds and crosses date boundaries.
+
+Legacy additions and reminder replies subtract from the Telegram message time.
+Legacy command corrections and original-entry reply corrections instead subtract
+from each stored feeding time.
+
+The tfx implementation accepts relative timestamps for single-pet input,
+`/todos`, `/colocar_racao_todos`, command corrections, reminder replies, and
+original-entry reply corrections. Corrections also accept `-5min` without a
+quantity. Every explicit relative timestamp subtracts from the current Telegram
+message time, never the processing clock or the stored feeding time. This
+intentional correction difference keeps the anchor consistent across input
+paths. Quantity-only corrections still preserve the stored timestamp.
+
+Unlike the legacy unanchored parser, tfx rejects unsupported suffixes such as
+`+5min`, `-1.5min`, and `-5min extra`. Unrepresentable timestamps fail validation.
+Existing absolute-date and clock-time rules are unchanged.
+
 ## Reply-driven features
 
 Reply middleware runs for registered users before normal command/hears processing.

@@ -588,7 +588,7 @@ describe('pet food conversation transcripts', () => {
 		expect(failed.foodEntries).toHaveLength(1);
 		expect(failed.replies).toEqual([
 			'Escolha o pet:',
-			'Envie a quantidade e, opcionalmente, o horário.',
+			expect.stringContaining('-5min para 5 minutos antes desta mensagem'),
 		]);
 		expect(failed.replyMarkups).toEqual([
 			expect.objectContaining({
@@ -596,6 +596,46 @@ describe('pet food conversation transcripts', () => {
 			}),
 			{ remove_keyboard: true },
 		]);
+	});
+
+	it('records relative single-pet input from the Telegram message and rejects malformed suffixes', async () => {
+		const h = harness();
+		h.settings.value = {
+			petId,
+			dayStart: '00:00' as never,
+			timeZone: 'America/Sao_Paulo' as never,
+			reminderDelay: null,
+			createdAt: DateTime.makeUnsafe(0),
+			updatedAt: DateTime.makeUnsafe(0),
+		};
+		await run(
+			Effect.provide(
+				Effect.gen(function* () {
+					yield* start(AddFood.built);
+					yield* resume(AddFood.built, 'Rex', 1);
+					let updateId = 2;
+					for (const text of [
+						'8 +5min',
+						'8 -5minutes',
+						'8 -1.5min',
+						'8 -5min extra',
+						'8 -9007199254740993min',
+					]) {
+						yield* resume(AddFood.built, text, updateId++);
+						expect(h.foodEntries).toHaveLength(0);
+						const storage = yield* ConversationStorage;
+						expect((yield* storage.load(scope))?.step).toBe('amount');
+					}
+					yield* resume(AddFood.built, '8 g -5min', updateId);
+				}),
+				h.layer,
+			),
+		);
+		expect(h.foodEntries).toHaveLength(1);
+		expect(h.foodEntries[0]?.amountMg).toBe(8_000);
+		expect(DateTime.formatIso(h.foodEntries[0]!.fedAt)).toBe(
+			'2024-01-02T11:55:00.000Z',
+		);
 	});
 
 	it('completes midnight day-start after a service rebuild', async () => {

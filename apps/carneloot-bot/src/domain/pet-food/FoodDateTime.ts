@@ -93,6 +93,18 @@ export const parse = (
 			return yield* Effect.fail(
 				invalid('Invalid IANA time zone', 'InvalidTimeZone'),
 			);
+		const relative = /^-(\d+)min$/iu.exec(input);
+		if (relative !== null) {
+			const minutes = Number(relative[1]);
+			const parsed = DateTime.make(
+				DateTime.toEpochMillis(messageDate) - minutes * 60_000,
+			);
+			if (!Number.isSafeInteger(minutes) || Option.isNone(parsed))
+				return yield* Effect.fail(
+					invalid('Relative food time is out of range'),
+				);
+			return parsed.value;
+		}
 		const zonedMessageDate = DateTime.makeZonedUnsafe(messageDate, {
 			timeZone,
 		});

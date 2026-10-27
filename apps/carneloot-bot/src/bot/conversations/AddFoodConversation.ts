@@ -27,6 +27,7 @@ import {
 } from '../../domain/Ids.js';
 import { FoodAmount } from '../../domain/pet-food/FoodAmount.js';
 import { IanaTimeZone } from '../../domain/pet-food/FoodDateTime.js';
+import { splitAmountAndWhen } from '../../domain/pet-food/FoodWhenInput.js';
 import { PetName } from '../../domain/Pet.js';
 import { FoodNotificationScheduler } from '../../ports/FoodNotificationScheduler.js';
 import { PetCaregiverRepository } from '../../ports/PetCaregiverRepository.js';
@@ -98,23 +99,8 @@ const localized = (instant: DateTime.Utc, timeZone: IanaTimeZone) => {
 	);
 	return `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}/${parts.year} ${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
 };
-const splitInput = (
-	input: string,
-): { amount: string; dateTime: string } | undefined => {
-	const trimmed = input.trim();
-	if (trimmed.length === 0) return undefined;
-	const suffix =
-		/^(.*?\S)\s+((?:\d{2}[/-]\d{2}(?:[/-]\d{4})? \d{2}:\d{2})|(?:\d{2}:\d{2}))$/u.exec(
-			trimmed,
-		);
-	if (suffix !== null) {
-		const amount = suffix[1];
-		const dateTime = suffix[2];
-		if (amount !== undefined && dateTime !== undefined)
-			return { amount, dateTime };
-	}
-	return { amount: trimmed, dateTime: '' };
-};
+const amountPrompt =
+	'Envie a quantidade e, opcionalmente, o horário (HH:mm, DD/MM[/AAAA] HH:mm ou -5min para 5 minutos antes desta mensagem).';
 
 export const declaration = Conversation.make('add-pet-food', {
 	version: 1,
@@ -188,30 +174,19 @@ export const built = ConversationBuilder.done(
 			onInvalid: () => stay('Por favor, escolha uma opção'),
 		})
 		.step('amount', {
-			enter: () =>
-				required(
-					replyRemovingKeyboard(
-						'Envie a quantidade e, opcionalmente, o horário.',
-					),
-				),
+			enter: () => required(replyRemovingKeyboard(amountPrompt)),
 			onInput: (state, value) =>
 				required(
 					widen(
 						Effect.gen(function* () {
-							const parsed = splitInput(value);
+							const parsed = splitAmountAndWhen(value);
 							if (parsed === undefined)
-								return yield* stay(
-									'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',
-									true,
-								);
+								return yield* stay(`Formato inválido. ${amountPrompt}`, true);
 							const amount = yield* Effect.result(
 								Schema.decodeUnknownEffect(FoodAmount)(parsed.amount),
 							);
 							if (amount._tag === 'Failure')
-								return yield* stay(
-									'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',
-									true,
-								);
+								return yield* stay(`Formato inválido. ${amountPrompt}`, true);
 							const context = yield* MessageContext.MessageContext;
 							const update = yield* UpdateContext.UpdateContext;
 							const messageChatId = yield* Schema.decodeUnknownEffect(
@@ -235,7 +210,7 @@ export const built = ConversationBuilder.done(
 									},
 									{
 										amountMg: amount.success,
-										when: parsed.dateTime,
+										when: parsed.when,
 										messageDate: DateTime.makeUnsafe(
 											context.message.date * 1_000,
 										),
@@ -255,9 +230,7 @@ export const built = ConversationBuilder.done(
 									);
 								if (result.failure._tag === 'PetFoodSetupMissing')
 									return yield* stay(setupWarning(state.petName));
-								return yield* stay(
-									'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',
-								);
+								return yield* stay(`Formato inválido. ${amountPrompt}`);
 							}
 							const base = `Foram adicionados ${amountText(result.success.entry.amountMg)} de ração para o pet ${state.petName}.`;
 							const text = result.success.latest
@@ -272,10 +245,6 @@ export const built = ConversationBuilder.done(
 						}),
 					),
 				),
-			onInvalid: () =>
-				stay(
-					'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',
-					true,
-				),
+			onInvalid: () => stay(`Formato inválido. ${amountPrompt}`, true),
 		}),
 );

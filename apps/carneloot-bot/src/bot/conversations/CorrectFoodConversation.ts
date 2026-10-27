@@ -83,6 +83,8 @@ const unavailable = () =>
 	});
 const grams = (mg: number) =>
 	`${Number.isInteger(mg / 1000) ? mg / 1000 : (mg / 1000).toFixed(3).replace(/0+$/u, '').replace(/\.$/u, '')} g`;
+const correctionPrompt =
+	'Digite a nova quantidade, horário, ou ambos. Use HH:mm, DD/MM[/AAAA] HH:mm ou -5min para 5 minutos antes desta mensagem.';
 
 export const declaration = Conversation.make('correct-pet-food', {
 	version: 1,
@@ -239,10 +241,7 @@ export const built = ConversationBuilder.done(
 			onInvalid: () => invalid,
 		})
 		.step('correction', {
-			enter: () =>
-				required(
-					replyRemovingKeyboard('Digite a nova quantidade, horário, ou ambos:'),
-				),
+			enter: () => required(replyRemovingKeyboard(correctionPrompt)),
 			onInput: (state, value) =>
 				required(
 					Effect.gen(function* () {
@@ -265,8 +264,13 @@ export const built = ConversationBuilder.done(
 						if (result._tag === 'Failure') {
 							if (result.failure._tag === 'PetAccessDenied')
 								return unavailable();
-							if (result.failure._tag === 'InvalidDomainInput')
-								return yield* invalid;
+							if (
+								result.failure._tag === 'InvalidDomainInput' ||
+								result.failure._tag === 'PetFoodError'
+							)
+								return ConversationBuilder.stay({
+									afterCommit: reply(`Formato inválido. ${correctionPrompt}`),
+								});
 							return yield* Effect.fail(result.failure);
 						}
 						return ConversationBuilder.complete({

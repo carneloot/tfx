@@ -254,7 +254,7 @@ else
 								'/corrigir_racao',
 								'Rex',
 								`60 g — ${displayDay} 10:00 — Owner`,
-								'07:00',
+								'-300min',
 							])
 								yield* send(text);
 							yield* assertReminder(previous.id, `${day}T16:00:00.000Z`);
@@ -309,8 +309,10 @@ else
 							expect(yield* entries()).toHaveLength(0);
 							expect(yield* active()).toHaveLength(0);
 							expect(yield* jobs()).toHaveLength(0);
-							expect(sentText(sent)).toContain(
-								'Digite a nova quantidade, horário, ou ambos:',
+							expect(sentText(sent)).toContainEqual(
+								expect.stringContaining(
+									'-5min para 5 minutos antes desta mensagem',
+								),
 							);
 						}),
 					),
