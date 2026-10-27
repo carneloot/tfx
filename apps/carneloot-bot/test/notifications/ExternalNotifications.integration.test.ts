@@ -1,8 +1,10 @@
 import * as NodeCrypto from '@effect/platform-node/NodeCrypto';
 import * as PgClient from '@effect/sql-pg/PgClient';
+import * as TfxPostgres from '@tfx/postgres/TfxPostgres';
 import { Effect, Layer, Schema } from 'effect';
 import * as DateTime from 'effect/DateTime';
 import * as Duration from 'effect/Duration';
+import * as BotRuntime from 'tfx/BotRuntime';
 import { Telegram } from 'tfx/Telegram';
 import {
 	ForbiddenError,
@@ -17,8 +19,10 @@ import { RecordedRequests } from '../../../../packages/tfx/test/internal/Recorde
 import * as GenerateApiKey from '../../src/application/GenerateApiKey.js';
 import * as RouteNotificationReply from '../../src/application/RouteNotificationReply.js';
 import * as SendExternalNotification from '../../src/application/SendExternalNotification.js';
+import * as ForwardToOwner from '../../src/bot/ForwardToOwner.js';
 import { BotId, TelegramChatId, TelegramUserId } from '../../src/domain/Ids.js';
 import { EventId } from '../../src/domain/notifications/NotificationEvent.js';
+import * as DomainLive from '../../src/DomainLive.js';
 import * as Hosting from '../../src/http/Hosting.js';
 import { ApiKeyRepository } from '../../src/ports/ApiKeyRepository.js';
 import { ExternalNotificationRepository } from '../../src/ports/ExternalNotificationRepository.js';
@@ -28,6 +32,7 @@ import {
 } from '../../src/ports/NotificationRepository.js';
 import { UserRepository } from '../../src/ports/UserRepository.js';
 import * as RepositoriesLive from '../../src/postgres/RepositoriesLive.js';
+import * as Router from '../../src/Router.js';
 import * as PostgresTestLayer from '../internal/PostgresTestLayer.js';
 
 const enabled =
@@ -118,6 +123,90 @@ const http = Effect.fnUntraced(function* (
 });
 
 describe.skipIf(!enabled)('external notifications with real PostgreSQL', () => {
+	it('routes notification replies before food, forwarding and hello, while unrelated messages still forward', async () => {
+		const infrastructure = testLayer([
+			sent(7000),
+			sent(7001),
+			sent(7002),
+			FakeTelegram.succeed('forwardMessage', { message_id: 8000 }),
+			FakeTelegram.succeed('setMessageReaction', true),
+			FakeTelegram.succeed('sendPhoto', { message_id: 8001 }),
+		]);
+		const graph = Layer.provideMerge(
+			DomainLive.layer,
+			Layer.provideMerge(
+				TfxPostgres.layer({
+					schema: 'tfx_external_routing_test',
+					tablePrefix: 'bot_',
+					botId,
+				}),
+				infrastructure,
+			),
+		);
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				yield* seed;
+				yield* SendExternalNotification.execute(botId, input);
+				const router = yield* Router.make('carneloot_bot');
+				const dispatch = (id: number, replyTo?: number) =>
+					BotRuntime.dispatch(
+						{
+							update_id: id,
+							message: {
+								message_id: id,
+								date: 1_700_000_000,
+								chat: { id: 1002, type: 'private' },
+								from: {
+									id: 1002,
+									is_bot: false,
+									first_name: 'Subscriber',
+									username: 'subscriber',
+								},
+								text: 'hello',
+								...(replyTo === undefined
+									? {}
+									: {
+											reply_to_message: {
+												message_id: replyTo,
+												date: 100,
+												chat: { id: 1002, type: 'private' as const },
+											},
+										}),
+							},
+						},
+						router,
+					);
+				const recorded = yield* RecordedRequests;
+				expect((yield* dispatch(91, 7001))._tag).toBe('Handled');
+				expect((yield* recorded.all).map(({ method }) => method)).toEqual([
+					'sendMessage',
+					'sendMessage',
+					'sendMessage',
+				]);
+				expect(
+					(yield* recorded.method('sendMessage')).at(-1)?.input,
+				).toMatchObject({
+					chat_id: 1001,
+					text: 'User1002: hello',
+					reply_parameters: { message_id: 7000 },
+				});
+				yield* dispatch(91, 7001);
+				expect(yield* recorded.count()).toBe(3);
+				yield* dispatch(92, 9999);
+				expect(
+					(yield* recorded.all).slice(3).map(({ method }) => method),
+				).toEqual(['forwardMessage', 'setMessageReaction', 'sendPhoto']);
+				yield* recorded.assertConsumed;
+			}).pipe(
+				Effect.provide(graph),
+				Effect.provideService(ForwardToOwner.Settings, {
+					ownerChatId: 9999,
+					usernames: ['subscriber'],
+				}),
+			),
+		);
+	});
+
 	it('authorizes imported rows, freezes repeated placeholders and recipients before output, and keeps exact history', async () => {
 		await run(
 			Effect.gen(function* () {

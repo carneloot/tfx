@@ -69,6 +69,7 @@ describe.skipIf(!enabled)(
 		let workers: Awaited<ReturnType<Miniflare['getWorker']>>[] = [];
 		let postgres: ReturnType<typeof PgClient.layer<never>>;
 		let sends = 0;
+		const sentTexts: string[] = [];
 		let failOutput = false;
 		let slowOutput = false;
 		let slowStarted: (() => void) | undefined;
@@ -172,6 +173,9 @@ describe.skipIf(!enabled)(
 						if (!target.pathname.endsWith('/sendMessage'))
 							return MockResponse.json({ ok: true, result: true });
 						sends++;
+						sentTexts.push(payload.text);
+						if (payload.text === 'pong 10s')
+							await new Promise((resolve) => setTimeout(resolve, 4_000));
 						if (slowOutput && payload.text === 'Qual o nome do seu pet?') {
 							slowStarted?.();
 							await new Promise((resolve) => setTimeout(resolve, 6_000));
@@ -251,6 +255,24 @@ describe.skipIf(!enabled)(
 					'SELECT count(*)::int AS count FROM tfx_cloudflare_test.bot_update_deduplication',
 				),
 			).toEqual([{ count: 0 }]);
+		});
+
+		it('finishes ping 10000 with slow output below the gate limit and deduplicates its retry', async () => {
+			const before = sends;
+			const started = performance.now();
+			const ping = update(90, '/ping 10000');
+			expect((await post(workers[0]!, ping)).status).toBe(200);
+			const elapsed = performance.now() - started;
+			expect(elapsed).toBeGreaterThanOrEqual(14_000);
+			expect(elapsed).toBeLessThan(20_000);
+			expect(sentTexts.slice(before)).toEqual(['pong 10s']);
+			expect(
+				await query(
+					'SELECT status FROM tfx_cloudflare_test.bot_update_deduplication WHERE update_id=90',
+				),
+			).toEqual([{ status: 'completed' }]);
+			expect((await post(workers[1]!, ping)).status).toBe(200);
+			expect(sends).toBe(before + 1);
 		});
 
 		it('preserves persisted conversations, multi-pet replay and message-time food across independent requests', async () => {

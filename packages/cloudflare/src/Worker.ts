@@ -34,7 +34,9 @@ export interface Application<Env extends Bindings> {
 }
 
 export interface Hosting<Env extends Bindings> {
-	readonly worker: ExportedHandler<Env>;
+	readonly worker: ExportedHandler<Env> & {
+		readonly fetch: NonNullable<ExportedHandler<Env>['fetch']>;
+	};
 	readonly ChatDispatch: new (
 		state: DurableObjectState,
 		env: Env,
@@ -172,8 +174,8 @@ export const make = <Env extends Bindings>(
 				const env = this.env;
 				try {
 					// Await processing AND scoped finalizers before acknowledging or opening
-					// the input gate. The 10s deadline leaves 20s for SQL cancellation,
-					// transaction rollback, claim release and pool closure before DO's 30s gate.
+					// the input gate. Runtime's deadline must leave cleanup time below DO's
+					// 30s limit for SQL cancellation, rollback, claim release and pool closure.
 					const outcome = await application.dispatch(env, input.update);
 					return new Response(
 						DispatchOutcome.isAcknowledgeable(outcome) ? 'ok' : 'Retry later',

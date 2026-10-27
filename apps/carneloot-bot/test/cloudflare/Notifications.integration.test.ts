@@ -48,9 +48,7 @@ describe.skipIf(!enabled)(
 					yield* sql`INSERT INTO carneloot.notification_subscriptions VALUES (${templateId}::uuid,${subscriber.user.id}::uuid,now())`;
 					const result = yield* Effect.promise(() =>
 						build({
-							entryPoints: [
-								'apps/carneloot-bot/test/cloudflare/NotificationWorker.ts',
-							],
+							entryPoints: ['apps/carneloot-bot/src/cloudflare/Worker.ts'],
 							bundle: true,
 							write: false,
 							format: 'esm',

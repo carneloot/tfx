@@ -314,7 +314,7 @@ else
 								'Usuário cadastrado com sucesso!',
 								'Você não tem pets',
 								'Qual o nome do seu pet?',
-								'Conversa cancelada.',
+								'Operação cancelada',
 							]);
 							expect(
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
@@ -430,7 +430,7 @@ else
 								messageUpdate(1001, '/cancelar@other_bot', sender),
 							);
 							expect(f.sentText().slice(outputCount)).not.toContain(
-								'Conversa cancelada.',
+								'Operação cancelada',
 							);
 							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(
 								petsBeforeForeignMention.length + 1,

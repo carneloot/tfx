@@ -177,7 +177,7 @@ else
 							expect(yield* relation()).toHaveLength(0);
 							expect(sent.at(-1)).toMatchObject({
 								chatId: owner.id,
-								text: 'Conversa cancelada.',
+								text: 'Operação cancelada',
 								replyMarkup: { remove_keyboard: true },
 							});
 							expect(
@@ -345,7 +345,7 @@ else
 							expect(
 								countSent(caregiver.id, 'Você não cuida mais do pet Rex.'),
 							).toBe(2);
-							expect(sentText(sent)).toContain('Conversa cancelada.');
+							expect(sentText(sent)).toContain('Operação cancelada');
 							expect(
 								countSent(owner.id, 'Caregiver parou de cuidar do pet Rex.'),
 							).toBe(1);

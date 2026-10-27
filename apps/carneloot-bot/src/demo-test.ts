@@ -142,6 +142,7 @@ const program = Effect.scoped(
 		const declaredCommands = menuCommands.map(({ command }) => command);
 		const expectedCommands = [
 			'cadastrar',
+			'gerar_chave',
 			'adicionar_pet',
 			'listar_pets',
 			'deletar_pet',
@@ -158,6 +159,12 @@ const program = Effect.scoped(
 			'deletar_racao',
 			'colocar_racao_todos',
 			'todos',
+			'start',
+			'cancelar',
+			'ping',
+			'whats',
+			'cafe',
+			'cafe_inv',
 		];
 		const messageHandlers = Object.values(Carneloot.groups)
 			.flatMap((group) => Object.keys(group.messageHandlers))
@@ -168,7 +175,13 @@ const program = Effect.scoped(
 		] as const;
 		if (
 			JSON.stringify(declaredCommands) !== JSON.stringify(expectedCommands) ||
-			JSON.stringify(messageHandlers) !== JSON.stringify(['foodReply']) ||
+			JSON.stringify(messageHandlers) !==
+				JSON.stringify([
+					'externalNotificationReply',
+					'foodReply',
+					'forwardToOwner',
+					'hello',
+				]) ||
 			JSON.stringify(jobDeclarations) !==
 				JSON.stringify(['feeding-reminder', 'food-added-notification'])
 		)

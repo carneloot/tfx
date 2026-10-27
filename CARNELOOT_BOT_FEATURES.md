@@ -4,6 +4,16 @@
 >
 > This document describes behavior implemented in source. User-facing bot text and command names remain in Portuguese.
 
+## tfx migration status
+
+The reference below describes the pinned legacy snapshot, not the new runtime. The parity implementation also checked upstream `carneloot/carneloot-bot` at `08dbb5e36f3e5b2abd7f5bac0b3925423d2ff585`, which adds relative feeding timestamps and owner forwarding.
+
+`apps/carneloot-bot` now implements the general utilities, registration, API-key generation and confirmation, shared pets, food tracking and replies, reminders, external notifications and subscriber replies, and optional owner forwarding. Both Bun polling and the Cloudflare Worker expose `/api/notify`. See the [current application reference](apps/carneloot-bot/README.md) for configuration and delivery semantics.
+
+Intentional differences include message-time-anchored relative corrections, transactional mutation authorization, chat-scoped reply lookup, replacement reminder scheduling, complete placeholder replacement, and explicit partial or unknown notification outcomes. These changes do not reproduce the legacy bugs listed below. Templates and subscribers still have no management interface, matching the legacy implementation.
+
+Feature implementation is separate from production readiness. Live Telegram rehearsal, production data import and backup/restore rehearsal, Cloudflare deployment and webhook cutover, and production telemetry validation remain operational work. This parity work does not deploy resources or switch the active bot. A supervised interactive Cloudflare development runner is also not included; current native-runtime validation uses workerd integration tests with local PostgreSQL and mocked Telegram HTTP.
+
 ## Contents
 
 - [Overview](#overview)

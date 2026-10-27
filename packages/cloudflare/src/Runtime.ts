@@ -1,3 +1,4 @@
+import type * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import type * as Layer from 'effect/Layer';
 import type { Router } from 'tfx/BotRouter';
@@ -16,6 +17,8 @@ export const make = <
 	RecoveryError = never,
 >(options: {
 	readonly botId: string;
+	/** Whole update budget, including layer acquisition and output. Defaults to 10s. */
+	readonly dispatchTimeout?: Duration.Input;
 	readonly layer: (
 		env: Env,
 	) => Layer.Layer<R | JobRuntime | JobWakeup | UpdateDeduplicator, E>;
@@ -31,7 +34,7 @@ export const make = <
 					return yield* BotRuntime.dispatch(update, router);
 				}).pipe(
 					Effect.provide(options.layer(env)),
-					Effect.timeout('10 seconds'),
+					Effect.timeout(options.dispatchTimeout ?? '10 seconds'),
 					Effect.tap((outcome) =>
 						Effect.logInfo('tfx.cloudflare.update').pipe(
 							Effect.annotateLogs({

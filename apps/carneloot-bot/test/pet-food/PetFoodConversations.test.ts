@@ -851,7 +851,7 @@ describe('pet food conversation transcripts', () => {
 				h.layer,
 			),
 		);
-		expect(h.replies).toContain('Conversa cancelada.');
+		expect(h.replies).toContain('Operação cancelada');
 		expect(h.removeKeyboardReplies.filter(Boolean)).toHaveLength(2);
 	});
 
@@ -882,7 +882,7 @@ describe('pet food conversation transcripts', () => {
 			),
 		);
 		expect(
-			h.replies.filter((text) => text === 'Conversa cancelada.'),
+			h.replies.filter((text) => text === 'Operação cancelada'),
 		).toHaveLength(2);
 		expect(h.removeKeyboardReplies.filter(Boolean)).toHaveLength(2);
 	});

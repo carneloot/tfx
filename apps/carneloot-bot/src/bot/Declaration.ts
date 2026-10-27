@@ -14,6 +14,7 @@ import { ApplicationError } from '../domain/ApplicationError.js';
 import { FoodAmount } from '../domain/pet-food/FoodAmount.js';
 import { FoodWhenInput } from '../domain/pet-food/FoodWhenInput.js';
 import { CurrentUser } from './CurrentUser.js';
+import * as ForwardToOwner from './ForwardToOwner.js';
 
 export const RegisteredUser = Middleware.make('registered-user', {
 	scope: 'global',
@@ -21,13 +22,79 @@ export const RegisteredUser = Middleware.make('registered-user', {
 	provides: CurrentUser,
 	error: ApplicationError,
 });
-export const account = BotGroup.make('account').add(
-	Command.make('register', {
-		name: 'cadastrar',
-		description: 'Cadastrar ou atualizar seu perfil',
-		error: ApplicationError,
-	}),
+const generalInput = CommandInput.optional(
+	CommandInput.rest('input', Schema.String),
 );
+export const general = BotGroup.make('general')
+	.add(
+		Command.make('start', {
+			name: 'start',
+			description: 'Iniciar o bot',
+			error: ApplicationError,
+		}),
+	)
+	.add(
+		Command.make('cancel', {
+			name: 'cancelar',
+			description: 'Cancelar a operação atual',
+			error: ApplicationError,
+		}),
+	)
+	.add(
+		Command.make('ping', {
+			name: 'ping',
+			description: 'Verificar resposta, com atraso opcional em ms',
+			input: generalInput,
+			error: ApplicationError,
+		}),
+	)
+	.add(
+		Command.make('whats', {
+			name: 'whats',
+			description: 'Criar link do WhatsApp com mensagem opcional',
+			input: generalInput,
+			error: ApplicationError,
+		}),
+	)
+	.add(
+		Command.make('cafe', {
+			name: 'cafe',
+			description: 'Calcular café V60 pela quantidade de água',
+			input: generalInput,
+			error: ApplicationError,
+		}),
+	)
+	.add(
+		Command.make('cafeInv', {
+			name: 'cafe_inv',
+			description: 'Calcular água para V60 pela quantidade de café',
+			input: generalInput,
+			error: ApplicationError,
+		}),
+	)
+	.addMessage(
+		MessageHandler.make('hello', {
+			input: MessageInput.text(Schema.String),
+			error: ApplicationError,
+		}),
+	);
+
+export const account = BotGroup.make('account')
+	.add(
+		Command.make('register', {
+			name: 'cadastrar',
+			description: 'Cadastrar ou atualizar seu perfil',
+			error: ApplicationError,
+		}),
+	)
+	.add(
+		Command.make('generateApiKey', {
+			name: 'gerar_chave',
+			description: 'Gerar chave para notificações externas',
+			middleware: [RegisteredUser],
+			error: ApplicationError,
+		}),
+	);
 export const pets = BotGroup.make('pets')
 	.add(
 		Command.make('addPet', {
@@ -158,18 +225,26 @@ export const petFood = BotGroup.make('petFood')
 	)
 	.add(addFoodToAll);
 
-export const replies = BotGroup.make('replies').addMessage(
-	MessageHandler.make('foodReply', {
-		input: MessageInput.replyText(Schema.String),
-		middleware: [RegisteredUser],
-		error: ApplicationError,
-	}),
-);
+export const replies = BotGroup.make('replies')
+	.addMessage(
+		MessageHandler.make('externalNotificationReply', {
+			input: MessageInput.replyText(Schema.String),
+			error: ApplicationError,
+		}),
+	)
+	.addMessage(
+		MessageHandler.make('foodReply', {
+			input: MessageInput.replyText(Schema.String),
+			error: ApplicationError,
+		}),
+	);
 
 export const Carneloot = Bot.make('carneloot')
 	.add(account)
 	.add(pets)
 	.add(petFood)
-	.add(replies);
+	.add(replies)
+	.add(ForwardToOwner.group)
+	.add(general);
 export const menuCommands = Bot.commandMenu(Carneloot);
 export const botId = Carneloot.name;
