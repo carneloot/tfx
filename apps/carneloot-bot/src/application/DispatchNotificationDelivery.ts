@@ -29,11 +29,82 @@ import { NotificationRecipients } from '../ports/NotificationRecipients.js';
 import {
 	NotificationRepository,
 	NotificationRepositoryError,
+	type DeliveryClaim,
 } from '../ports/NotificationRepository.js';
 import { PetCaregiverRepository } from '../ports/PetCaregiverRepository.js';
 import { PetFoodRepository } from '../ports/PetFoodRepository.js';
 import { PetRepository } from '../ports/PetRepository.js';
 import { UserRepository } from '../ports/UserRepository.js';
+
+/** One fenced, non-retrying external attempt. Unknown sends never become claimable. */
+export const executeExternalClaim = Effect.fn(
+	'DispatchNotificationDelivery.executeExternalClaim',
+)(function* (
+	botId: BotId,
+	text: string,
+	claim: DeliveryClaim,
+	replyToMessageId?: number,
+) {
+	const notifications = yield* NotificationRepository;
+	const telegram = yield* Telegram;
+	const sent =
+		claim.delivery.recipientChatId === null
+			? undefined
+			: yield* Effect.result(
+					telegram.sendMessage({
+						chat_id: claim.delivery.recipientChatId,
+						text,
+						...(replyToMessageId === undefined
+							? {}
+							: { reply_parameters: { message_id: replyToMessageId } }),
+					}),
+				);
+	const now = yield* DateTime.now;
+	const disposition =
+		sent?._tag === 'Failure' ? classifyTelegramError(sent.failure) : undefined;
+	const status =
+		sent?._tag === 'Success'
+			? ('sent' as const)
+			: disposition?._tag === 'Unknown'
+				? ('unknown' as const)
+				: ('failed' as const);
+	const safeError = disposition?.error ?? {
+		code: 'MissingTelegramIdentity',
+		message: 'Recipient has no private chat',
+	};
+	const finalized = yield* Effect.result(
+		sent?._tag === 'Success'
+			? notifications.finalizeSent(
+					claim.token,
+					botId,
+					sent.success.message_id,
+					now,
+				)
+			: status === 'unknown'
+				? notifications.finalizeUnknown(claim.token, safeError, now)
+				: notifications.finalizeFailed(
+						claim.token,
+						safeError,
+						false,
+						null,
+						now,
+					),
+	);
+	if (finalized._tag === 'Success' && finalized.success) return status;
+	// If success cannot be recorded, do not report a known failure or retry the send.
+	// A surviving sending lease also recovers to unknown after a process crash.
+	yield* notifications
+		.finalizeUnknown(
+			claim.token,
+			{
+				code: 'PersistenceUncertain',
+				message: 'Delivery finalization was not confirmed',
+			},
+			now,
+		)
+		.pipe(Effect.result);
+	return 'unknown' as const;
+});
 
 export type TelegramDisposition =
 	| {
