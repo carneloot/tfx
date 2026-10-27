@@ -66,6 +66,7 @@ const config = {
 	databaseUrl: Redacted.make('postgres://redacted'),
 	botId: 'carneloot',
 	botUsername: 'carneloot_bot',
+	forwarding: { ownerChatId: undefined, usernames: [] },
 	pollingTimeout: Duration.seconds(30),
 	pollingRetryDelay: Duration.millis(100),
 	dispatchCapacity: 8,

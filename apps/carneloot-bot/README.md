@@ -36,6 +36,21 @@ cp apps/carneloot-bot/.env.example apps/carneloot-bot/.env
 
 Startup applies checksummed tfx and Carneloot migrations under PostgreSQL advisory locks. One externally supplied `PgClient` Layer owns all migrations, repositories, durable deduplication, conversations, and jobs. Production refuses memory/no-op deduplication.
 
+### Owner forwarding
+
+Both Bun polling and Cloudflare accept these optional settings:
+
+```dotenv
+TELEGRAM_FORWARD_USERNAMES=alice,@bob
+OWNER_TELEGRAM_ID=123456789
+```
+
+The allowlist is comma-separated. Entries are trimmed, leading `@` characters are removed, and matching ignores case. An absent or empty allowlist disables forwarding. A nonempty allowlist requires a positive numeric `OWNER_TELEGRAM_ID`. The owner setting alone is allowed; omit it entirely when unused. The owner must have started the bot before Telegram can deliver private messages to them. Alchemy validates these settings and binds them to the Worker.
+
+Eligible messages are Telegram-forwarded to the owner, then the original receives 🕊. Registration and text are not required, so photos and other media can forward too. Commands, including addressed commands and `bot_command` entities in text or captions, never forward. Active conversations and consuming reply handlers take precedence; unrelated replies remain eligible. Forwarding does not consume the message, so the generic hello responder can still run afterward. This is separate from external-notification subscriber reply forwarding.
+
+Forward and reaction failures use the existing handled-with-output-failure outcome. Neither output is retried. Once dispatch records a completed outcome, duplicate updates do not forward again. A lost response may mean Telegram accepted the forward without confirmation. Investigate delivery rather than replaying the update blindly. No message content or configuration values are logged by this handler.
+
 ## Run
 
 ```sh

@@ -6,6 +6,7 @@ import { UpdateDeduplicator } from 'tfx/UpdateDeduplicator';
 import type * as UpdateDelivery from 'tfx/UpdateDelivery';
 
 import { Carneloot } from './bot/Declaration.js';
+import * as ForwardToOwner from './bot/ForwardToOwner.js';
 import type { AppConfigService } from './Config.js';
 import * as JobWorkerLive from './JobWorker.js';
 import * as AppRouter from './Router.js';
@@ -35,7 +36,7 @@ export const layer = <D extends UpdateDelivery.UpdateDelivery<any, any, any>>(
 				delivery,
 				...runtimeOptions(config, router),
 			}),
-		),
+		).pipe(Effect.provideService(ForwardToOwner.Settings, config.forwarding)),
 	);
 	const worker = JobWorkerLive.layer(workerOptions(config));
 	const deduplicator = Layer.effect(UpdateDeduplicator, UpdateDeduplicator);
