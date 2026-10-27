@@ -224,7 +224,7 @@ else
 								'Atraso de notificação configurado para 8 horas.',
 								'- Rex: 0 g, nenhuma ração hoje',
 								'Escolha o pet:',
-								'Envie a quantidade e, opcionalmente, o horário.',
+								'Envie a quantidade e, opcionalmente, o horário (HH:mm, DD/MM[/AAAA] HH:mm ou -5min para 5 minutos antes desta mensagem).',
 								'Foram adicionados 50 g de ração para o pet Rex.',
 								'- Rex: 50 g, última vez há menos de 1 minuto',
 							]);
@@ -344,7 +344,7 @@ else
 									.filter((text) => text === 'Por favor, escolha uma opção'),
 							).toHaveLength(3);
 							expect(f.sentText()).toContain(
-								'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',
+								'Formato inválido. Envie a quantidade e, opcionalmente, o horário (HH:mm, DD/MM[/AAAA] HH:mm ou -5min para 5 minutos antes desta mensagem).',
 							);
 							// Food before delay persists without a reminder.
 							expect(
