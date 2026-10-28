@@ -22,9 +22,8 @@ import {
 	TelegramUserId,
 	UserId,
 } from '../../domain/Ids.js';
-import { FoodAmount } from '../../domain/pet-food/FoodAmount.js';
 import { IanaTimeZone } from '../../domain/pet-food/FoodDateTime.js';
-import { splitAmountAndWhen } from '../../domain/pet-food/FoodWhenInput.js';
+import { FoodInput } from '../../domain/pet-food/FoodWhenInput.js';
 import { PetName } from '../../domain/Pet.js';
 import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
 import { RegisteredUser } from '../Declaration.js';
@@ -62,7 +61,10 @@ export const declaration = Conversation.make('add-pet-food', {
 	initialize: (state) => state,
 	steps: {
 		pet: Conversation.step('pet', { state: PetState, input: Text }),
-		amount: Conversation.step('amount', { state: AmountState, input: Text }),
+		amount: Conversation.step('amount', {
+			state: AmountState,
+			input: ConversationInput.text(FoodInput),
+		}),
 	},
 	middleware: [RegisteredUser],
 	idleTimeout: 15 * 60 * 1_000,
@@ -140,22 +142,6 @@ export const built = ConversationBuilder.done(
 			enter: () => ConversationUi.replyRemovingKeyboard(amountPrompt),
 			onInput: (state, value) =>
 				Effect.gen(function* () {
-					const parsed = splitAmountAndWhen(value);
-					if (parsed === undefined)
-						return ConversationBuilder.stay({
-							afterCommit: ConversationUi.replyRemovingKeyboard(
-								`Formato inválido. ${amountPrompt}`,
-							),
-						});
-					const amount = yield* Effect.result(
-						Schema.decodeUnknownEffect(FoodAmount)(parsed.amount),
-					);
-					if (amount._tag === 'Failure')
-						return ConversationBuilder.stay({
-							afterCommit: ConversationUi.replyRemovingKeyboard(
-								`Formato inválido. ${amountPrompt}`,
-							),
-						});
 					const context = yield* MessageContext.MessageContext;
 					const update = yield* UpdateContext.UpdateContext;
 					const messageChatId = yield* Schema.decodeUnknownEffect(
@@ -178,8 +164,8 @@ export const built = ConversationBuilder.done(
 								petId: state.petId,
 							},
 							{
-								amountMg: amount.success,
-								when: parsed.when,
+								amountMg: value.amountMg,
+								when: value.when,
 								messageDate: DateTime.makeUnsafe(context.message.date * 1_000),
 							},
 							{

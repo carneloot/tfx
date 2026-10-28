@@ -11,8 +11,7 @@ import {
 	TelegramUserId,
 	UserId,
 } from '../domain/Ids.js';
-import { FoodAmount } from '../domain/pet-food/FoodAmount.js';
-import { splitAmountAndWhen } from '../domain/pet-food/FoodWhenInput.js';
+import { FoodInput } from '../domain/pet-food/FoodWhenInput.js';
 import { PetFoodEntry } from '../domain/pet-food/PetFood.js';
 import { PetName } from '../domain/Pet.js';
 import { NotificationRepository } from '../ports/NotificationRepository.js';
@@ -104,12 +103,10 @@ const route = (input: RouteFoodReplyInput) =>
 			reply.delivery.recipientUserId === input.actorId &&
 			reply.event.petId !== null
 		) {
-			const parsed = splitAmountAndWhen(input.text);
-			if (parsed === undefined) return invalidResult();
-			const amount = yield* Schema.decodeUnknownEffect(FoodAmount)(
-				parsed.amount,
+			const parsed = yield* Schema.decodeUnknownEffect(FoodInput)(
+				input.text,
 			).pipe(Effect.option);
-			if (amount._tag === 'None') return invalidResult();
+			if (parsed._tag === 'None') return invalidResult();
 			const access = {
 				actorId: input.actorId,
 				botId: input.botId,
@@ -120,8 +117,8 @@ const route = (input: RouteFoodReplyInput) =>
 			const added = yield* AddFood.execute(
 				access,
 				{
-					amountMg: amount.value,
-					when: parsed.when,
+					amountMg: parsed.value.amountMg,
+					when: parsed.value.when,
 					messageDate: input.messageDate,
 				},
 				{
