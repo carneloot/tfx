@@ -1,4 +1,3 @@
-import * as PgClient from '@effect/sql-pg/PgClient';
 import * as Data from 'effect/Data';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
@@ -10,7 +9,6 @@ import {
 	ConversationInput,
 	ConversationPrompt,
 } from 'tfx';
-import type { TaggedError } from 'tfx/TaggedError';
 
 import * as ConfigureReminderDelay from '../../application/ConfigureReminderDelay.js';
 import { authorize } from '../../application/PetFoodAccess.js';
@@ -18,12 +16,7 @@ import { ApplicationError } from '../../domain/ApplicationError.js';
 import { BotId, PetId, TelegramUserId, UserId } from '../../domain/Ids.js';
 import { ReminderDelay } from '../../domain/pet-food/PetFood.js';
 import { PetName } from '../../domain/Pet.js';
-import { PetCaregiverRepository } from '../../ports/PetCaregiverRepository.js';
 import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
-import { PetRepository } from '../../ports/PetRepository.js';
-import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
-import { UserRepository } from '../../ports/UserRepository.js';
-import { CurrentUser } from '../CurrentUser.js';
 import { RegisteredUser } from '../Declaration.js';
 import * as ConversationUi from './ConversationUi.js';
 
@@ -69,39 +62,6 @@ const actionChoice = (currentDelayMs: number | null) =>
 const deleteChoice = ConversationChoice.reply(
 	[{ label: 'Confirmar', value: true }],
 	{ cancelLabel: 'Cancelar' },
-);
-const widen = <A, E extends TaggedError, R>(effect: Effect.Effect<A, E, R>) =>
-	effect;
-const reply = ConversationUi.reply;
-const replyRemovingKeyboard = ConversationUi.replyRemovingKeyboard;
-const required = <A, E extends TaggedError, R>(
-	effect: Effect.Effect<A, E, R>,
-) =>
-	Effect.gen(function* () {
-		yield* PgClient.PgClient;
-		yield* PetFoodRepository;
-		yield* PetRepository;
-		yield* PetCaregiverRepository;
-		yield* ReminderScheduler;
-		yield* UserRepository;
-		yield* CurrentUser;
-		return yield* effect;
-	});
-const invalidChoice = required(
-	Effect.succeed(
-		ConversationBuilder.stay({
-			afterCommit: reply('Por favor, escolha uma opção'),
-		}),
-	),
-);
-const invalidDuration = required(
-	Effect.succeed(
-		ConversationBuilder.stay({
-			afterCommit: reply(
-				'Formato inválido. Envie uma duração positiva de até 30 dias.',
-			),
-		}),
-	),
 );
 
 export class InvalidReminderDurationError extends Data.TaggedError(
@@ -162,159 +122,189 @@ export const declaration = Conversation.make('configure-reminder-delay', {
 	error: ApplicationError,
 });
 
-const access = (state: typeof SelectedState.Type) => ({
-	actorId: state.actorId,
-	botId: state.botId,
-	telegramUserId: state.telegramUserId,
-	petId: state.petId,
-});
-
 export const built = ConversationBuilder.done(
 	ConversationBuilder.make(declaration)
 		.step('pet', {
 			enter: (state) =>
-				required(
-					state.pets.length === 0
-						? replyRemovingKeyboard('Você não tem pets')
-						: ConversationUi.promptChoice('Escolha o pet:', petChoice(state)),
-				),
+				state.pets.length === 0
+					? ConversationUi.replyRemovingKeyboard('Você não tem pets')
+					: ConversationUi.promptChoice('Escolha o pet:', petChoice(state)),
 			onInput: (state, value) =>
-				required(
-					widen(
-						Effect.gen(function* () {
-							if (state.pets.length === 0)
-								return ConversationBuilder.cancelled({
-									afterCommit: replyRemovingKeyboard('Você não tem pets'),
-								});
-							const result = yield* Effect.result(
-								ConversationPrompt.resolve(petChoice(state), value),
-							);
-							if (result._tag === 'Failure') return yield* invalidChoice;
-							const selected = result.success;
-							if (selected._tag === 'Cancelled')
-								return ConversationBuilder.cancelled({
-									afterCommit: replyRemovingKeyboard('Operação cancelada.'),
-								});
-							const pet = state.pets.find((item) => item.id === selected.value);
-							if (pet === undefined) return yield* invalidChoice;
-							yield* authorize({
-								actorId: state.actorId,
-								botId: state.botId,
-								telegramUserId: state.telegramUserId,
-								petId: pet.id,
-							});
-							const repository = yield* PetFoodRepository;
-							const settings = yield* repository.getSettings(pet.id);
-							const currentDelay = settings?.reminderDelay ?? null;
-							return ConversationBuilder.to('action', {
-								...state,
-								petId: pet.id,
-								currentDelayMs:
-									currentDelay === null
-										? null
-										: Duration.toMillis(currentDelay),
-							});
-						}),
-					),
+				Effect.gen(function* () {
+					if (state.pets.length === 0)
+						return ConversationBuilder.cancelled({
+							afterCommit:
+								ConversationUi.replyRemovingKeyboard('Você não tem pets'),
+						});
+					const result = yield* Effect.result(
+						ConversationPrompt.resolve(petChoice(state), value),
+					);
+					if (result._tag === 'Failure')
+						return ConversationBuilder.stay({
+							afterCommit: ConversationUi.reply('Por favor, escolha uma opção'),
+						});
+					const selected = result.success;
+					if (selected._tag === 'Cancelled')
+						return ConversationBuilder.cancelled({
+							afterCommit: ConversationUi.replyRemovingKeyboard(
+								'Operação cancelada.',
+							),
+						});
+					const pet = state.pets.find((item) => item.id === selected.value);
+					if (pet === undefined)
+						return ConversationBuilder.stay({
+							afterCommit: ConversationUi.reply('Por favor, escolha uma opção'),
+						});
+					yield* authorize({
+						actorId: state.actorId,
+						botId: state.botId,
+						telegramUserId: state.telegramUserId,
+						petId: pet.id,
+					});
+					const repository = yield* PetFoodRepository;
+					const settings = yield* repository.getSettings(pet.id);
+					const currentDelay = settings?.reminderDelay ?? null;
+					return ConversationBuilder.to('action', {
+						...state,
+						petId: pet.id,
+						currentDelayMs:
+							currentDelay === null ? null : Duration.toMillis(currentDelay),
+					});
+				}),
+			onInvalid: () =>
+				Effect.succeed(
+					ConversationBuilder.stay({
+						afterCommit: ConversationUi.reply('Por favor, escolha uma opção'),
+					}),
 				),
-			onInvalid: () => invalidChoice,
 		})
 		.step('action', {
 			enter: (state) =>
-				required(
-					ConversationUi.promptChoice(
-						state.currentDelayMs === null
-							? 'Notificações desativadas.'
-							: `Atraso atual: ${normalized(Duration.millis(state.currentDelayMs))}.`,
-						actionChoice(state.currentDelayMs),
-					),
+				ConversationUi.promptChoice(
+					state.currentDelayMs === null
+						? 'Notificações desativadas.'
+						: `Atraso atual: ${normalized(Duration.millis(state.currentDelayMs))}.`,
+					actionChoice(state.currentDelayMs),
 				),
 			onInput: (state, value) =>
-				required(
-					Effect.gen(function* () {
-						const resolved = yield* Effect.result(
-							ConversationPrompt.resolve(
-								actionChoice(state.currentDelayMs),
-								value,
+				Effect.gen(function* () {
+					const resolved = yield* Effect.result(
+						ConversationPrompt.resolve(
+							actionChoice(state.currentDelayMs),
+							value,
+						),
+					);
+					if (resolved._tag === 'Failure')
+						return ConversationBuilder.stay({
+							afterCommit: ConversationUi.reply('Por favor, escolha uma opção'),
+						});
+					if (resolved.success._tag === 'Cancelled')
+						return ConversationBuilder.cancelled({
+							afterCommit: ConversationUi.replyRemovingKeyboard(
+								'Operação cancelada.',
 							),
-						);
-						if (resolved._tag === 'Failure') return yield* invalidChoice;
-						if (resolved.success._tag === 'Cancelled')
-							return ConversationBuilder.cancelled({
-								afterCommit: replyRemovingKeyboard('Operação cancelada.'),
-							});
-						const action = resolved.success.value;
-						const selected = {
-							actorId: state.actorId,
-							botId: state.botId,
-							telegramUserId: state.telegramUserId,
-							pets: state.pets,
-							petId: state.petId,
-						};
-						if (action === 'define' && state.currentDelayMs === null)
-							return ConversationBuilder.to('duration', selected);
-						if (action === 'change' && state.currentDelayMs !== null)
-							return ConversationBuilder.to('duration', selected);
-						if (action === 'delete' && state.currentDelayMs !== null)
-							return ConversationBuilder.to('deleteConfirm', selected);
-						return yield* invalidChoice;
+						});
+					const action = resolved.success.value;
+					const selected = {
+						actorId: state.actorId,
+						botId: state.botId,
+						telegramUserId: state.telegramUserId,
+						pets: state.pets,
+						petId: state.petId,
+					};
+					if (action === 'define' && state.currentDelayMs === null)
+						return ConversationBuilder.to('duration', selected);
+					if (action === 'change' && state.currentDelayMs !== null)
+						return ConversationBuilder.to('duration', selected);
+					if (action === 'delete' && state.currentDelayMs !== null)
+						return ConversationBuilder.to('deleteConfirm', selected);
+					return ConversationBuilder.stay({
+						afterCommit: ConversationUi.reply('Por favor, escolha uma opção'),
+					});
+				}),
+			onInvalid: () =>
+				Effect.succeed(
+					ConversationBuilder.stay({
+						afterCommit: ConversationUi.reply('Por favor, escolha uma opção'),
 					}),
 				),
-			onInvalid: () => invalidChoice,
 		})
 		.step('duration', {
 			enter: () =>
-				required(
-					replyRemovingKeyboard(
-						'Envie a duração, por exemplo 30 minutos ou 2 horas.',
-					),
+				ConversationUi.replyRemovingKeyboard(
+					'Envie a duração, por exemplo 30 minutos ou 2 horas.',
 				),
 			onInput: (state, value) =>
-				required(
-					widen(
-						Effect.gen(function* () {
-							const result = yield* Effect.result(parseDuration(value));
-							if (result._tag === 'Failure') return yield* invalidDuration;
-							yield* ConfigureReminderDelay.set(access(state), result.success);
-							return ConversationBuilder.complete({
-								afterCommit: replyRemovingKeyboard(
-									`Atraso de notificação configurado para ${normalized(result.success)}.`,
-								),
-							});
-						}),
-					),
+				Effect.gen(function* () {
+					const result = yield* Effect.result(parseDuration(value));
+					if (result._tag === 'Failure')
+						return ConversationBuilder.stay({
+							afterCommit: ConversationUi.reply(
+								'Formato inválido. Envie uma duração positiva de até 30 dias.',
+							),
+						});
+					yield* ConfigureReminderDelay.set(
+						{
+							actorId: state.actorId,
+							botId: state.botId,
+							telegramUserId: state.telegramUserId,
+							petId: state.petId,
+						},
+						result.success,
+					);
+					return ConversationBuilder.complete({
+						afterCommit: ConversationUi.replyRemovingKeyboard(
+							`Atraso de notificação configurado para ${normalized(result.success)}.`,
+						),
+					});
+				}),
+			onInvalid: () =>
+				Effect.succeed(
+					ConversationBuilder.stay({
+						afterCommit: ConversationUi.reply(
+							'Formato inválido. Envie uma duração positiva de até 30 dias.',
+						),
+					}),
 				),
-			onInvalid: () => invalidDuration,
 		})
 		.step('deleteConfirm', {
 			enter: () =>
-				required(
-					ConversationUi.promptChoice(
-						'Confirma excluir o atraso?',
-						deleteChoice,
-					),
-				),
+				ConversationUi.promptChoice('Confirma excluir o atraso?', deleteChoice),
 			onInput: (state, selected) =>
-				required(
-					selected._tag === 'Cancelled'
+				selected._tag === 'Cancelled'
+					? Effect.succeed(
+							ConversationBuilder.cancelled({
+								afterCommit: ConversationUi.replyRemovingKeyboard(
+									'Operação cancelada.',
+								),
+							}),
+						)
+					: !selected.value
 						? Effect.succeed(
-								ConversationBuilder.cancelled({
-									afterCommit: replyRemovingKeyboard('Operação cancelada.'),
+								ConversationBuilder.stay({
+									afterCommit: ConversationUi.reply(
+										'Por favor, escolha uma opção',
+									),
 								}),
 							)
-						: !selected.value
-							? invalidChoice
-							: widen(
-									Effect.as(
-										ConfigureReminderDelay.remove(access(state)),
-										ConversationBuilder.complete({
-											afterCommit: replyRemovingKeyboard(
-												'Notificações desativadas.',
-											),
-										}),
+						: Effect.as(
+								ConfigureReminderDelay.remove({
+									actorId: state.actorId,
+									botId: state.botId,
+									telegramUserId: state.telegramUserId,
+									petId: state.petId,
+								}),
+								ConversationBuilder.complete({
+									afterCommit: ConversationUi.replyRemovingKeyboard(
+										'Notificações desativadas.',
 									),
-								),
+								}),
+							),
+			onInvalid: () =>
+				Effect.succeed(
+					ConversationBuilder.stay({
+						afterCommit: ConversationUi.reply('Por favor, escolha uma opção'),
+					}),
 				),
-			onInvalid: () => invalidChoice,
 		}),
 );

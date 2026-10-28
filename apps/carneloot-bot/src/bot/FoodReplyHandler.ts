@@ -5,17 +5,40 @@ import { MessageContext, MessageHandlerResult, UpdateContext } from 'tfx';
 
 import * as RouteFoodReply from '../application/RouteFoodReply.js';
 import { InvalidDomainInput } from '../domain/DomainError.js';
-import { TelegramChatId } from '../domain/Ids.js';
+import { BotId, TelegramChatId, TelegramUserId } from '../domain/Ids.js';
+import { UserRepository } from '../ports/UserRepository.js';
 import { CurrentUser } from './CurrentUser.js';
+import { botId } from './Declaration.js';
 
 export const handle = (input: {
 	readonly text: string;
 	readonly repliedMessageId: number;
 }) =>
 	Effect.gen(function* () {
-		const current = yield* CurrentUser;
 		const update = yield* UpdateContext.UpdateContext;
 		const context = yield* MessageContext.MessageContext;
+		const sender = context.message.from;
+		if (sender === undefined) return MessageHandlerResult.unmatched;
+		const repository = yield* UserRepository;
+		const telegramUserId = yield* Schema.decodeUnknownEffect(TelegramUserId)(
+			sender.id,
+		).pipe(
+			Effect.mapError(
+				(cause) =>
+					new InvalidDomainInput({
+						message: 'Invalid Telegram user id',
+						cause,
+					}),
+			),
+		);
+		const current = yield* repository
+			.findByTelegram(Schema.decodeUnknownSync(BotId)(botId), telegramUserId)
+			.pipe(
+				Effect.catchTag('UserNotRegistered', () => Effect.succeed(undefined)),
+			);
+		// Unregistered replies cannot mutate food. Let unrelated text reach public
+		// handlers instead of turning every reply into a registration prompt.
+		if (current === undefined) return MessageHandlerResult.unmatched;
 		const chatId = yield* Schema.decodeUnknownEffect(TelegramChatId)(
 			context.chatId,
 		).pipe(
@@ -37,7 +60,7 @@ export const handle = (input: {
 			messageDate: DateTime.makeUnsafe(context.message.date * 1_000),
 			repliedMessageId: input.repliedMessageId,
 			text: input.text,
-		});
+		}).pipe(Effect.provideService(CurrentUser, current));
 		switch (result._tag) {
 			case 'Unrelated':
 				return MessageHandlerResult.unmatched;

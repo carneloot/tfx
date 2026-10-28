@@ -54,7 +54,10 @@ describe('portable Node composition', () => {
 				),
 			})),
 		).toEqual([
-			{ groupId: 'account', entries: ['Command:register'] },
+			{
+				groupId: 'account',
+				entries: ['Command:register', 'Command:generateApiKey'],
+			},
 			{
 				groupId: 'pets',
 				entries: [
@@ -80,7 +83,10 @@ describe('portable Node composition', () => {
 					'Command:addFoodToAll',
 				],
 			},
-			{ groupId: 'replies', entries: ['Message:foodReply'] },
+			{
+				groupId: 'replies',
+				entries: ['Message:externalNotificationReply', 'Message:foodReply'],
+			},
 		]);
 		expect(Router.conversations.map((built) => built.declaration.id)).toEqual([
 			'add-owned-pet',
@@ -95,12 +101,17 @@ describe('portable Node composition', () => {
 			'list-pet-caregivers',
 			'pet-caregiver-invitations',
 			'stop-caring-for-pet',
+			'generate-api-key',
 		]);
 		const polling = Production.pollingOptions(testConfig);
 		expect(polling.commands).toEqual([
 			{
 				command: 'cadastrar',
 				description: 'Cadastrar ou atualizar seu perfil',
+			},
+			{
+				command: 'gerar_chave',
+				description: 'Gerar chave para notificações externas',
 			},
 			{ command: 'adicionar_pet', description: 'Adicionar um pet' },
 			{ command: 'listar_pets', description: 'Listar seus pets' },
@@ -138,6 +149,24 @@ describe('portable Node composition', () => {
 			{
 				command: 'todos',
 				description: 'Registrar ração para todos os pets',
+			},
+			{ command: 'start', description: 'Iniciar o bot' },
+			{ command: 'cancelar', description: 'Cancelar a operação atual' },
+			{
+				command: 'ping',
+				description: 'Verificar resposta, com atraso opcional em ms',
+			},
+			{
+				command: 'whats',
+				description: 'Criar link do WhatsApp com mensagem opcional',
+			},
+			{
+				command: 'cafe',
+				description: 'Calcular café V60 pela quantidade de água',
+			},
+			{
+				command: 'cafe_inv',
+				description: 'Calcular água para V60 pela quantidade de café',
 			},
 		]);
 		expect(polling.languageCode).toBe('pt');

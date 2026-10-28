@@ -91,11 +91,12 @@ type Node<
 	O extends boolean,
 	RestFlag extends boolean,
 > = CommandInput<A, R, N, O, RestFlag> & Readonly<Record<string, unknown>>;
-const freeze = <A extends object>(value: A): A => Object.freeze(value);
-export const none: CommandInput<{}, never, never, false, false> = freeze({
-	[TypeId]: undefined as never,
-	_tag: 'None',
-});
+export const none: CommandInput<{}, never, never, false, false> = Object.freeze(
+	{
+		[TypeId]: undefined as never,
+		_tag: 'None',
+	},
+);
 type StringSchema = Schema.ConstraintCodec<any, string, any, any>;
 
 export const argument = <const Name extends string, S extends StringSchema>(
@@ -108,7 +109,7 @@ export const argument = <const Name extends string, S extends StringSchema>(
 	false,
 	false
 > =>
-	freeze({
+	Object.freeze({
 		[TypeId]: undefined as never,
 		_tag: 'Argument',
 		name,
@@ -124,7 +125,12 @@ export const rest = <const Name extends string, S extends StringSchema>(
 	false,
 	true
 > =>
-	freeze({ [TypeId]: undefined as never, _tag: 'Rest', name, schema }) as never;
+	Object.freeze({
+		[TypeId]: undefined as never,
+		_tag: 'Rest',
+		name,
+		schema,
+	}) as never;
 export const optional = <I extends AnyInput>(
 	input: I,
 ): Node<
@@ -133,12 +139,21 @@ export const optional = <I extends AnyInput>(
 	Names<I>,
 	true,
 	HasRest<I>
-> => freeze({ [TypeId]: undefined as never, _tag: 'Optional', input }) as never;
+> =>
+	Object.freeze({
+		[TypeId]: undefined as never,
+		_tag: 'Optional',
+		input,
+	}) as never;
 /** Repeat exactly one input description until command text is exhausted. */
 export const repeated = <I extends AnyInput>(
 	input: I & (HasRest<I> extends true ? never : unknown),
 ): Node<ArrayDecoded<I>, Requirements<I>, Names<I>, false, true> =>
-	freeze({ [TypeId]: undefined as never, _tag: 'Repeated', input }) as never;
+	Object.freeze({
+		[TypeId]: undefined as never,
+		_tag: 'Repeated',
+		input,
+	}) as never;
 
 const shape = (
 	input: RuntimeInput,
@@ -203,17 +218,22 @@ export const sequence = <const Inputs extends readonly AnyInput[]>(
 		optionalSeen ||= current.optional;
 		restSeen ||= current.rest;
 	}
-	return freeze({
+	return Object.freeze({
 		[TypeId]: undefined as never,
 		_tag: 'Sequence',
-		inputs: freeze([...inputs]),
+		inputs: Object.freeze([...inputs]),
 	}) as never;
 };
 export const map = <I extends AnyInput, B>(
 	input: I,
 	f: (value: Decoded<I>) => B,
 ): CommandInput<B, Requirements<I>, Names<I>, IsOptional<I>, HasRest<I>> =>
-	freeze({ [TypeId]: undefined as never, _tag: 'Map', input, map: f }) as never;
+	Object.freeze({
+		[TypeId]: undefined as never,
+		_tag: 'Map',
+		input,
+		map: f,
+	}) as never;
 
 /** @internal */
 export type RuntimeInput = AnyInput & {

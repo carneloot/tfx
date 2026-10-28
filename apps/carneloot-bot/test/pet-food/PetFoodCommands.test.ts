@@ -25,6 +25,7 @@ import {
 	IanaTimeZone,
 	LocalTime,
 } from '../../src/domain/pet-food/FoodDateTime.js';
+import { FoodInput } from '../../src/domain/pet-food/FoodWhenInput.js';
 import {
 	FoodEntryId,
 	PetFoodSettings,
@@ -323,7 +324,7 @@ describe('pet food command handlers', () => {
 					provide(
 						AddFoodConversation.built.implementations.amount.onInput(
 							selected.state as never,
-							'50g',
+							Schema.decodeUnknownSync(FoodInput)('50g'),
 						),
 						food,
 					),
@@ -384,7 +385,7 @@ describe('pet food command handlers', () => {
 				const transition = yield* provide(
 					AddFoodConversation.built.implementations.amount.onInput(
 						state,
-						'50g',
+						Schema.decodeUnknownSync(FoodInput)('50g'),
 					),
 					food,
 				);
@@ -484,10 +485,15 @@ describe('pet food command handlers', () => {
 			const transition = await Effect.runPromise(
 				Effect.provide(
 					provide(
-						AddFoodConversation.built.implementations.amount.onInput(
-							state,
-							value,
-						),
+						Effect.gen(function* () {
+							const decoded = yield* Effect.result(
+								Schema.decodeUnknownEffect(FoodInput)(value),
+							);
+							const handlers = AddFoodConversation.built.implementations.amount;
+							return yield* decoded._tag === 'Success'
+								? handlers.onInput(state, decoded.success)
+								: handlers.onInvalid();
+						}),
 						food,
 					),
 					TestClock.layer(),
@@ -546,7 +552,7 @@ describe('pet food command handlers', () => {
 					provide(
 						AddFoodConversation.built.implementations.amount.onInput(
 							state,
-							'50g 01/01/2024 10:00',
+							Schema.decodeUnknownSync(FoodInput)('50g 01/01/2024 10:00'),
 						),
 						food,
 					),

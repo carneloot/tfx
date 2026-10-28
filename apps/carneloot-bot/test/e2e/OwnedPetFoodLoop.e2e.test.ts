@@ -39,6 +39,7 @@ const config: AppConfigService = {
 	databaseUrl: { toString: () => '<redacted>' } as never,
 	botId: 'carneloot',
 	botUsername: 'carneloot_bot',
+	forwarding: { ownerChatId: undefined, usernames: [] },
 	pollingTimeout: Duration.seconds(30),
 	pollingRetryDelay: Duration.millis(100),
 	dispatchCapacity: 16,
@@ -224,7 +225,7 @@ else
 								'Atraso de notificação configurado para 8 horas.',
 								'- Rex: 0 g, nenhuma ração hoje',
 								'Escolha o pet:',
-								'Envie a quantidade e, opcionalmente, o horário.',
+								'Envie a quantidade e, opcionalmente, o horário (HH:mm, DD/MM[/AAAA] HH:mm ou -5min para 5 minutos antes desta mensagem).',
 								'Foram adicionados 50 g de ração para o pet Rex.',
 								'- Rex: 50 g, última vez há menos de 1 minuto',
 							]);
@@ -313,7 +314,7 @@ else
 								'Usuário cadastrado com sucesso!',
 								'Você não tem pets',
 								'Qual o nome do seu pet?',
-								'Conversa cancelada.',
+								'Operação cancelada',
 							]);
 							expect(
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
@@ -344,7 +345,7 @@ else
 									.filter((text) => text === 'Por favor, escolha uma opção'),
 							).toHaveLength(3);
 							expect(f.sentText()).toContain(
-								'Formato inválido. Envie a quantidade e, opcionalmente, o horário.',
+								'Formato inválido. Envie a quantidade e, opcionalmente, o horário (HH:mm, DD/MM[/AAAA] HH:mm ou -5min para 5 minutos antes desta mensagem).',
 							);
 							// Food before delay persists without a reminder.
 							expect(
@@ -429,7 +430,7 @@ else
 								messageUpdate(1001, '/cancelar@other_bot', sender),
 							);
 							expect(f.sentText().slice(outputCount)).not.toContain(
-								'Conversa cancelada.',
+								'Operação cancelada',
 							);
 							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(
 								petsBeforeForeignMention.length + 1,

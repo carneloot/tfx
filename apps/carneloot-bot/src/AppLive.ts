@@ -7,16 +7,21 @@ import * as DomainLive from './DomainLive.js';
 import * as PersistenceLive from './PersistenceLive.js';
 import * as RuntimeLive from './RuntimeLive.js';
 
+/** Shared domain graph, without acquiring a polling source or job worker. */
+export const applicationLayer = Layer.unwrap(
+	Effect.map(AppConfig, (config) =>
+		Layer.provideMerge(DomainLive.layer, PersistenceLive.layer(config)),
+	),
+);
+
 export const layer = <D extends UpdateDelivery.UpdateDelivery<any, any, any>>(
 	delivery: (config: AppConfigService) => D,
 ) =>
-	Layer.unwrap(
-		Effect.map(AppConfig, (config) => {
-			const persistence = PersistenceLive.layer(config);
-			const application = Layer.provideMerge(DomainLive.layer, persistence);
-			return Layer.provide(
+	Layer.provide(
+		Layer.unwrap(
+			Effect.map(AppConfig, (config) =>
 				RuntimeLive.layer(config, delivery(config)),
-				application,
-			);
-		}),
+			),
+		),
+		applicationLayer,
 	);

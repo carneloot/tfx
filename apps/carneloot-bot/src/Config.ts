@@ -6,12 +6,14 @@ import * as Layer from 'effect/Layer';
 import * as Redacted from 'effect/Redacted';
 
 import { Carneloot } from './bot/Declaration.js';
+import * as ForwardToOwner from './bot/ForwardToOwner.js';
 
 export interface AppConfigService {
 	readonly botToken: Redacted.Redacted<string>;
 	readonly databaseUrl: Redacted.Redacted<string>;
 	readonly botId: typeof Carneloot.name;
 	readonly botUsername: string;
+	readonly forwarding: ForwardToOwner.Options;
 	readonly pollingTimeout: Duration.Duration;
 	readonly pollingRetryDelay: Duration.Duration;
 	readonly dispatchCapacity: number;
@@ -37,6 +39,7 @@ const source = Config.all({
 	databaseUrl: Config.Redacted('DATABASE_URL'),
 	botId: Config.String('BOT_ID'),
 	botUsername: Config.String('BOT_USERNAME'),
+	forwarding: ForwardToOwner.config,
 	pollingTimeout: Config.Duration('POLLING_TIMEOUT'),
 	pollingRetryDelay: Config.Duration('POLLING_RETRY_DELAY'),
 	dispatchCapacity: Config.Int('DISPATCH_CAPACITY'),

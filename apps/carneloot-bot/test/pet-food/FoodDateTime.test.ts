@@ -41,6 +41,9 @@ describe('FoodWhenInput', () => {
 	});
 
 	it.each([
+		'-0min',
+		'-5min',
+		'-1441MIN',
 		'08:30',
 		'16/01 08:30',
 		'16-01 08:30',
@@ -58,12 +61,61 @@ describe('FoodWhenInput', () => {
 		'08:30:00',
 		'1/01 08:00',
 		'yesterday 08:30',
+		'+5min',
+		'5min',
+		'-1.5min',
+		'--5min',
+		'-5 min',
+		'-5minutes',
+		'-5min extra',
+		'-5h',
 	])('rejects unsupported syntax: %s', (value) => {
 		expect(() => Schema.decodeUnknownSync(FoodWhenInput)(value)).toThrow();
 	});
 });
 
 describe('FoodDateTime', () => {
+	it.each([
+		['-0min', '2024-01-01T03:02:30.123Z'],
+		['-5min', '2024-01-01T02:57:30.123Z'],
+		['-1441MIN', '2023-12-31T03:01:30.123Z'],
+	] as const)(
+		'subtracts elapsed minutes from the message across local midnight/year: %s',
+		async (input, expected) => {
+			const saoPaulo =
+				Schema.decodeUnknownSync(IanaTimeZone)('America/Sao_Paulo');
+			await expectInstant(
+				runWithClock(
+					'2026-07-16T20:00:00Z',
+					parse(input, saoPaulo, instant('2024-01-01T03:02:30.123Z')),
+				),
+				expected,
+			);
+		},
+	);
+
+	it('subtracts elapsed minutes across DST rather than local wall-clock minutes', async () => {
+		await expectInstant(
+			Effect.runPromise(parsedAt('-61min', '2024-03-10T07:30:30Z')),
+			'2024-03-10T06:29:30Z',
+		);
+	});
+
+	it.each([
+		'+5min',
+		'-1.5min',
+		'-5min extra',
+		'-9007199254740993min',
+		'-144000000001min',
+	])(
+		'rejects malformed or unrepresentable relative times: %s',
+		async (input) => {
+			await expect(
+				Effect.runPromise(parsedAt(input, '1970-01-01T00:00:00Z')),
+			).rejects.toMatchObject({ reason: 'InvalidFoodDateTime' });
+		},
+	);
+
 	it('validates named IANA zones and exact HH:mm', () => {
 		expect(Schema.decodeUnknownSync(IanaTimeZone)('UTC')).toBe('UTC');
 		expect(() => Schema.decodeUnknownSync(IanaTimeZone)('+03:00')).toThrow();

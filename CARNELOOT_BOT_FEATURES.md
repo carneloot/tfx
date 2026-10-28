@@ -4,6 +4,16 @@
 >
 > This document describes behavior implemented in source. User-facing bot text and command names remain in Portuguese.
 
+## tfx migration status
+
+The reference below describes the pinned legacy snapshot, not the new runtime. The parity implementation also checked upstream `carneloot/carneloot-bot` at `08dbb5e36f3e5b2abd7f5bac0b3925423d2ff585`, which adds relative feeding timestamps and owner forwarding.
+
+`apps/carneloot-bot` now implements the general utilities, registration, API-key generation and confirmation, shared pets, food tracking and replies, reminders, external notifications and subscriber replies, and optional owner forwarding. Both Bun polling and the Cloudflare Worker expose `/api/notify`. See the [current application reference](apps/carneloot-bot/README.md) for configuration and delivery semantics.
+
+Intentional differences include message-time-anchored relative corrections, transactional mutation authorization, chat-scoped reply lookup, replacement reminder scheduling, complete placeholder replacement, and explicit partial or unknown notification outcomes. These changes do not reproduce the legacy bugs listed below. Templates and subscribers still have no management interface, matching the legacy implementation.
+
+Feature implementation is separate from production readiness. Live Telegram rehearsal, production data import and backup/restore rehearsal, Cloudflare deployment and webhook cutover, and production telemetry validation remain operational work. This parity work does not deploy resources or switch the active bot. A supervised interactive Cloudflare development runner is also not included; current native-runtime validation uses workerd integration tests with local PostgreSQL and mocked Telegram HTTP.
+
 ## Contents
 
 - [Overview](#overview)
@@ -671,6 +681,30 @@ Rules:
 - display and daily grouping use pet timezone.
 
 Source: `.repos/carneloot-bot/src/common/utils/parse-pet-food-weight-and-time.ts`.
+
+### Relative minutes, upstream update
+
+The pinned snapshot above predates relative timestamps. Upstream
+[`08dbb5e`](https://github.com/carneloot/carneloot-bot/commit/08dbb5e36f3e5b2abd7f5bac0b3925423d2ff585)
+also supports quantity followed by `-Nmin`, for example `/todos 8 -5min`.
+`N` is a nonnegative whole number of elapsed minutes. Zero keeps the anchor
+unchanged. Relative subtraction preserves seconds and crosses date boundaries.
+
+Legacy additions and reminder replies subtract from the Telegram message time.
+Legacy command corrections and original-entry reply corrections instead subtract
+from each stored feeding time.
+
+The tfx implementation accepts relative timestamps for single-pet input,
+`/todos`, `/colocar_racao_todos`, command corrections, reminder replies, and
+original-entry reply corrections. Corrections also accept `-5min` without a
+quantity. Every explicit relative timestamp subtracts from the current Telegram
+message time, never the processing clock or the stored feeding time. This
+intentional correction difference keeps the anchor consistent across input
+paths. Quantity-only corrections still preserve the stored timestamp.
+
+Unlike the legacy unanchored parser, tfx rejects unsupported suffixes such as
+`+5min`, `-1.5min`, and `-5min extra`. Unrepresentable timestamps fail validation.
+Existing absolute-date and clock-time rules are unchanged.
 
 ## Reply-driven features
 

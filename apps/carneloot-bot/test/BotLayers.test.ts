@@ -4,8 +4,10 @@ import { describe, expect, it } from 'vitest';
 
 import * as AccountHandlers from '../src/bot/AccountHandlers.js';
 import { built } from '../src/bot/AddPetConversation.js';
+import * as ApiKeyHandlers from '../src/bot/ApiKeyHandlers.js';
 import * as CaregiverHandlers from '../src/bot/CaregiverHandlers.js';
 import { Carneloot } from '../src/bot/Declaration.js';
+import * as ExternalNotificationReplyHandler from '../src/bot/ExternalNotificationReplyHandler.js';
 import * as FoodReplyHandler from '../src/bot/FoodReplyHandler.js';
 import * as PetFoodHandlers from '../src/bot/PetFoodHandlers.js';
 import * as PetHandlers from '../src/bot/PetHandlers.js';
@@ -15,7 +17,9 @@ import * as Router from '../src/Router.js';
 describe('public bot Layer construction', () => {
 	it('composes declarations, middleware, handlers, and conversation without private imports', () => {
 		const account = BotBuilder.group(Carneloot, 'account', (handlers) =>
-			handlers.handle('register', () => AccountHandlers.registerCurrent),
+			handlers
+				.handle('register', () => AccountHandlers.registerCurrent)
+				.handle('generateApiKey', () => ApiKeyHandlers.startGenerateApiKey),
 		);
 		const pets = BotBuilder.group(Carneloot, 'pets', (handlers) =>
 			handlers
@@ -45,7 +49,12 @@ describe('public bot Layer construction', () => {
 				.handle('addFoodToAll', PetFoodHandlers.addFoodToAll),
 		);
 		const replies = BotBuilder.group(Carneloot, 'replies', (handlers) =>
-			handlers.handleMessage('foodReply', FoodReplyHandler.handle),
+			handlers
+				.handleMessage(
+					'externalNotificationReply',
+					ExternalNotificationReplyHandler.handle,
+				)
+				.handleMessage('foodReply', FoodReplyHandler.handle),
 		);
 		const middleware = Middleware.layer(RegisteredUser.live);
 		const integrated = Layer.provide(
@@ -59,6 +68,8 @@ describe('public bot Layer construction', () => {
 			'pets',
 			'petFood',
 			'replies',
+			'forwarding',
+			'general',
 		]);
 		expect(
 			[
@@ -75,7 +86,10 @@ describe('public bot Layer construction', () => {
 				),
 			})),
 		).toEqual([
-			{ groupId: 'account', entries: ['Command:register'] },
+			{
+				groupId: 'account',
+				entries: ['Command:register', 'Command:generateApiKey'],
+			},
 			{
 				groupId: 'pets',
 				entries: [
@@ -101,7 +115,10 @@ describe('public bot Layer construction', () => {
 					'Command:addFoodToAll',
 				],
 			},
-			{ groupId: 'replies', entries: ['Message:foodReply'] },
+			{
+				groupId: 'replies',
+				entries: ['Message:externalNotificationReply', 'Message:foodReply'],
+			},
 		]);
 	});
 });

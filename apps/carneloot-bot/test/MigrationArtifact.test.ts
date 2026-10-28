@@ -38,6 +38,10 @@ import {
 	migration0009Checksum,
 	migration0009Sql,
 } from '../src/postgres/Migration0009Sql.js';
+import {
+	migration0010Checksum,
+	migration0010Sql,
+} from '../src/postgres/Migration0010Sql.js';
 
 describe('application migration artifacts', () => {
 	it.each([
@@ -62,6 +66,11 @@ describe('application migration artifacts', () => {
 		],
 		['0008_food_reply_operations.sql', migration0008Sql, migration0008Checksum],
 		['0009_import_targets.sql', migration0009Sql, migration0009Checksum],
+		[
+			'0010_external_notification_payload.sql',
+			migration0010Sql,
+			migration0010Checksum,
+		],
 	] as const)(
 		'matches committed %s bytes and SHA-256',
 		(file, sql, checksum) => {

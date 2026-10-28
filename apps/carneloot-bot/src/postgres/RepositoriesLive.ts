@@ -1,9 +1,12 @@
 import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 
+import * as ApiKeyRepositoryLive from './ApiKeyRepositoryLive.js';
 import { migrate } from './AppMigrator.js';
+import * as ExternalNotificationRepositoryLive from './ExternalNotificationRepositoryLive.js';
 import * as NotificationRecipientsLive from './NotificationRecipientsLive.js';
 import * as NotificationRepositoryLive from './NotificationRepositoryLive.js';
+import * as NotificationTemplateRepositoryLive from './NotificationTemplateRepositoryLive.js';
 import * as PetCaregiverRepositoryLive from './PetCaregiverRepositoryLive.js';
 import * as PetFoodRepositoryLive from './PetFoodRepositoryLive.js';
 import * as PetRepositoryLive from './PetRepositoryLive.js';
@@ -15,7 +18,12 @@ export const repositoriesLayer = Layer.mergeAll(
 	PetRepositoryLive.layer,
 	PetCaregiverRepositoryLive.layer,
 	PetFoodRepositoryLive.layer,
-	NotificationRepositoryLive.layer,
+	ApiKeyRepositoryLive.layer,
+	NotificationTemplateRepositoryLive.layer,
+	Layer.provideMerge(
+		ExternalNotificationRepositoryLive.layer,
+		NotificationRepositoryLive.layer,
+	),
 	NotificationRecipientsLive.layer,
 );
 

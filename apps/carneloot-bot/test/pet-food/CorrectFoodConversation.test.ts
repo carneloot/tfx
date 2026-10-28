@@ -309,23 +309,26 @@ describe('CorrectFoodConversation', () => {
 		]);
 	});
 
-	it('keeps correction step active after invalid correction', async () => {
-		const h = harness();
-		await run(
-			Effect.provide(
-				Effect.gen(function* () {
-					yield* start();
-					yield* resume('Rex', 1);
-					yield* resume(label, 2);
-					yield* resume('inválido', 3);
-					const storage = yield* ConversationStorage;
-					expect((yield* storage.load(scope))?.step).toBe('correction');
-				}),
-				h.layer,
-			),
-		);
-		expect(h.updates).toBe(0);
-	});
+	it.each(['inválido', '-1.5min', '-9007199254740993min'])(
+		'keeps correction step active after invalid correction %s',
+		async (correction) => {
+			const h = harness();
+			await run(
+				Effect.provide(
+					Effect.gen(function* () {
+						yield* start();
+						yield* resume('Rex', 1);
+						yield* resume(label, 2);
+						yield* resume(correction, 3);
+						const storage = yield* ConversationStorage;
+						expect((yield* storage.load(scope))?.step).toBe('correction');
+					}),
+					h.layer,
+				),
+			);
+			expect(h.updates).toBe(0);
+		},
+	);
 
 	it('resumes persisted correction after service restart', async () => {
 		const h = harness();
@@ -366,24 +369,32 @@ describe('CorrectFoodConversation', () => {
 		});
 	});
 
-	it('anchors time correction to MessageContext.message.date', async () => {
-		const h = harness();
-		h.messageDate.value = DateTime.makeUnsafe('2024-01-03T15:00:00Z');
-		await run(
-			Effect.provide(
-				Effect.gen(function* () {
-					yield* start();
-					yield* resume('Rex', 1);
-					yield* resume(label, 2);
-					yield* resume('08:30', 3);
-				}),
-				h.layer,
-			),
-		);
-		expect(DateTime.formatIso(h.entries[0]!.fedAt)).toBe(
-			'2024-01-03T08:30:00.000Z',
-		);
-	});
+	it.each([
+		['08:30', '2024-01-03T08:30:00.000Z'],
+		['-5min', '2024-01-03T14:55:00.000Z'],
+		['8 -5min', '2024-01-03T14:55:00.000Z'],
+	])(
+		'anchors correction %s to MessageContext.message.date, not stored food or processing time',
+		async (correction, expected) => {
+			const h = harness();
+			h.messageDate.value = DateTime.makeUnsafe('2024-01-03T15:00:00Z');
+			await run(
+				Effect.provide(
+					Effect.gen(function* () {
+						yield* start();
+						yield* resume('Rex', 1);
+						yield* resume(label, 2);
+						yield* resume(correction, 3);
+					}),
+					h.layer,
+				),
+			);
+			expect(DateTime.formatIso(h.entries[0]!.fedAt)).toBe(expected);
+			expect(h.entries[0]?.amountMg).toBe(
+				correction.startsWith('8 ') ? 8_000 : 50_000,
+			);
+		},
+	);
 
 	it('updates in transaction and emits success only afterCommit', async () => {
 		const h = harness();

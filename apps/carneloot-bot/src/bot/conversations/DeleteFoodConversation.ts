@@ -1,4 +1,3 @@
-import * as PgClient from '@effect/sql-pg/PgClient';
 import * as DateTime from 'effect/DateTime';
 import * as Effect from 'effect/Effect';
 import * as Schema from 'effect/Schema';
@@ -9,7 +8,6 @@ import {
 	ConversationInput,
 	ConversationPrompt,
 } from 'tfx';
-import type { TaggedError } from 'tfx/TaggedError';
 
 import * as DeleteFood from '../../application/DeleteFood.js';
 import * as ListCurrentFoodEntries from '../../application/ListCurrentFoodEntries.js';
@@ -19,11 +17,7 @@ import { BotId, PetId, TelegramUserId, UserId } from '../../domain/Ids.js';
 import * as DayBoundary from '../../domain/pet-food/DayBoundary.js';
 import { FoodEntryId } from '../../domain/pet-food/PetFood.js';
 import { PetName } from '../../domain/Pet.js';
-import { PetCaregiverRepository } from '../../ports/PetCaregiverRepository.js';
 import { PetFoodRepository } from '../../ports/PetFoodRepository.js';
-import { PetRepository } from '../../ports/PetRepository.js';
-import { ReminderScheduler } from '../../ports/ReminderScheduler.js';
-import { UserRepository } from '../../ports/UserRepository.js';
 import { RegisteredUser } from '../Declaration.js';
 import * as ConversationUi from './ConversationUi.js';
 
@@ -42,41 +36,11 @@ const EntryState = Schema.Struct({
 	entries: Schema.Array(EntryOption),
 });
 const Text = ConversationInput.text(Schema.String);
-const reply = ConversationUi.reply;
-const replyRemovingKeyboard = ConversationUi.replyRemovingKeyboard;
-const required = <A, E extends TaggedError, R>(
-	effect: Effect.Effect<A, E, R>,
-) =>
-	Effect.gen(function* () {
-		yield* PgClient.PgClient;
-		yield* PetFoodRepository;
-		yield* PetRepository;
-		yield* PetCaregiverRepository;
-		yield* ReminderScheduler;
-		yield* UserRepository;
-		yield* UserRepository;
-		return yield* effect;
-	});
 const choice = <A>(options: ReadonlyArray<ConversationChoice.Option<A>>) =>
 	ConversationChoice.reply(ConversationUi.uniqueReplyOptions(options), {
 		cancelLabel: 'Cancelar',
 		columns: 1,
 	});
-const invalid = required(
-	Effect.succeed(
-		ConversationBuilder.stay({
-			afterCommit: reply('Por favor, escolha uma opção.'),
-		}),
-	),
-);
-const unavailable = () =>
-	ConversationBuilder.complete({
-		afterCommit: replyRemovingKeyboard(
-			'Este pet não está mais disponível para você.',
-		),
-	});
-const grams = (mg: number) =>
-	`${Number.isInteger(mg / 1000) ? mg / 1000 : (mg / 1000).toFixed(3).replace(/0+$/u, '').replace(/\.$/u, '')} g`;
 
 export const declaration = Conversation.make('delete-pet-food', {
 	version: 1,
@@ -96,153 +60,189 @@ export const built = ConversationBuilder.done(
 	ConversationBuilder.make(declaration)
 		.step('pet', {
 			enter: (state) =>
-				required(
-					ConversationUi.promptChoice(
-						'Escolha o pet:',
-						choice(
-							state.pets.map((pet) => ({ label: pet.name, value: pet.id })),
-						),
-					),
+				ConversationUi.promptChoice(
+					'Escolha o pet:',
+					choice(state.pets.map((pet) => ({ label: pet.name, value: pet.id }))),
 				),
 			onInput: (state, value) =>
-				required(
-					Effect.gen(function* () {
-						const resolved = yield* Effect.result(
-							ConversationPrompt.resolve(
-								choice(
-									state.pets.map((pet) => ({ label: pet.name, value: pet.id })),
-								),
-								value,
+				Effect.gen(function* () {
+					const resolved = yield* Effect.result(
+						ConversationPrompt.resolve(
+							choice(
+								state.pets.map((pet) => ({ label: pet.name, value: pet.id })),
 							),
-						);
-						if (resolved._tag === 'Failure') return yield* invalid;
-						const selected = resolved.success;
-						if (selected._tag === 'Cancelled')
-							return ConversationBuilder.cancelled({
-								afterCommit: replyRemovingKeyboard('Operação cancelada.'),
-							});
-						const pet = state.pets.find((item) => item.id === selected.value);
-						if (pet === undefined) return yield* invalid;
-						const access = {
-							actorId: state.actorId,
-							botId: state.botId,
-							telegramUserId: state.telegramUserId,
-							petId: pet.id,
-						};
-						const authorization = yield* Effect.result(authorize(access));
-						if (
-							authorization._tag === 'Failure' &&
-							authorization.failure._tag === 'PetAccessDenied'
-						)
-							return unavailable();
-						if (authorization._tag === 'Failure')
-							return yield* Effect.fail(authorization.failure);
-						const repository = yield* PetFoodRepository;
-						const settings = yield* repository.getSettings(pet.id);
-						if (
-							settings?.dayStart === null ||
-							settings?.timeZone === null ||
-							settings === undefined
-						)
-							return ConversationBuilder.complete({
-								afterCommit: replyRemovingKeyboard(
-									`Você não configurou o início do dia para o pet ${pet.name}.`,
-								),
-							});
-						const window = DayBoundary.current(yield* DateTime.now, {
-							localTime: settings.dayStart,
-							timeZone: settings.timeZone,
-						});
-						const listed = yield* repository.listEntries(
-							pet.id,
-							window.start,
-							window.end,
-						);
-						const entries = yield* ListCurrentFoodEntries.execute(
-							state.botId,
-							settings.timeZone,
-							listed,
-						);
-						if (entries.length === 0)
-							return ConversationBuilder.complete({
-								afterCommit: replyRemovingKeyboard(
-									'Não há registros de ração hoje para este pet.',
-								),
-							});
-						return ConversationBuilder.to('entry', {
-							...state,
-							petId: pet.id,
-							entries: entries.map(
-								({ entry, localTimestamp, actorDisplay }) => ({
-									id: entry.id,
-									label: `${grams(entry.amountMg)} — ${localTimestamp} — ${actorDisplay}`,
-								}),
+							value,
+						),
+					);
+					if (resolved._tag === 'Failure')
+						return ConversationBuilder.stay({
+							afterCommit: ConversationUi.reply(
+								'Por favor, escolha uma opção.',
 							),
 						});
+					const selected = resolved.success;
+					if (selected._tag === 'Cancelled')
+						return ConversationBuilder.cancelled({
+							afterCommit: ConversationUi.replyRemovingKeyboard(
+								'Operação cancelada.',
+							),
+						});
+					const pet = state.pets.find((item) => item.id === selected.value);
+					if (pet === undefined)
+						return ConversationBuilder.stay({
+							afterCommit: ConversationUi.reply(
+								'Por favor, escolha uma opção.',
+							),
+						});
+					const access = {
+						actorId: state.actorId,
+						botId: state.botId,
+						telegramUserId: state.telegramUserId,
+						petId: pet.id,
+					};
+					const authorization = yield* Effect.result(authorize(access));
+					if (
+						authorization._tag === 'Failure' &&
+						authorization.failure._tag === 'PetAccessDenied'
+					)
+						return ConversationBuilder.complete({
+							afterCommit: ConversationUi.replyRemovingKeyboard(
+								'Este pet não está mais disponível para você.',
+							),
+						});
+					if (authorization._tag === 'Failure')
+						return yield* Effect.fail(authorization.failure);
+					const repository = yield* PetFoodRepository;
+					const settings = yield* repository.getSettings(pet.id);
+					if (
+						settings?.dayStart === null ||
+						settings?.timeZone === null ||
+						settings === undefined
+					)
+						return ConversationBuilder.complete({
+							afterCommit: ConversationUi.replyRemovingKeyboard(
+								`Você não configurou o início do dia para o pet ${pet.name}.`,
+							),
+						});
+					const window = DayBoundary.current(yield* DateTime.now, {
+						localTime: settings.dayStart,
+						timeZone: settings.timeZone,
+					});
+					const listed = yield* repository.listEntries(
+						pet.id,
+						window.start,
+						window.end,
+					);
+					const entries = yield* ListCurrentFoodEntries.execute(
+						state.botId,
+						settings.timeZone,
+						listed,
+					);
+					if (entries.length === 0)
+						return ConversationBuilder.complete({
+							afterCommit: ConversationUi.replyRemovingKeyboard(
+								'Não há registros de ração hoje para este pet.',
+							),
+						});
+					return ConversationBuilder.to('entry', {
+						...state,
+						petId: pet.id,
+						entries: entries.map(({ entry, localTimestamp, actorDisplay }) => {
+							const mg = entry.amountMg;
+							const grams = `${Number.isInteger(mg / 1000) ? mg / 1000 : (mg / 1000).toFixed(3).replace(/0+$/u, '').replace(/\.$/u, '')} g`;
+							return {
+								id: entry.id,
+								label: `${grams} — ${localTimestamp} — ${actorDisplay}`,
+							};
+						}),
+					});
+				}),
+			onInvalid: () =>
+				Effect.succeed(
+					ConversationBuilder.stay({
+						afterCommit: ConversationUi.reply('Por favor, escolha uma opção.'),
 					}),
 				),
-			onInvalid: () => invalid,
 		})
 		.step('entry', {
 			enter: (state) =>
-				required(
-					ConversationUi.promptChoice(
-						'Escolha o registro de ração:',
-						choice(
-							state.entries.map((entry) => ({
-								label: entry.label,
-								value: entry.id,
-							})),
-						),
+				ConversationUi.promptChoice(
+					'Escolha o registro de ração:',
+					choice(
+						state.entries.map((entry) => ({
+							label: entry.label,
+							value: entry.id,
+						})),
 					),
 				),
 			onInput: (state, value) =>
-				required(
-					Effect.gen(function* () {
-						const resolved = yield* Effect.result(
-							ConversationPrompt.resolve(
-								choice(
-									state.entries.map((entry) => ({
-										label: entry.label,
-										value: entry.id,
-									})),
-								),
-								value,
+				Effect.gen(function* () {
+					const resolved = yield* Effect.result(
+						ConversationPrompt.resolve(
+							choice(
+								state.entries.map((entry) => ({
+									label: entry.label,
+									value: entry.id,
+								})),
 							),
-						);
-						if (resolved._tag === 'Failure') return yield* invalid;
-						const selected = resolved.success;
-						if (selected._tag === 'Cancelled')
-							return ConversationBuilder.cancelled({
-								afterCommit: replyRemovingKeyboard('Operação cancelada.'),
-							});
-						const entry = state.entries.find(
-							(item) => item.id === selected.value,
-						);
-						if (entry === undefined) return yield* invalid;
-						const result = yield* Effect.result(
-							DeleteFood.execute(
-								{
-									actorId: state.actorId,
-									botId: state.botId,
-									telegramUserId: state.telegramUserId,
-									petId: state.petId,
-								},
-								entry.id,
+							value,
+						),
+					);
+					if (resolved._tag === 'Failure')
+						return ConversationBuilder.stay({
+							afterCommit: ConversationUi.reply(
+								'Por favor, escolha uma opção.',
 							),
-						);
-						if (
-							result._tag === 'Failure' &&
-							result.failure._tag === 'PetAccessDenied'
-						)
-							return unavailable();
-						if (result._tag === 'Failure')
-							return yield* Effect.fail(result.failure);
-						return ConversationBuilder.complete({
-							afterCommit: replyRemovingKeyboard('Ração deletada com sucesso!'),
 						});
+					const selected = resolved.success;
+					if (selected._tag === 'Cancelled')
+						return ConversationBuilder.cancelled({
+							afterCommit: ConversationUi.replyRemovingKeyboard(
+								'Operação cancelada.',
+							),
+						});
+					const entry = state.entries.find(
+						(item) => item.id === selected.value,
+					);
+					if (entry === undefined)
+						return ConversationBuilder.stay({
+							afterCommit: ConversationUi.reply(
+								'Por favor, escolha uma opção.',
+							),
+						});
+					const result = yield* Effect.result(
+						DeleteFood.execute(
+							{
+								actorId: state.actorId,
+								botId: state.botId,
+								telegramUserId: state.telegramUserId,
+								petId: state.petId,
+							},
+							entry.id,
+						),
+					);
+					if (
+						result._tag === 'Failure' &&
+						result.failure._tag === 'PetAccessDenied'
+					)
+						return ConversationBuilder.complete({
+							afterCommit: ConversationUi.replyRemovingKeyboard(
+								'Este pet não está mais disponível para você.',
+							),
+						});
+					if (result._tag === 'Failure')
+						return yield* Effect.fail(result.failure);
+					return ConversationBuilder.complete({
+						afterCommit: ConversationUi.replyRemovingKeyboard(
+							'Ração deletada com sucesso!',
+						),
+					});
+				}),
+			onInvalid: () =>
+				Effect.succeed(
+					ConversationBuilder.stay({
+						afterCommit: ConversationUi.reply('Por favor, escolha uma opção.'),
 					}),
 				),
-			onInvalid: () => invalid,
 		}),
 );

@@ -11,7 +11,7 @@ import {
 	TelegramUserId,
 	UserId,
 } from '../domain/Ids.js';
-import { FoodAmount } from '../domain/pet-food/FoodAmount.js';
+import { FoodInput } from '../domain/pet-food/FoodWhenInput.js';
 import { PetFoodEntry } from '../domain/pet-food/PetFood.js';
 import { PetName } from '../domain/Pet.js';
 import { NotificationRepository } from '../ports/NotificationRepository.js';
@@ -64,18 +64,6 @@ export interface RouteFoodReplyInput {
 const invalidResult = (message = 'Formato de ração inválido.') =>
 	({ _tag: 'InvalidInput', message }) as const;
 
-const splitFoodInput = (input: string) => {
-	const trimmed = input.trim();
-	if (trimmed.length === 0) return undefined;
-	const suffix =
-		/^(.*?\S)\s+((?:\d{2}[/-]\d{2}(?:[/-]\d{4})? \d{2}:\d{2})|(?:\d{2}:\d{2}))$/u.exec(
-			trimmed,
-		);
-	return suffix?.[1] !== undefined && suffix[2] !== undefined
-		? { amount: suffix[1], when: suffix[2] }
-		: { amount: trimmed, when: '' };
-};
-
 const decodeStored = (value: unknown) =>
 	Schema.decodeUnknownEffect(FoodReplyResult)(value).pipe(
 		Effect.mapError(
@@ -115,12 +103,10 @@ const route = (input: RouteFoodReplyInput) =>
 			reply.delivery.recipientUserId === input.actorId &&
 			reply.event.petId !== null
 		) {
-			const parsed = splitFoodInput(input.text);
-			if (parsed === undefined) return invalidResult();
-			const amount = yield* Schema.decodeUnknownEffect(FoodAmount)(
-				parsed.amount,
+			const parsed = yield* Schema.decodeUnknownEffect(FoodInput)(
+				input.text,
 			).pipe(Effect.option);
-			if (amount._tag === 'None') return invalidResult();
+			if (parsed._tag === 'None') return invalidResult();
 			const access = {
 				actorId: input.actorId,
 				botId: input.botId,
@@ -131,8 +117,8 @@ const route = (input: RouteFoodReplyInput) =>
 			const added = yield* AddFood.execute(
 				access,
 				{
-					amountMg: amount.value,
-					when: parsed.when,
+					amountMg: parsed.value.amountMg,
+					when: parsed.value.when,
 					messageDate: input.messageDate,
 				},
 				{

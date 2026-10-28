@@ -20,6 +20,7 @@
 	},
 	"dependencies": {
 		"@effect/platform-bun": "4.0.6",
+		"@effect/platform-node": "4.0.6",
 		"@effect/sql-pg": "4.0.6",
 		"@libsql/client": "0.15.15",
 		"@tfx/cloudflare": "workspace:^",
@@ -31,7 +32,6 @@
 	"devDependencies": {
 		"@alchemy.run/cloudflare": "2.0.0-beta.84",
 		"@cloudflare/workers-types": "5.20261012.1",
-		"@effect/platform-node": "4.0.6",
 		"@testcontainers/postgresql": "11.10.0",
 		"alchemy": "2.0.0-beta.84",
 		"esbuild": "0.28.2",

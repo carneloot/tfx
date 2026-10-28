@@ -41,6 +41,46 @@ describe('AppConfig', () => {
 		expect(String(config.botToken)).not.toContain('secret-token');
 		expect(Redacted.value(config.databaseUrl)).toBe('postgres://secret');
 	});
+	it('normalizes forwarding usernames and allows the owner setting alone', async () => {
+		const configured = await Effect.runPromise(
+			load({
+				...valid,
+				TELEGRAM_FORWARD_USERNAMES: ' Alice, @BOB ,,@@Carol ',
+				OWNER_TELEGRAM_ID: '918273',
+			}),
+		);
+		expect(configured.forwarding).toEqual({
+			ownerChatId: 918273,
+			usernames: ['alice', 'bob', 'carol'],
+		});
+		const ownerOnly = await Effect.runPromise(
+			load({ ...valid, OWNER_TELEGRAM_ID: '918273' }),
+		);
+		expect(ownerOnly.forwarding.usernames).toEqual([]);
+		const disabled = await Effect.runPromise(load(valid));
+		expect(disabled.forwarding).toEqual({
+			ownerChatId: undefined,
+			usernames: [],
+		});
+	});
+	it.each(['', ' , @ , '])('disables an empty allowlist %j', async (value) => {
+		const result = await Effect.runPromise(
+			load({ ...valid, TELEGRAM_FORWARD_USERNAMES: value }),
+		);
+		expect(result.forwarding.usernames).toEqual([]);
+	});
+	it.each([
+		{ TELEGRAM_FORWARD_USERNAMES: 'alice' },
+		{ TELEGRAM_FORWARD_USERNAMES: 'alice', OWNER_TELEGRAM_ID: '' },
+		{ OWNER_TELEGRAM_ID: '0' },
+		{ OWNER_TELEGRAM_ID: '-12' },
+		{ OWNER_TELEGRAM_ID: '1.5' },
+		{ OWNER_TELEGRAM_ID: '9007199254740992' },
+	])('rejects invalid forwarding settings %j', async (settings) => {
+		expect(
+			(await Effect.runPromiseExit(load({ ...valid, ...settings })))._tag,
+		).toBe('Failure');
+	});
 	it.each([
 		{ ...valid, BOT_ID: 'other' },
 		{ ...valid, JOB_IDLE: '0 millis' },

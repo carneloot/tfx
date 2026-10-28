@@ -4,6 +4,7 @@ import { isRetryableError, type TaggedError } from 'tfx/TaggedError';
 
 import * as AccountHandlers from './bot/AccountHandlers.js';
 import * as AddPetConversation from './bot/AddPetConversation.js';
+import * as ApiKeyHandlers from './bot/ApiKeyHandlers.js';
 import * as CancelConversation from './bot/CancelConversation.js';
 import * as CaregiverHandlers from './bot/CaregiverHandlers.js';
 import * as AddFoodConversation from './bot/conversations/AddFoodConversation.js';
@@ -12,21 +13,41 @@ import * as ConfigureReminderDelayConversation from './bot/conversations/Configu
 import * as CorrectFoodConversation from './bot/conversations/CorrectFoodConversation.js';
 import * as DeleteFoodConversation from './bot/conversations/DeleteFoodConversation.js';
 import * as DeletePetConversation from './bot/conversations/DeletePetConversation.js';
+import * as GenerateApiKeyConversation from './bot/conversations/GenerateApiKeyConversation.js';
 import * as InviteCaregiverConversation from './bot/conversations/InviteCaregiverConversation.js';
 import * as ListCaregiversConversation from './bot/conversations/ListCaregiversConversation.js';
 import * as PetInvitationsConversation from './bot/conversations/PetInvitationsConversation.js';
 import * as RemoveCaregiverConversation from './bot/conversations/RemoveCaregiverConversation.js';
 import * as StopCaringConversation from './bot/conversations/StopCaringConversation.js';
 import { Carneloot } from './bot/Declaration.js';
+import * as ExternalNotificationReplyHandler from './bot/ExternalNotificationReplyHandler.js';
 import * as FoodReplyHandler from './bot/FoodReplyHandler.js';
+import * as ForwardToOwner from './bot/ForwardToOwner.js';
+import * as GeneralHandlers from './bot/GeneralHandlers.js';
 import * as PetFoodHandlers from './bot/PetFoodHandlers.js';
 import * as PetHandlers from './bot/PetHandlers.js';
+
+export const generalHandlers = BotBuilder.buildGroup(
+	Carneloot,
+	'general',
+	(handlers) =>
+		handlers
+			.handle('start', () => GeneralHandlers.start())
+			.handle('cancel', () => CancelConversation.cancelCurrent)
+			.handle('ping', GeneralHandlers.ping)
+			.handle('whats', GeneralHandlers.whats)
+			.handle('cafe', GeneralHandlers.cafe)
+			.handle('cafeInv', GeneralHandlers.cafeInv)
+			.handleMessage('hello', GeneralHandlers.hello),
+);
 
 export const accountHandlers = BotBuilder.buildGroup(
 	Carneloot,
 	'account',
 	(handlers) =>
-		handlers.handle('register', () => AccountHandlers.registerCurrent),
+		handlers
+			.handle('register', () => AccountHandlers.registerCurrent)
+			.handle('generateApiKey', () => ApiKeyHandlers.startGenerateApiKey),
 );
 export const petHandlers = BotBuilder.buildGroup(
 	Carneloot,
@@ -61,7 +82,18 @@ export const petFoodHandlers = BotBuilder.buildGroup(
 export const replyHandlers = BotBuilder.buildGroup(
 	Carneloot,
 	'replies',
-	(handlers) => handlers.handleMessage('foodReply', FoodReplyHandler.handle),
+	(handlers) =>
+		handlers
+			.handleMessage(
+				'externalNotificationReply',
+				ExternalNotificationReplyHandler.handle,
+			)
+			.handleMessage('foodReply', FoodReplyHandler.handle),
+);
+export const forwardingHandlers = BotBuilder.buildGroup(
+	Carneloot,
+	'forwarding',
+	(handlers) => handlers.handleMessage('forwardToOwner', ForwardToOwner.handle),
 );
 export const conversations = Object.freeze([
 	AddPetConversation.built,
@@ -76,6 +108,7 @@ export const conversations = Object.freeze([
 	ListCaregiversConversation.built,
 	PetInvitationsConversation.built,
 	StopCaringConversation.built,
+	GenerateApiKeyConversation.built,
 ]);
 const isTaggedError = (value: unknown): value is TaggedError =>
 	typeof value === 'object' &&
@@ -155,6 +188,9 @@ export const make = (botUsername: string) => {
 		petHandlers,
 		petFoodHandlers,
 		replyHandlers,
+		forwardingHandlers,
+		// Consumed replies must not trigger the hello easter egg.
+		generalHandlers,
 	] as const;
 	const beforeConversation = (
 		update: Parameters<BotRouter.BeforeConversationEffect>[0],

@@ -5,7 +5,9 @@ import { CurrentUser } from '../src/bot/CurrentUser.js';
 import { Carneloot } from '../src/bot/Declaration.js';
 
 BotBuilder.group(Carneloot, 'account', (handlers) =>
-	handlers.handle('register', () => Effect.void),
+	handlers
+		.handle('register', () => Effect.void)
+		.handle('generateApiKey', () => Effect.void),
 );
 BotBuilder.group(
 	Carneloot,
