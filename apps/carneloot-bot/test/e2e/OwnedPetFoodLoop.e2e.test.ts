@@ -336,7 +336,9 @@ else
 								[116, '/colocar_racao'],
 								[117, 'Rex'],
 								[118, 'quantidade ruim'],
-								[119, '10g 00:00'],
+								[119, '/colocar_racao'],
+								[120, 'Rex'],
+								[121, '10g 00:00'],
 							] as const)
 								yield* f.dispatch(messageUpdate(id, text, sender));
 							expect(
@@ -352,14 +354,14 @@ else
 								yield* sql`SELECT id FROM carneloot.notification_events`,
 							).toHaveLength(0);
 							for (const [id, text] of [
-								[120, '/configurar_atraso_notificacao'],
-								[121, 'Rex'],
-								[122, 'Definir'],
-								[123, 'amanhã'],
-								[124, '8 horas'],
-								[125, '/colocar_racao'],
-								[126, 'Rex'],
-								[127, '50g'],
+								[122, '/configurar_atraso_notificacao'],
+								[123, 'Rex'],
+								[124, 'Definir'],
+								[125, 'amanhã'],
+								[126, '8 horas'],
+								[127, '/colocar_racao'],
+								[128, 'Rex'],
+								[129, '50g'],
 							] as const)
 								yield* f.dispatch(messageUpdate(id, text, sender));
 							expect(f.sentText()).toContain(
@@ -369,7 +371,7 @@ else
 								yield* sql`SELECT id FROM carneloot.notification_events WHERE status='scheduled'`,
 							).toHaveLength(1);
 							// Duplicate update/source is acknowledged from durable dedup state.
-							yield* f.dispatch(messageUpdate(127, '50g', sender));
+							yield* f.dispatch(messageUpdate(129, '50g', sender));
 							const entries = yield* sql<{
 								amount_mg: string;
 							}>`SELECT amount_mg::text amount_mg FROM carneloot.pet_food_entries ORDER BY amount_mg`;
@@ -379,13 +381,13 @@ else
 							// Conversation state commits before configured Telegram output failure.
 							f.failNext();
 							expect(
-								yield* f.dispatch(messageUpdate(128, '/adicionar_pet', sender)),
+								yield* f.dispatch(messageUpdate(130, '/adicionar_pet', sender)),
 							).toMatchObject({ _tag: 'HandledWithOutputFailure' });
 							expect(
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(1);
 							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(1);
-							yield* f.dispatch(messageUpdate(129, '/cancelar', sender));
+							yield* f.dispatch(messageUpdate(131, '/cancelar', sender));
 							expect(
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(0);
@@ -397,10 +399,10 @@ else
 							yield* sql.unsafe(
 								`CREATE TRIGGER fail_e2e_event BEFORE INSERT ON carneloot.notification_events FOR EACH ROW EXECUTE FUNCTION carneloot.fail_e2e_event()`,
 							);
-							yield* f.dispatch(messageUpdate(130, '/colocar_racao', sender));
-							yield* f.dispatch(messageUpdate(131, 'Rex', sender));
+							yield* f.dispatch(messageUpdate(132, '/colocar_racao', sender));
+							yield* f.dispatch(messageUpdate(133, 'Rex', sender));
 							expect(
-								yield* f.dispatch(messageUpdate(132, '60g', sender)),
+								yield* f.dispatch(messageUpdate(134, '60g', sender)),
 							).toMatchObject({ _tag: 'Handled' });
 							expect(
 								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
@@ -410,7 +412,7 @@ else
 							);
 							yield* sql.unsafe('DROP FUNCTION carneloot.fail_e2e_event()');
 							// Retry same active step with a backdated entry; current reminder stays on 50g.
-							yield* f.dispatch(messageUpdate(133, '5g 01:00', sender));
+							yield* f.dispatch(messageUpdate(135, '5g 01:00', sender));
 							expect(
 								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
 							).toHaveLength(3);
