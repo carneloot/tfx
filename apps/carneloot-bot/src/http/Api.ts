@@ -23,6 +23,11 @@ const outcome = <S extends ExternalNotificationResult['status']>(
 		status: Schema.Literal(status),
 	}).pipe(HttpApiSchema.status(code));
 
+const InvalidNotificationRequest = Schema.TaggedStruct(
+	'InvalidNotificationRequest',
+	{ message: Schema.String },
+).pipe(HttpApiSchema.status(400));
+
 export const Api = HttpApi.make('carneloot').add(
 	HttpApiGroup.make('notifications').add(
 		HttpApiEndpoint.post('notify', '/api/notify', {
@@ -34,6 +39,7 @@ export const Api = HttpApi.make('carneloot').add(
 				outcome('indeterminate', 202),
 			],
 			error: [
+				InvalidNotificationRequest,
 				InvalidApiKey.pipe(HttpApiSchema.status(404)),
 				TemplateNotFound.pipe(HttpApiSchema.status(404)),
 				MissingTemplateVariables.pipe(HttpApiSchema.status(422)),
