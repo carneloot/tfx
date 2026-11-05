@@ -148,12 +148,20 @@ describe.skipIf(!enabled)('pet food migration', () => {
 			{
 				message: 'carneloot.migrations.failed',
 				level: 'Error',
-				annotations: { stage: 'ledger_validation' },
+				annotations: {
+					schema: 'carneloot',
+					tablePrefix: null,
+					stage: 'ledger_validation',
+				},
 			},
 			{
 				message: 'carneloot.migrations.failed',
 				level: 'Error',
-				annotations: { stage: 'ledger_validation' },
+				annotations: {
+					schema: 'carneloot',
+					tablePrefix: null,
+					stage: 'ledger_validation',
+				},
 			},
 		]);
 	});
