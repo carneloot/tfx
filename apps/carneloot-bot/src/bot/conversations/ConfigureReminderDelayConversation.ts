@@ -70,7 +70,7 @@ export class InvalidReminderDurationError extends Data.TaggedError(
 
 export const parseDuration = (input: string) => {
 	const match =
-		/^\s*(\d+(?:[.,]\d+)?)\s*(minuto(?:s)?|minute(?:s)?|hora(?:s)?|hour(?:s)?)\s*$/iu.exec(
+		/^\s*(\d+(?:[.,]\d+)?)\s*(segundo(?:s)?|second(?:s)?|minuto(?:s)?|minute(?:s)?|hora(?:s)?|hour(?:s)?)\s*$/iu.exec(
 			input,
 		);
 	if (match === null)
@@ -79,7 +79,9 @@ export const parseDuration = (input: string) => {
 		);
 	const amount = Number((match[1] ?? '').replace(',', '.'));
 	const unit = (match[2] ?? '').toLocaleLowerCase('en-US');
-	const milliseconds = amount * (unit.startsWith('h') ? 3_600_000 : 60_000);
+	const milliseconds =
+		amount *
+		(unit.startsWith('h') ? 3_600_000 : unit.startsWith('m') ? 60_000 : 1_000);
 	return Schema.decodeUnknownEffect(ReminderDelay)(
 		Duration.millis(milliseconds),
 	).pipe(
@@ -96,8 +98,12 @@ const normalized = (duration: Duration.Duration) => {
 		const hours = milliseconds / 3_600_000;
 		return `${hours} ${hours === 1 ? 'hora' : 'horas'}`;
 	}
-	const minutes = milliseconds / 60_000;
-	return `${minutes} ${minutes === 1 ? 'minuto' : 'minutos'}`;
+	if (milliseconds % 60_000 === 0) {
+		const minutes = milliseconds / 60_000;
+		return `${minutes} ${minutes === 1 ? 'minuto' : 'minutos'}`;
+	}
+	const seconds = milliseconds / 1_000;
+	return `${seconds} ${seconds === 1 ? 'segundo' : 'segundos'}`;
 };
 
 export const declaration = Conversation.make('configure-reminder-delay', {
@@ -232,7 +238,7 @@ export const built = ConversationBuilder.done(
 		.step('duration', {
 			enter: () =>
 				ConversationUi.replyRemovingKeyboard(
-					'Envie a duração, por exemplo 30 minutos ou 2 horas.',
+					'Envie a duração. Exemplos: 10 segundos, 30 minutos ou 2 horas.',
 				),
 			onInput: (state, value) =>
 				Effect.gen(function* () {
@@ -240,7 +246,7 @@ export const built = ConversationBuilder.done(
 					if (result._tag === 'Failure')
 						return ConversationBuilder.stay({
 							afterCommit: ConversationUi.reply(
-								'Formato inválido. Envie uma duração positiva de até 30 dias.',
+								'Formato inválido. Envie uma duração entre 1 segundo e 30 dias, por exemplo 10 segundos, 30 minutos ou 2 horas.',
 							),
 						});
 					yield* ConfigureReminderDelay.set(
@@ -262,7 +268,7 @@ export const built = ConversationBuilder.done(
 				Effect.succeed(
 					ConversationBuilder.stay({
 						afterCommit: ConversationUi.reply(
-							'Formato inválido. Envie uma duração positiva de até 30 dias.',
+							'Formato inválido. Envie uma duração entre 1 segundo e 30 dias, por exemplo 10 segundos, 30 minutos ou 2 horas.',
 						),
 					}),
 				),

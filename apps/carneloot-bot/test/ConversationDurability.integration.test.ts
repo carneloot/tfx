@@ -225,7 +225,7 @@ describe.skipIf(!enabled)('Plan09 conversation durability', () => {
 		);
 		expect(replies).toContain('Atraso atual: 2 horas.');
 		expect(replies.at(-1)).toBe(
-			'Envie a duração, por exemplo 30 minutos ou 2 horas.',
+			'Envie a duração. Exemplos: 10 segundos, 30 minutos ou 2 horas.',
 		);
 		expect(result.resumed._tag).toBe('Applied');
 		expect(result.row?.step).toBe('duration');

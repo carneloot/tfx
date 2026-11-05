@@ -221,7 +221,7 @@ else
 								'Início do dia configurado com sucesso!',
 								'Escolha o pet:',
 								'Notificações desativadas.',
-								'Envie a duração, por exemplo 30 minutos ou 2 horas.',
+								'Envie a duração. Exemplos: 10 segundos, 30 minutos ou 2 horas.',
 								'Atraso de notificação configurado para 8 horas.',
 								'- Rex: 0 g, nenhuma ração hoje',
 								'Escolha o pet:',
@@ -363,7 +363,7 @@ else
 							] as const)
 								yield* f.dispatch(messageUpdate(id, text, sender));
 							expect(f.sentText()).toContain(
-								'Formato inválido. Envie uma duração positiva de até 30 dias.',
+								'Formato inválido. Envie uma duração entre 1 segundo e 30 dias, por exemplo 10 segundos, 30 minutos ou 2 horas.',
 							);
 							expect(
 								yield* sql`SELECT id FROM carneloot.notification_events WHERE status='scheduled'`,

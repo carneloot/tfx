@@ -537,7 +537,7 @@ describe('pet food conversation transcripts', () => {
 		);
 	});
 
-	it('removes keyboard from AddFood free-text outputs and commits before failed output', async () => {
+	it('ends AddFood on malformed input and commits before failed output', async () => {
 		const h = harness();
 		h.settings.value = {
 			petId,
@@ -553,17 +553,19 @@ describe('pet food conversation transcripts', () => {
 					yield* start(AddFood.built);
 					yield* resume(AddFood.built, 'Rex', 1);
 					yield* resume(AddFood.built, 'inválido', 2);
-					yield* resume(AddFood.built, '10 g', 3);
+					const storage = yield* ConversationStorage;
+					expect(yield* storage.load(scope)).toBeUndefined();
 				}),
 				h.layer,
 			),
 		);
 		expect(h.replies.at(-1)).toBe(
-			'Foram adicionados 10 g de ração para o pet Rex.',
+			'Formato inválido. Envie a quantidade e, opcionalmente, o horário (HH:mm, DD/MM[/AAAA] HH:mm ou -5min para 5 minutos antes desta mensagem).',
 		);
-		expect(h.replyMarkups.slice(1)).toEqual([
-			{ remove_keyboard: true },
-			{ remove_keyboard: true },
+		expect(h.replyMarkups).toEqual([
+			expect.objectContaining({
+				keyboard: [[{ text: 'Rex' }], [{ text: 'Cancelar' }]],
+			}),
 			{ remove_keyboard: true },
 			{ remove_keyboard: true },
 		]);
@@ -611,9 +613,7 @@ describe('pet food conversation transcripts', () => {
 		await run(
 			Effect.provide(
 				Effect.gen(function* () {
-					yield* start(AddFood.built);
-					yield* resume(AddFood.built, 'Rex', 1);
-					let updateId = 2;
+					let updateId = 1;
 					for (const text of [
 						'8 +5min',
 						'8 -5minutes',
@@ -621,11 +621,15 @@ describe('pet food conversation transcripts', () => {
 						'8 -5min extra',
 						'8 -9007199254740993min',
 					]) {
+						yield* start(AddFood.built);
+						yield* resume(AddFood.built, 'Rex', updateId++);
 						yield* resume(AddFood.built, text, updateId++);
 						expect(h.foodEntries).toHaveLength(0);
 						const storage = yield* ConversationStorage;
-						expect((yield* storage.load(scope))?.step).toBe('amount');
+						expect(yield* storage.load(scope)).toBeUndefined();
 					}
+					yield* start(AddFood.built);
+					yield* resume(AddFood.built, 'Rex', updateId++);
 					yield* resume(AddFood.built, '8 g -5min', updateId);
 				}),
 				h.layer,
@@ -709,6 +713,7 @@ describe('pet food conversation transcripts', () => {
 	});
 
 	it.each([
+		['10 segundos', 10_000],
 		['2 horas', 7_200_000],
 		['30 minutes', 1_800_000],
 	] as const)(
@@ -727,7 +732,11 @@ describe('pet food conversation transcripts', () => {
 			expect(h.delayMutations.map(Duration.toMillis)).toEqual([milliseconds]);
 			expect(h.scheduler).toEqual([`replace:${1000 + milliseconds}`]);
 			expect(h.replies.at(-1)).toContain(
-				milliseconds === 7_200_000 ? '2 horas' : '30 minutos',
+				milliseconds === 10_000
+					? '10 segundos'
+					: milliseconds === 7_200_000
+						? '2 horas'
+						: '30 minutos',
 			);
 		},
 	);
@@ -787,7 +796,7 @@ describe('pet food conversation transcripts', () => {
 			),
 		);
 		expect(invalid.replies).toContain(
-			'Formato inválido. Envie uma duração positiva de até 30 dias.',
+			'Formato inválido. Envie uma duração entre 1 segundo e 30 dias, por exemplo 10 segundos, 30 minutos ou 2 horas.',
 		);
 
 		const failed = harness();
