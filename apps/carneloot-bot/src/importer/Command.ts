@@ -56,7 +56,7 @@ const targetInfrastructure = (
 ) => {
 	const persistence = TfxPostgres.layer({
 		schema: 'tfx',
-		tablePrefix: 'carneloot_',
+		tablePrefix: 'tfx_',
 		botId,
 	});
 	const jobs = Layer.provideMerge(JobScheduler.layer, persistence);
