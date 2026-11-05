@@ -155,7 +155,11 @@ const route = (input: RouteFoodReplyInput) =>
 			PetFoodSetupMissing: () =>
 				Effect.succeed(invalidResult('Configuração de ração incompleta.')),
 			DuplicateFoodEntry: () =>
-				Effect.succeed(invalidResult('Essa ração já foi registrada.')),
+				Effect.succeed(
+					invalidResult(
+						'Já existe uma ração registrada para este pet nesse horário. Envie outro horário ou corrija o registro existente.',
+					),
+				),
 			PetFoodError: () => Effect.succeed(invalidResult()),
 		}),
 	);
