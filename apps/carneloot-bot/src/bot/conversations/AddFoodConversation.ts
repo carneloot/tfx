@@ -119,8 +119,8 @@ export const built = ConversationBuilder.done(
 						settings?.timeZone === null ||
 						settings === undefined
 					)
-						return ConversationBuilder.stay({
-							afterCommit: ConversationUi.reply(
+						return ConversationBuilder.complete({
+							afterCommit: ConversationUi.replyRemovingKeyboard(
 								`Você não configurou o início do dia para o pet ${pet.name}.`,
 							),
 						});
@@ -184,13 +184,13 @@ export const built = ConversationBuilder.done(
 								),
 							});
 						if (result.failure._tag === 'PetFoodSetupMissing')
-							return ConversationBuilder.stay({
-								afterCommit: ConversationUi.reply(
+							return ConversationBuilder.complete({
+								afterCommit: ConversationUi.replyRemovingKeyboard(
 									`Você não configurou o início do dia para o pet ${state.petName}.`,
 								),
 							});
-						return ConversationBuilder.stay({
-							afterCommit: ConversationUi.reply(
+						return ConversationBuilder.complete({
+							afterCommit: ConversationUi.replyRemovingKeyboard(
 								`Formato inválido. ${amountPrompt}`,
 							),
 						});
@@ -217,7 +217,7 @@ export const built = ConversationBuilder.done(
 				}),
 			onInvalid: () =>
 				Effect.succeed(
-					ConversationBuilder.stay({
+					ConversationBuilder.complete({
 						afterCommit: ConversationUi.replyRemovingKeyboard(
 							`Formato inválido. ${amountPrompt}`,
 						),

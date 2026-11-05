@@ -412,7 +412,7 @@ describe('pet food command handlers', () => {
 		expect(reactions).toHaveLength(1);
 	});
 
-	it('stays safely when pet setup is missing', async () => {
+	it('completes when pet setup is missing', async () => {
 		replies.length = 0;
 		const state = {
 			actorId: ownerId,
@@ -427,7 +427,7 @@ describe('pet food command handlers', () => {
 				food,
 			),
 		);
-		expect(transition._tag).toBe('Stay');
+		expect(transition._tag).toBe('Complete');
 		if (transition.afterCommit !== undefined)
 			await Effect.runPromise(provide(transition.afterCommit, food));
 		expect(replies).toEqual([
@@ -447,7 +447,7 @@ describe('pet food command handlers', () => {
 		expect(replies).toEqual(['Você não tem pets']);
 	});
 
-	it('re-prompts malformed and duplicate food input without inserting', async () => {
+	it('ends malformed food input and keeps duplicate food input retryable', async () => {
 		replies.length = 0;
 		let inserts = 0;
 		const existing = {
@@ -481,7 +481,10 @@ describe('pet food command handlers', () => {
 			petName,
 			timeZone: settings.timeZone!,
 		};
-		for (const value of ['abc', '50g 10:00']) {
+		for (const [value, expectedTransition] of [
+			['abc', 'Complete'],
+			['50g 10:00', 'Stay'],
+		] as const) {
 			const transition = await Effect.runPromise(
 				Effect.provide(
 					provide(
@@ -499,7 +502,7 @@ describe('pet food command handlers', () => {
 					TestClock.layer(),
 				),
 			);
-			expect(transition._tag).toBe('Stay');
+			expect(transition._tag).toBe(expectedTransition);
 		}
 		expect(inserts).toBe(0);
 	});
