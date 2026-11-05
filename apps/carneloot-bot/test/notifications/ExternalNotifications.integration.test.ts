@@ -372,9 +372,12 @@ describe.skipIf(!enabled)('external notifications with real PostgreSQL', () => {
 					variables: { pet: { secret: 'do-not-echo' } },
 				});
 				expect(bad.status).toBe(400);
-				expect(yield* Effect.promise(() => bad.text())).not.toContain(
-					'do-not-echo',
-				);
+				const invalid = yield* Effect.promise(() => bad.json());
+				expect(invalid).toEqual({
+					_tag: 'InvalidNotificationRequest',
+					message: 'Request payload is invalid.',
+				});
+				expect(JSON.stringify(invalid)).not.toContain('do-not-echo');
 				for (const path of [
 					'/api/templates',
 					'/api/subscriptions',
