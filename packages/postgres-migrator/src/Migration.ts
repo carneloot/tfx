@@ -16,6 +16,7 @@ export interface AppliedMigration {
 
 export interface Options {
 	readonly schema: string;
+	readonly tablePrefix?: string;
 	readonly table: string;
 	readonly lockKey: string;
 	readonly logPrefix: string;

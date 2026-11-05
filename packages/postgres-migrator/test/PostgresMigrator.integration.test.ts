@@ -1,5 +1,5 @@
 import * as PgClient from '@effect/sql-pg/PgClient';
-import { Effect, Logger } from 'effect';
+import { Effect, Logger, References } from 'effect';
 import { describe, expect, it } from 'vitest';
 
 import type { Migration } from '../src/Migration.js';
@@ -20,6 +20,7 @@ const options = (suffix: string, migrations: ReadonlyArray<Migration>) => ({
 
 interface CapturedLog {
 	readonly message: unknown;
+	readonly annotations: Readonly<Record<string, unknown>>;
 }
 
 const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
@@ -30,6 +31,7 @@ const captureLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
 				Array.isArray(entry.message) && entry.message.length === 1
 					? entry.message[0]
 					: entry.message,
+			annotations: entry.fiber.getRef(References.CurrentLogAnnotations),
 		});
 	});
 	return Effect.map(
@@ -172,6 +174,14 @@ describe.skipIf(!enabled)('shared PostgreSQL migrator', () => {
 		).toHaveLength(2);
 		expect(logged).toContain(`test.${suffix}.migrations.completed`);
 		expect(logged).not.toContain(`test.${suffix}.migrations.failed`);
+		expect(
+			observed.logs.find(
+				(log) => log.message === `test.${suffix}.migrations.started`,
+			)?.annotations,
+		).toMatchObject({
+			schema: `migrator_${suffix}`,
+			tablePrefix: null,
+		});
 	});
 
 	it('rejects unknown future ledger rows and checksum drift', async () => {

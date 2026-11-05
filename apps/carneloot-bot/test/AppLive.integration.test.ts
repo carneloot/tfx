@@ -88,5 +88,15 @@ describe.skipIf(!enabled)('application layer', () => {
 		expect(count('carneloot.migrations.completed')).toBe(1);
 		expect(count('tfx.postgres.migrations.started')).toBe(1);
 		expect(count('tfx.postgres.migrations.completed')).toBe(1);
+		expect(
+			captured.logs.find(
+				(log) => log.message === 'carneloot.migrations.started',
+			)?.annotations,
+		).toMatchObject({ schema: 'carneloot', tablePrefix: null });
+		expect(
+			captured.logs.find(
+				(log) => log.message === 'tfx.postgres.migrations.started',
+			)?.annotations,
+		).toMatchObject({ schema: 'tfx_app_live', tablePrefix: 'case_' });
 	});
 });

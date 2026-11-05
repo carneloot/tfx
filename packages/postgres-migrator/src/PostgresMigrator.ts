@@ -56,6 +56,10 @@ export const run = (
 ): Effect.Effect<Result, MigrationError, PgClient.PgClient> =>
 	Effect.gen(function* () {
 		yield* validateManifest(options.migrations);
+		const migrationTarget = {
+			schema: options.schema,
+			tablePrefix: options.tablePrefix ?? null,
+		};
 		const sql = yield* PgClient.PgClient;
 		const schema = sql(options.schema);
 		const table = sql(options.table);
@@ -93,6 +97,7 @@ export const run = (
 					);
 					yield* Effect.logInfo(`${options.logPrefix}.migrations.started`).pipe(
 						Effect.annotateLogs({
+							...migrationTarget,
 							applied: applied.length,
 							pending: Math.max(0, options.migrations.length - applied.length),
 						}),
@@ -129,12 +134,14 @@ export const run = (
 		for (const migration of committed.migrations)
 			yield* Effect.logInfo(`${options.logPrefix}.migration.applied`).pipe(
 				Effect.annotateLogs({
+					...migrationTarget,
 					version: migration.version,
 					name: migration.name,
 				}),
 			);
 		yield* Effect.logInfo(`${options.logPrefix}.migrations.completed`).pipe(
 			Effect.annotateLogs({
+				...migrationTarget,
 				total: committed.result.total,
 				appliedNow: committed.result.appliedNow,
 			}),
@@ -144,6 +151,8 @@ export const run = (
 		Effect.tapError((error) =>
 			Effect.logError(`${options.logPrefix}.migrations.failed`).pipe(
 				Effect.annotateLogs({
+					schema: options.schema,
+					tablePrefix: options.tablePrefix ?? null,
 					stage: error.stage,
 					...(error.version === undefined ? {} : { version: error.version }),
 					...(error.migrationName === undefined

@@ -9,7 +9,7 @@ import { up as up0004 } from './internal/Migration0004.js';
 import { up as up0005 } from './internal/Migration0005.js';
 import { migrationChecksums } from './internal/MigrationChecksums.js';
 import { make } from './internal/Tables.js';
-import type { Options } from './Options.js';
+import { defaults, type Options } from './Options.js';
 
 export const migrate = (options: Options = {}) => {
 	const tables = make(options);
@@ -47,6 +47,7 @@ export const migrate = (options: Options = {}) => {
 	]);
 	return PostgresMigrator.run({
 		schema: tables.schema,
+		tablePrefix: options.tablePrefix ?? defaults.tablePrefix,
 		table: tables.migrations,
 		lockKey: `${tables.schema}:${tables.migrations}`,
 		logPrefix: 'tfx.postgres',
