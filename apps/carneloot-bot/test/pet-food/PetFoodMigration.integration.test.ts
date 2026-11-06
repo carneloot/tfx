@@ -48,7 +48,7 @@ describe.skipIf(!enabled)('pet food migration', () => {
 				version: number;
 				name: string;
 				checksum: string;
-			}>`SELECT version,name,checksum FROM carneloot.app_migrations ORDER BY version`;
+			}>`SELECT version,name,checksum FROM carnebot.app_migrations ORDER BY version`;
 			const constraints = yield* sql<{
 				constraint_name: string;
 			}>`SELECT constraint_name FROM information_schema.table_constraints WHERE table_schema='carneloot' AND table_name IN ('pet_food_settings','pet_food_entries') ORDER BY constraint_name`;
@@ -122,13 +122,13 @@ describe.skipIf(!enabled)('pet food migration', () => {
 			const sql = yield* PgClient.PgClient;
 			return yield* sql.withTransaction(
 				Effect.gen(function* () {
-					yield* sql`SELECT pg_advisory_xact_lock(hashtextextended('carneloot:app_migrations', 0))`;
-					yield* sql`INSERT INTO carneloot.app_migrations (version,name,checksum) VALUES (99,'future','future')`;
+					yield* sql`SELECT pg_advisory_xact_lock(hashtextextended('carnebot:app_migrations', 0))`;
+					yield* sql`INSERT INTO carnebot.app_migrations (version,name,checksum) VALUES (99,'future','future')`;
 					const unknown = yield* Effect.result(migrate);
-					yield* sql`DELETE FROM carneloot.app_migrations WHERE version=99`;
-					yield* sql`DELETE FROM carneloot.app_migrations WHERE version=1`;
+					yield* sql`DELETE FROM carnebot.app_migrations WHERE version=99`;
+					yield* sql`DELETE FROM carnebot.app_migrations WHERE version=1`;
 					const gap = yield* Effect.result(migrate);
-					yield* sql`INSERT INTO carneloot.app_migrations (version,name,checksum) VALUES (1,'identity-pets',${migration0001Checksum})`;
+					yield* sql`INSERT INTO carnebot.app_migrations (version,name,checksum) VALUES (1,'identity-pets',${migration0001Checksum})`;
 					return { unknown, gap };
 				}),
 			);
@@ -149,7 +149,7 @@ describe.skipIf(!enabled)('pet food migration', () => {
 				message: 'carneloot.migrations.failed',
 				level: 'Error',
 				annotations: {
-					schema: 'carneloot',
+					schema: 'carnebot',
 					tablePrefix: null,
 					stage: 'ledger_validation',
 				},
@@ -158,7 +158,7 @@ describe.skipIf(!enabled)('pet food migration', () => {
 				message: 'carneloot.migrations.failed',
 				level: 'Error',
 				annotations: {
-					schema: 'carneloot',
+					schema: 'carnebot',
 					tablePrefix: null,
 					stage: 'ledger_validation',
 				},
@@ -174,70 +174,70 @@ describe.skipIf(!enabled)('pet food migration', () => {
 			yield* migrate;
 			const sql = yield* PgClient.PgClient;
 			return yield* Effect.gen(function* () {
-				yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${userId}::uuid,now(),now())`;
-				yield* sql`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${petId}::uuid,${userId}::uuid,'Constraint pet','constraint pet',now(),now())`;
-				yield* sql`INSERT INTO carneloot.pet_food_settings (pet_id,day_start,timezone,reminder_delay_ms,created_at,updated_at) VALUES (${petId}::uuid,NULL,NULL,NULL,now(),now())`;
+				yield* sql`INSERT INTO carnebot.users (id,created_at,updated_at) VALUES (${userId}::uuid,now(),now())`;
+				yield* sql`INSERT INTO carnebot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${petId}::uuid,${userId}::uuid,'Constraint pet','constraint pet',now(),now())`;
+				yield* sql`INSERT INTO carnebot.pet_food_settings (pet_id,day_start,timezone,reminder_delay_ms,created_at,updated_at) VALUES (${petId}::uuid,NULL,NULL,NULL,now(),now())`;
 
 				const settingsPetFk = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_settings (pet_id,day_start,timezone,reminder_delay_ms,created_at,updated_at) VALUES (${missingPetId}::uuid,NULL,NULL,NULL,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_settings (pet_id,day_start,timezone,reminder_delay_ms,created_at,updated_at) VALUES (${missingPetId}::uuid,NULL,NULL,NULL,now(),now())`,
 				);
 				const dayStartPair = yield* Effect.result(
-					sql`UPDATE carneloot.pet_food_settings SET day_start=${'08:00'}::time WHERE pet_id=${petId}::uuid`,
+					sql`UPDATE carnebot.pet_food_settings SET day_start=${'08:00'}::time WHERE pet_id=${petId}::uuid`,
 				);
 				const timeZonePair = yield* Effect.result(
-					sql`UPDATE carneloot.pet_food_settings SET timezone='UTC' WHERE pet_id=${petId}::uuid`,
+					sql`UPDATE carnebot.pet_food_settings SET timezone='UTC' WHERE pet_id=${petId}::uuid`,
 				);
 				const zeroDelay = yield* Effect.result(
-					sql`UPDATE carneloot.pet_food_settings SET reminder_delay_ms=0 WHERE pet_id=${petId}::uuid`,
+					sql`UPDATE carnebot.pet_food_settings SET reminder_delay_ms=0 WHERE pet_id=${petId}::uuid`,
 				);
 				const excessiveDelay = yield* Effect.result(
-					sql`UPDATE carneloot.pet_food_settings SET reminder_delay_ms=2592000001 WHERE pet_id=${petId}::uuid`,
+					sql`UPDATE carnebot.pet_food_settings SET reminder_delay_ms=2592000001 WHERE pet_id=${petId}::uuid`,
 				);
 
 				const entryId = crypto.randomUUID();
-				yield* sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${entryId}::uuid,${petId}::uuid,${userId}::uuid,50000,now(),'constraint-test',1,now(),now())`;
+				yield* sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${entryId}::uuid,${petId}::uuid,${userId}::uuid,50000,now(),'constraint-test',1,now(),now())`;
 				const duplicateSource = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,50000,now(),'constraint-test',1,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,50000,now(),'constraint-test',1,now(),now())`,
 				);
 				const zeroAmount = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,0,now(),'constraint-test',2,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,0,now(),'constraint-test',2,now(),now())`,
 				);
 				const excessiveAmount = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,100000001,now(),'constraint-test',3,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,100000001,now(),'constraint-test',3,now(),now())`,
 				);
 				const entryPetFk = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${missingPetId}::uuid,${userId}::uuid,1,now(),'constraint-test',4,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${missingPetId}::uuid,${userId}::uuid,1,now(),'constraint-test',4,now(),now())`,
 				);
 				const recorderFk = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${missingUserId}::uuid,1,now(),'constraint-test',5,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${missingUserId}::uuid,1,now(),'constraint-test',5,now(),now())`,
 				);
 				const emptyBot = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'',6,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'',6,now(),now())`,
 				);
 				const unsafeUpdate = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',9007199254740992,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',9007199254740992,now(),now())`,
 				);
 				const negativeUpdate = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',-1,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',-1,now(),now())`,
 				);
 				const zeroMessage = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',7,0,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',7,0,now(),now())`,
 				);
 				const unsafeMessage = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',7,9007199254740992,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',7,9007199254740992,now(),now())`,
 				);
 				const zeroChat = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',8,0,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',8,0,now(),now())`,
 				);
 				const unsafeChat = yield* Effect.result(
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',8,-9007199254740992,now(),now())`,
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${petId}::uuid,${userId}::uuid,1,now(),'constraint-test',8,-9007199254740992,now(),now())`,
 				);
 
-				yield* sql`DELETE FROM carneloot.pets WHERE id=${petId}::uuid`;
+				yield* sql`DELETE FROM carnebot.pets WHERE id=${petId}::uuid`;
 				const children = yield* sql<{
 					settings: number;
 					entries: number;
-				}>`SELECT (SELECT count(*)::int FROM carneloot.pet_food_settings WHERE pet_id=${petId}::uuid) settings,(SELECT count(*)::int FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid) entries`;
+				}>`SELECT (SELECT count(*)::int FROM carnebot.pet_food_settings WHERE pet_id=${petId}::uuid) settings,(SELECT count(*)::int FROM carnebot.pet_food_entries WHERE pet_id=${petId}::uuid) entries`;
 				return {
 					failures: [
 						settingsPetFk,
@@ -262,7 +262,7 @@ describe.skipIf(!enabled)('pet food migration', () => {
 				};
 			}).pipe(
 				Effect.ensuring(
-					sql`DELETE FROM carneloot.users WHERE id=${userId}::uuid`.pipe(
+					sql`DELETE FROM carnebot.users WHERE id=${userId}::uuid`.pipe(
 						Effect.ignore,
 					),
 				),

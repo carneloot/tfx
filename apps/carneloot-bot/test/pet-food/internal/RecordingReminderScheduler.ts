@@ -26,14 +26,14 @@ export const layer: Layer.Layer<ReminderScheduler, never, PgClient.PgClient> =
 			const service: ReminderSchedulerService = {
 				replaceForLatest: (schedule) =>
 					mapSql(
-						sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id,food_entry_id,run_at) VALUES ('replace',${schedule.petId}::uuid,${schedule.foodEntryId}::uuid,${DateTime.toDateUtc(schedule.runAt)})`.pipe(
+						sql`INSERT INTO carnebot.test_reminder_actions (kind,pet_id,food_entry_id,run_at) VALUES ('replace',${schedule.petId}::uuid,${schedule.foodEntryId}::uuid,${DateTime.toDateUtc(schedule.runAt)})`.pipe(
 							Effect.asVoid,
 						),
 						'Recording scheduler replace failed',
 					),
 				cancelForPet: (request) =>
 					mapSql(
-						sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id) VALUES ('cancel',${request.petId}::uuid)`.pipe(
+						sql`INSERT INTO carnebot.test_reminder_actions (kind,pet_id) VALUES ('cancel',${request.petId}::uuid)`.pipe(
 							Effect.asVoid,
 						),
 						'Recording scheduler cancel failed',

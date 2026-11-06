@@ -212,7 +212,7 @@ const program = Effect.scoped(
 		const awaitReminder = Effect.flatMap(
 			db<{
 				status: string;
-			}>`SELECT status FROM carneloot.notification_events LIMIT 1`,
+			}>`SELECT status FROM carnebot.notification_events LIMIT 1`,
 			(rows) =>
 				rows[0]?.status === 'completed'
 					? Effect.void
@@ -232,13 +232,13 @@ const program = Effect.scoped(
 			pets: number;
 			food_entries: number;
 			reminder_events: number;
-		}>`SELECT (SELECT count(*)::int FROM carneloot.users) users,(SELECT count(*)::int FROM carneloot.pets) pets,(SELECT count(*)::int FROM carneloot.pet_food_entries) food_entries,(SELECT count(*)::int FROM carneloot.notification_events) reminder_events`;
+		}>`SELECT (SELECT count(*)::int FROM carnebot.users) users,(SELECT count(*)::int FROM carnebot.pets) pets,(SELECT count(*)::int FROM carnebot.pet_food_entries) food_entries,(SELECT count(*)::int FROM carnebot.notification_events) reminder_events`;
 		const [event] = yield* db<{
 			status: 'scheduled' | 'completed';
-		}>`SELECT status FROM carneloot.notification_events LIMIT 1`;
+		}>`SELECT status FROM carnebot.notification_events LIMIT 1`;
 		const [delivery] = yield* db<{
 			status: 'sent' | 'unknown' | 'failed';
-		}>`SELECT status FROM carneloot.notification_deliveries LIMIT 1`;
+		}>`SELECT status FROM carnebot.notification_deliveries LIMIT 1`;
 		if (!counts || !event || !delivery)
 			return yield* Effect.fail(
 				new DemoTestError({

@@ -159,7 +159,7 @@ else
 					Effect.scoped(
 						Effect.gen(function* () {
 							const sql = yield* PgClient.PgClient;
-							yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
+							yield* sql.unsafe('DROP SCHEMA IF EXISTS carnebot CASCADE');
 							yield* sql.unsafe(
 								'DROP SCHEMA IF EXISTS tfx_shared_food_e2e CASCADE',
 							);
@@ -228,7 +228,7 @@ else
 							for (const text of ['/convites_pet', 'Rex (Owner)', 'Não'])
 								yield* send(text, rejectedCaregiver);
 							expect(
-								yield* sql`SELECT status FROM carneloot.pet_caregivers WHERE caregiver_user_id=(SELECT user_id FROM carneloot.telegram_identities WHERE telegram_user_id=${rejectedCaregiver.id})`,
+								yield* sql`SELECT status FROM carnebot.pet_caregivers WHERE caregiver_user_id=(SELECT user_id FROM carnebot.telegram_identities WHERE telegram_user_id=${rejectedCaregiver.id})`,
 							).toEqual([{ status: 'rejected' }]);
 							const todosId = id++;
 							const todosUpdate = update(
@@ -250,10 +250,10 @@ else
 							}>`SELECT p.name AS pet_name,s.timezone,e.amount_mg,e.fed_at,
 								e.source_bot_id,e.source_update_id,e.source_message_chat_id,
 								e.source_message_id,up.telegram_user_id AS recorded_by_telegram_id
-							FROM carneloot.pet_food_entries e
-							JOIN carneloot.pets p ON p.id=e.pet_id
-							JOIN carneloot.pet_food_settings s ON s.pet_id=p.id
-							JOIN carneloot.telegram_identities up ON up.user_id=e.recorded_by
+							FROM carnebot.pet_food_entries e
+							JOIN carnebot.pets p ON p.id=e.pet_id
+							JOIN carnebot.pet_food_settings s ON s.pet_id=p.id
+							JOIN carnebot.telegram_identities up ON up.user_id=e.recorded_by
 							ORDER BY p.name`;
 							expect(rows).toHaveLength(2);
 							expect(
@@ -296,12 +296,12 @@ else
 							const sentBeforeReplay = sent.length;
 							yield* dispatchWith(context, todosUpdate);
 							expect(
-								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
+								yield* sql`SELECT id FROM carnebot.pet_food_entries`,
 							).toHaveLength(2);
 							expect(sent).toHaveLength(sentBeforeReplay);
 							expect(reactions).toHaveLength(1);
 							const entriesBeforeRejectedMutation = yield* sql`
-								SELECT id FROM carneloot.pet_food_entries
+								SELECT id FROM carnebot.pet_food_entries
 							`;
 							yield* send('/todos 50g 08:30', rejectedCaregiver);
 							expect(sent.at(-1)).toEqual({
@@ -314,14 +314,14 @@ else
 								text: 'Você não está cuidando de nenhum pet.',
 							});
 							expect(
-								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
+								yield* sql`SELECT id FROM carnebot.pet_food_entries`,
 							).toEqual(entriesBeforeRejectedMutation);
 							expect(
 								yield* sql`SELECT conversation_id FROM tfx_shared_food_e2e.case_conversations WHERE user_id=${rejectedCaregiver.id}`,
 							).toHaveLength(0);
 
 							// Relative times share a message anchor even across different pet zones.
-							yield* sql`UPDATE carneloot.pet_food_settings SET reminder_delay_ms=3600000`;
+							yield* sql`UPDATE carnebot.pet_food_settings SET reminder_delay_ms=3600000`;
 							const at = (iso: string) => Date.parse(iso) / 1_000;
 							const relativeId = id++;
 							const relativeUpdate = update(
@@ -335,10 +335,10 @@ else
 								amount_mg: bigint;
 								fed_at: Date;
 							}>`
-								SELECT p.name pet_name,e.amount_mg,e.fed_at FROM carneloot.pet_food_entries e
-								JOIN carneloot.pets p ON p.id=e.pet_id WHERE e.source_update_id=${relativeId} ORDER BY p.name`;
+								SELECT p.name pet_name,e.amount_mg,e.fed_at FROM carnebot.pet_food_entries e
+								JOIN carnebot.pets p ON p.id=e.pet_id WHERE e.source_update_id=${relativeId} ORDER BY p.name`;
 							const persistedEntries = () => sql`
-								SELECT id,amount_mg,fed_at,updated_at FROM carneloot.pet_food_entries ORDER BY id`;
+								SELECT id,amount_mg,fed_at,updated_at FROM carnebot.pet_food_entries ORDER BY id`;
 							yield* dispatchWith(context, relativeUpdate);
 							expect(yield* relativeEntries()).toEqual(
 								['Mimi', 'Rex'].map((pet_name) => ({
@@ -352,7 +352,7 @@ else
 							yield* sql`DELETE FROM tfx_shared_food_e2e.case_update_deduplication WHERE bot_id='carneloot' AND update_id=${relativeId}`;
 							yield* dispatchWith(context, relativeUpdate);
 							expect(
-								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
+								yield* sql`SELECT id FROM carnebot.pet_food_entries`,
 							).toHaveLength(4);
 							for (const text of [
 								'/todos 8 -1.5min',
@@ -360,7 +360,7 @@ else
 							])
 								yield* dispatchWith(context, update(id++, text, caregiver));
 							expect(
-								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
+								yield* sql`SELECT id FROM carnebot.pet_food_entries`,
 							).toHaveLength(4);
 
 							yield* dispatchWith(
@@ -373,7 +373,7 @@ else
 								),
 							);
 							expect(
-								yield* sql`SELECT fed_at FROM carneloot.pet_food_entries WHERE amount_mg=9000`,
+								yield* sql`SELECT fed_at FROM carnebot.pet_food_entries WHERE amount_mg=9000`,
 							).toEqual([
 								{ fed_at: new Date('2024-01-02T15:03:30Z') },
 								{ fed_at: new Date('2024-01-02T15:03:30Z') },
@@ -405,8 +405,8 @@ else
 								scheduled_for: Date;
 								run_at: Date;
 							}>`
-								SELECT p.name pet_name,n.scheduled_for,j.run_at FROM carneloot.notification_events n
-								JOIN carneloot.pets p ON p.id=n.pet_id JOIN tfx_shared_food_e2e.case_jobs j ON j.id=n.job_id
+								SELECT p.name pet_name,n.scheduled_for,j.run_at FROM carnebot.notification_events n
+								JOIN carnebot.pets p ON p.id=n.pet_id JOIN tfx_shared_food_e2e.case_jobs j ON j.id=n.job_id
 								WHERE n.kind='feeding-reminder' AND n.status='scheduled' ORDER BY p.name`;
 							expect(yield* reminders()).toEqual(
 								['Mimi', 'Rex'].map((pet_name) => ({
@@ -433,7 +433,7 @@ else
 							]);
 
 							// Revoke one shared pet before a second correction; only the other can change.
-							yield* sql`UPDATE carneloot.pet_caregivers SET status='rejected' WHERE pet_id=(SELECT id FROM carneloot.pets WHERE name='Rex')`;
+							yield* sql`UPDATE carnebot.pet_caregivers SET status='rejected' WHERE pet_id=(SELECT id FROM carnebot.pets WHERE name='Rex')`;
 							yield* dispatchWith(
 								context,
 								update(
@@ -458,11 +458,11 @@ else
 							]);
 
 							// Seed a previously sent reminder's Telegram identity, then reply through the bot.
-							yield* sql`INSERT INTO carneloot.notification_deliveries
+							yield* sql`INSERT INTO carnebot.notification_deliveries
 								(id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,sending_started_at,telegram_bot_id,telegram_message_id,sent_at,created_at,updated_at)
 								SELECT gen_random_uuid(),n.id,i.user_id,i.private_chat_id,'caregiver','telegram','sent',1,1,now(),'carneloot',99999,now(),now(),now()
-								FROM carneloot.notification_events n JOIN carneloot.pets p ON p.id=n.pet_id
-								JOIN carneloot.telegram_identities i ON i.telegram_user_id=${caregiver.id}
+								FROM carnebot.notification_events n JOIN carnebot.pets p ON p.id=n.pet_id
+								JOIN carnebot.telegram_identities i ON i.telegram_user_id=${caregiver.id}
 								WHERE p.name='Mimi' AND n.kind='feeding-reminder' AND n.status='scheduled'`;
 							const reminderReply = update(
 								id++,
@@ -489,7 +489,7 @@ else
 							expect(sent.at(-1)?.text).toBe('Formato de ração inválido.');
 							expect(yield* persistedEntries()).toEqual(afterReminderReply);
 							expect(
-								yield* sql`SELECT amount_mg,fed_at FROM carneloot.pet_food_entries WHERE source_update_id=${reminderReply.update_id}`,
+								yield* sql`SELECT amount_mg,fed_at FROM carnebot.pet_food_entries WHERE source_update_id=${reminderReply.update_id}`,
 							).toEqual([
 								{ amount_mg: 12000n, fed_at: new Date('2024-01-02T15:53:30Z') },
 							]);

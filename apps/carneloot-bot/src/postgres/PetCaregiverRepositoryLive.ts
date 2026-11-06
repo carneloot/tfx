@@ -74,7 +74,7 @@ export const layer = Layer.effect(
 		const one = (petId: PetId, caregiverUserId: UserId, lock: boolean) =>
 			sql
 				.unsafe<Record<string, unknown>>(
-					`SELECT * FROM carneloot.pet_caregivers WHERE pet_id=$1::uuid AND caregiver_user_id=$2::uuid${lock ? ' FOR UPDATE' : ''}`,
+					`SELECT * FROM carnebot.pet_caregivers WHERE pet_id=$1::uuid AND caregiver_user_id=$2::uuid${lock ? ' FOR UPDATE' : ''}`,
 					[petId, caregiverUserId],
 				)
 				.pipe(
@@ -86,7 +86,7 @@ export const layer = Layer.effect(
 		const listBy = (caregiverUserId: UserId, status: 'pending' | 'accepted') =>
 			sql<
 				Record<string, unknown>
-			>`SELECT * FROM carneloot.pet_caregivers WHERE caregiver_user_id=${caregiverUserId}::uuid AND status=${status} ORDER BY pet_id`.pipe(
+			>`SELECT * FROM carnebot.pet_caregivers WHERE caregiver_user_id=${caregiverUserId}::uuid AND status=${status} ORDER BY pet_id`.pipe(
 				Effect.flatMap((rows) => Effect.forEach(rows, decode)),
 				Effect.mapError(persistence),
 			);
@@ -96,7 +96,7 @@ export const layer = Layer.effect(
 			insertPending: (petId, caregiverUserId, now) =>
 				sql<
 					Record<string, unknown>
-				>`INSERT INTO carneloot.pet_caregivers (pet_id,caregiver_user_id,status,created_at,updated_at) VALUES (${petId}::uuid,${caregiverUserId}::uuid,'pending',${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) RETURNING *`.pipe(
+				>`INSERT INTO carnebot.pet_caregivers (pet_id,caregiver_user_id,status,created_at,updated_at) VALUES (${petId}::uuid,${caregiverUserId}::uuid,'pending',${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) RETURNING *`.pipe(
 					Effect.flatMap((rows) => decode(rows[0])),
 					Effect.mapError((cause) =>
 						constraint(cause) === 'pet_caregivers_pk'
@@ -110,7 +110,7 @@ export const layer = Layer.effect(
 				Effect.gen(function* () {
 					const rows = yield* sql<
 						Record<string, unknown>
-					>`UPDATE carneloot.pet_caregivers SET status=${status},updated_at=${DateTime.toDateUtc(now)} WHERE pet_id=${petId}::uuid AND caregiver_user_id=${caregiverUserId}::uuid AND status='pending' RETURNING *`.pipe(
+					>`UPDATE carnebot.pet_caregivers SET status=${status},updated_at=${DateTime.toDateUtc(now)} WHERE pet_id=${petId}::uuid AND caregiver_user_id=${caregiverUserId}::uuid AND status='pending' RETURNING *`.pipe(
 						Effect.mapError(persistence),
 					);
 					const row = rows[0];
@@ -123,14 +123,14 @@ export const layer = Layer.effect(
 					return yield* decode(row);
 				}),
 			remove: (petId, caregiverUserId) =>
-				sql`DELETE FROM carneloot.pet_caregivers WHERE pet_id=${petId}::uuid AND caregiver_user_id=${caregiverUserId}::uuid RETURNING pet_id`.pipe(
+				sql`DELETE FROM carnebot.pet_caregivers WHERE pet_id=${petId}::uuid AND caregiver_user_id=${caregiverUserId}::uuid RETURNING pet_id`.pipe(
 					Effect.map((rows) => rows.length > 0),
 					Effect.mapError(persistence),
 				),
 			listForPet: (petId) =>
 				sql<
 					Record<string, unknown>
-				>`SELECT * FROM carneloot.pet_caregivers WHERE pet_id=${petId}::uuid ORDER BY caregiver_user_id`.pipe(
+				>`SELECT * FROM carnebot.pet_caregivers WHERE pet_id=${petId}::uuid ORDER BY caregiver_user_id`.pipe(
 					Effect.flatMap((rows) => Effect.forEach(rows, decode)),
 					Effect.mapError(persistence),
 				),

@@ -126,7 +126,7 @@ else
 					Effect.scoped(
 						Effect.gen(function* () {
 							const sql = yield* PgClient.PgClient;
-							yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
+							yield* sql.unsafe('DROP SCHEMA IF EXISTS carnebot CASCADE');
 							yield* sql.unsafe(
 								'DROP SCHEMA IF EXISTS tfx_restart_e2e CASCADE',
 							);
@@ -158,7 +158,7 @@ else
 							yield* sql`SELECT bot_id FROM tfx_restart_e2e.case_conversations`,
 						).toHaveLength(0);
 						expect(
-							yield* sql`SELECT id FROM carneloot.pets WHERE name='Rex'`,
+							yield* sql`SELECT id FROM carnebot.pets WHERE name='Rex'`,
 						).toHaveLength(1);
 					}),
 				),
@@ -181,11 +181,11 @@ else
 						const [row] = yield* sql<{
 							user_id: string;
 							pet_id: string;
-						}>`SELECT i.user_id,p.id pet_id FROM carneloot.telegram_identities i JOIN carneloot.pets p ON p.owner_id=i.user_id LIMIT 1`;
-						yield* sql`INSERT INTO carneloot.pet_food_settings(pet_id,day_start,timezone,reminder_delay_ms,created_at,updated_at) VALUES (${row!.pet_id}::uuid,'00:00','UTC',1000,now(),now())`;
-						yield* sql`INSERT INTO carneloot.pet_food_entries(id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${ids.food}::uuid,${row!.pet_id}::uuid,${row!.user_id}::uuid,50000,now(),'carneloot',9001,now(),now())`;
+						}>`SELECT i.user_id,p.id pet_id FROM carnebot.telegram_identities i JOIN carnebot.pets p ON p.owner_id=i.user_id LIMIT 1`;
+						yield* sql`INSERT INTO carnebot.pet_food_settings(pet_id,day_start,timezone,reminder_delay_ms,created_at,updated_at) VALUES (${row!.pet_id}::uuid,'00:00','UTC',1000,now(),now())`;
+						yield* sql`INSERT INTO carnebot.pet_food_entries(id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${ids.food}::uuid,${row!.pet_id}::uuid,${row!.user_id}::uuid,50000,now(),'carneloot',9001,now(),now())`;
 						yield* sql`INSERT INTO tfx_restart_e2e.case_jobs(id,declaration,payload_version,payload_json,status,attempts,max_attempts,run_at,lease_generation,cancellation_requested,created_at,updated_at) VALUES (${ids.job}::uuid,'feeding-reminder',1,${sql.json({ eventId: ids.event, botId: 'carneloot', petId: row!.pet_id, foodEntryId: ids.food })},'scheduled',0,8,now()+interval '1 hour',0,false,now(),now())`;
-						yield* sql`INSERT INTO carneloot.notification_events(id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,created_at,updated_at) VALUES (${ids.event}::uuid,'carneloot','feeding-reminder',${row!.user_id}::uuid,${row!.pet_id}::uuid,${ids.food}::uuid,now(),'scheduled',${`restart:${ids.event}`},${ids.job}::uuid,now(),now())`;
+						yield* sql`INSERT INTO carnebot.notification_events(id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,created_at,updated_at) VALUES (${ids.event}::uuid,'carneloot','feeding-reminder',${row!.user_id}::uuid,${row!.pet_id}::uuid,${ids.food}::uuid,now(),'scheduled',${`restart:${ids.event}`},${ids.job}::uuid,now(),now())`;
 					}),
 					postgres,
 				),
@@ -218,7 +218,7 @@ else
 							Effect.flatMap(
 								sql<{
 									ready: boolean;
-								}>`SELECT EXISTS(SELECT 1 FROM carneloot.notification_events WHERE id=${ids.event}::uuid AND status='completed') AND EXISTS(SELECT 1 FROM carneloot.notification_deliveries WHERE event_id=${ids.event}::uuid AND status='sent') AS ready`,
+								}>`SELECT EXISTS(SELECT 1 FROM carnebot.notification_events WHERE id=${ids.event}::uuid AND status='completed') AND EXISTS(SELECT 1 FROM carnebot.notification_deliveries WHERE event_id=${ids.event}::uuid AND status='sent') AS ready`,
 								(rows) =>
 									rows[0]?.ready === true
 										? Effect.void
@@ -250,10 +250,10 @@ else
 						const [base] = yield* sql<{
 							user_id: string;
 							pet_id: string;
-						}>`SELECT owner_id user_id,id pet_id FROM carneloot.pets LIMIT 1`;
+						}>`SELECT owner_id user_id,id pet_id FROM carnebot.pets LIMIT 1`;
 						yield* sql`INSERT INTO tfx_restart_e2e.case_jobs(id,declaration,payload_version,payload_json,status,attempts,max_attempts,run_at,lease_generation,cancellation_requested,created_at,updated_at) VALUES (${ambiguous.job}::uuid,'feeding-reminder',1,${sql.json({ eventId: ambiguous.event, botId: 'carneloot', petId: base!.pet_id, foodEntryId: ids.food })},'scheduled',0,8,now(),0,false,now(),now())`;
-						yield* sql`INSERT INTO carneloot.notification_events(id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,created_at,updated_at) VALUES (${ambiguous.event}::uuid,'carneloot','feeding-reminder',${base!.user_id}::uuid,${base!.pet_id}::uuid,${ids.food}::uuid,now(),'dispatching',${`ambiguous:${ambiguous.event}`},${ambiguous.job}::uuid,now(),now())`;
-						yield* sql`INSERT INTO carneloot.notification_deliveries(id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,sending_started_at,sending_lease_expires_at,retryable,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${ambiguous.event}::uuid,${base!.user_id}::uuid,5101,'owner','telegram','sending',1,1,now()-interval '2 seconds',now()-interval '1 second',false,now(),now())`;
+						yield* sql`INSERT INTO carnebot.notification_events(id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,created_at,updated_at) VALUES (${ambiguous.event}::uuid,'carneloot','feeding-reminder',${base!.user_id}::uuid,${base!.pet_id}::uuid,${ids.food}::uuid,now(),'dispatching',${`ambiguous:${ambiguous.event}`},${ambiguous.job}::uuid,now(),now())`;
+						yield* sql`INSERT INTO carnebot.notification_deliveries(id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,sending_started_at,sending_lease_expires_at,retryable,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${ambiguous.event}::uuid,${base!.user_id}::uuid,5101,'owner','telegram','sending',1,1,now()-interval '2 seconds',now()-interval '1 second',false,now(),now())`;
 					}),
 					postgres,
 				),
@@ -289,10 +289,10 @@ else
 							);
 						yield* awaitTerminal(100);
 						expect(
-							yield* sql`SELECT id FROM carneloot.notification_deliveries WHERE event_id=${ambiguous.event}::uuid AND status='unknown'`,
+							yield* sql`SELECT id FROM carnebot.notification_deliveries WHERE event_id=${ambiguous.event}::uuid AND status='unknown'`,
 						).toHaveLength(1);
 						expect(
-							yield* sql`SELECT id FROM carneloot.notification_events WHERE id=${ambiguous.event}::uuid AND status='completed'`,
+							yield* sql`SELECT id FROM carnebot.notification_events WHERE id=${ambiguous.event}::uuid AND status='completed'`,
 						).toHaveLength(1);
 						expect(
 							yield* sql`SELECT id FROM tfx_restart_e2e.case_jobs WHERE id=${ambiguous.job}::uuid AND status='completed' AND outcome_json->>'_tag'='Succeeded'`,

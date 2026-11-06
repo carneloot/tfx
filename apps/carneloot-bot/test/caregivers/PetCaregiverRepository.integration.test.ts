@@ -116,7 +116,7 @@ describe.skipIf(!enabled)('caregiver PostgreSQL repositories', () => {
 				Schema.decodeUnknownSync(PetName)('Cascade Pet'),
 			);
 			yield* caregivers.insertPending(cascadePet.id, pendingUser.user.id, now);
-			yield* sql`DELETE FROM carneloot.pets WHERE id=${cascadePet.id}::uuid`;
+			yield* sql`DELETE FROM carnebot.pets WHERE id=${cascadePet.id}::uuid`;
 
 			return {
 				all,

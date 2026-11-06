@@ -66,7 +66,7 @@ export const layer = Layer.effect(
 				Effect.flatMap(
 					sql<
 						Record<string, unknown>
-					>`SELECT private_chat_id FROM carneloot.telegram_identities WHERE bot_id=${botId} AND user_id=${ownerUserId}::uuid`,
+					>`SELECT private_chat_id FROM carnebot.telegram_identities WHERE bot_id=${botId} AND user_id=${ownerUserId}::uuid`,
 					(
 						rows,
 					): Effect.Effect<ResolvedRecipient, NotificationRecipientsError> => {
@@ -107,19 +107,19 @@ export const layer = Layer.effect(
 				return sql<Record<string, unknown>>`
 					WITH candidates AS (
 						SELECT p.owner_id AS user_id, 'owner'::text AS role, 0 AS role_order
-						FROM carneloot.pets p
+						FROM carnebot.pets p
 						WHERE p.id=${petId}::uuid
 						UNION ALL
 						SELECT pc.caregiver_user_id AS user_id, 'caregiver'::text AS role, 1 AS role_order
-						FROM carneloot.pet_caregivers pc
-						JOIN carneloot.pets p ON p.id=pc.pet_id
+						FROM carnebot.pet_caregivers pc
+						JOIN carnebot.pets p ON p.id=pc.pet_id
 						WHERE pc.pet_id=${petId}::uuid
 							AND pc.status='accepted'
 							AND pc.caregiver_user_id<>p.owner_id
 					)
 					SELECT c.user_id, c.role, ti.private_chat_id
 					FROM candidates c
-					LEFT JOIN carneloot.telegram_identities ti
+					LEFT JOIN carnebot.telegram_identities ti
 						ON ti.bot_id=${botId} AND ti.user_id=c.user_id
 					WHERE (${excludedUserId}::uuid IS NULL OR c.user_id<>${excludedUserId}::uuid)
 					ORDER BY c.role_order, c.user_id

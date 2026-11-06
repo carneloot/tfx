@@ -294,7 +294,7 @@ else
 				]);
 				const rows = yield* sql<{
 					recipient_user_id: string;
-				}>`SELECT recipient_user_id FROM carneloot.notification_deliveries WHERE event_id=${event.id}::uuid ORDER BY recipient_user_id`;
+				}>`SELECT recipient_user_id FROM carnebot.notification_deliveries WHERE event_id=${event.id}::uuid ORDER BY recipient_user_id`;
 				return {
 					results,
 					retry,
@@ -353,7 +353,7 @@ else
 				);
 				const counts = yield* sql<{
 					count: number;
-				}>`SELECT count(*)::int count FROM carneloot.notification_deliveries WHERE event_id=${event.id}::uuid`;
+				}>`SELECT count(*)::int count FROM carnebot.notification_deliveries WHERE event_id=${event.id}::uuid`;
 				return {
 					attempted,
 					count: counts[0]?.count,
@@ -678,13 +678,13 @@ else
 				const event = yield* create(repository, owner.user.id, 'constraints');
 				const sql = yield* PgClient.PgClient;
 				const invalidRole = yield* Effect.result(
-					sql`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${event.id}::uuid,${owner.user.id}::uuid,1,'Owner','telegram','pending',now(),now())`,
+					sql`INSERT INTO carnebot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${event.id}::uuid,${owner.user.id}::uuid,1,'Owner','telegram','pending',now(),now())`,
 				);
 				const invalidShape = yield* Effect.result(
-					sql`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,sending_started_at,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${event.id}::uuid,${owner.user.id}::uuid,1,'owner','telegram','pending',now(),now(),now())`,
+					sql`INSERT INTO carnebot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,sending_started_at,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${event.id}::uuid,${owner.user.id}::uuid,1,'owner','telegram','pending',now(),now(),now())`,
 				);
 				const unsafeChat = yield* Effect.result(
-					sql`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${event.id}::uuid,${owner.user.id}::uuid,9007199254740992,'owner','telegram','pending',now(),now())`,
+					sql`INSERT INTO carnebot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${event.id}::uuid,${owner.user.id}::uuid,9007199254740992,'owner','telegram','pending',now(),now())`,
 				);
 				const secondEvent = yield* create(repository, owner.user.id, 'message');
 				const [first] = yield* repository.materializeRecipients(

@@ -186,7 +186,7 @@ const scheduleFixture = Effect.gen(function* () {
 	const [event] = yield* sql<{
 		id: string;
 		job_id: string;
-	}>`SELECT id,job_id FROM carneloot.notification_events WHERE pet_id=${pet.id}::uuid AND status='scheduled'`;
+	}>`SELECT id,job_id FROM carnebot.notification_events WHERE pet_id=${pet.id}::uuid AND status='scheduled'`;
 	return { user, pet, entry, event: event! };
 });
 const addCaregiver = (petId: PetId) =>
@@ -202,7 +202,7 @@ const addCaregiver = (petId: PetId) =>
 			privateChatId: Schema.decodeUnknownSync(TelegramChatId)(telegramId),
 		});
 		const sql = yield* PgClient.PgClient;
-		yield* sql`INSERT INTO carneloot.pet_caregivers (pet_id,caregiver_user_id,status,created_at,updated_at) VALUES (${petId}::uuid,${caregiver.user.id}::uuid,'accepted',now(),now())`;
+		yield* sql`INSERT INTO carnebot.pet_caregivers (pet_id,caregiver_user_id,status,created_at,updated_at) VALUES (${petId}::uuid,${caregiver.user.id}::uuid,'accepted',now(),now())`;
 		return caregiver;
 	});
 
@@ -247,10 +247,10 @@ else
 				const [delivery] = yield* sql<{
 					status: string;
 					telegram_message_id: bigint;
-				}>`SELECT status,telegram_message_id FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
+				}>`SELECT status,telegram_message_id FROM carnebot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
 				const [event] = yield* sql<{
 					status: string;
-				}>`SELECT status FROM carneloot.notification_events WHERE id=${fixture.event.id}::uuid`;
+				}>`SELECT status FROM carnebot.notification_events WHERE id=${fixture.event.id}::uuid`;
 				expect(delivery).toMatchObject({
 					status: 'sent',
 					telegram_message_id: 77n,
@@ -275,7 +275,7 @@ else
 				const deliveries = yield* sql<{
 					recipient_role: string;
 					status: string;
-				}>`SELECT recipient_role,status FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC,recipient_user_id`;
+				}>`SELECT recipient_role,status FROM carnebot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC,recipient_user_id`;
 				expect(deliveries).toEqual([
 					{ recipient_role: 'owner', status: 'sent' },
 					{ recipient_role: 'caregiver', status: 'sent' },
@@ -303,7 +303,7 @@ else
 					recipient_role: string;
 					status: string;
 					attempt_count: number;
-				}>`SELECT recipient_role,status,attempt_count FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC`;
+				}>`SELECT recipient_role,status,attempt_count FROM carnebot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC`;
 				expect(first).toEqual([
 					{ recipient_role: 'owner', status: 'sent', attempt_count: 1 },
 					{ recipient_role: 'caregiver', status: 'failed', attempt_count: 1 },
@@ -315,7 +315,7 @@ else
 					recipient_role: string;
 					status: string;
 					attempt_count: number;
-				}>`SELECT recipient_role,status,attempt_count FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC`;
+				}>`SELECT recipient_role,status,attempt_count FROM carnebot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC`;
 				expect(final).toEqual([
 					{ recipient_role: 'owner', status: 'sent', attempt_count: 1 },
 					{ recipient_role: 'caregiver', status: 'sent', attempt_count: 2 },
@@ -342,7 +342,7 @@ else
 				const sql = yield* PgClient.PgClient;
 				const [counts] = yield* sql<{
 					deliveries: number;
-				}>`SELECT count(*)::int deliveries FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
+				}>`SELECT count(*)::int deliveries FROM carnebot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
 				expect(counts?.deliveries).toBe(1);
 			});
 			await Effect.runPromise(Effect.provide(program, layer));
@@ -362,13 +362,13 @@ else
 				const send = yield* Effect.forkChild(runFresh);
 				yield* Deferred.await(control.started!);
 				const sql = yield* PgClient.PgClient;
-				yield* sql`UPDATE carneloot.pet_caregivers SET status='rejected',updated_at=now() WHERE pet_id=${fixture.pet.id}::uuid AND caregiver_user_id=${caregiver.user.id}::uuid`;
+				yield* sql`UPDATE carnebot.pet_caregivers SET status='rejected',updated_at=now() WHERE pet_id=${fixture.pet.id}::uuid AND caregiver_user_id=${caregiver.user.id}::uuid`;
 				yield* Deferred.succeed(control.release!, undefined);
 				expect(yield* Fiber.join(send)).toMatchObject({ status: 'completed' });
 				const [delivery] = yield* sql<{
 					status: string;
 					safe_error_json: { readonly code: string };
-				}>`SELECT status,safe_error_json FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid AND recipient_role='caregiver'`;
+				}>`SELECT status,safe_error_json FROM carnebot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid AND recipient_role='caregiver'`;
 				expect(delivery).toMatchObject({
 					status: 'failed',
 					safe_error_json: { code: 'caregiver-access-revoked' },
@@ -405,7 +405,7 @@ else
 				const [counts] = yield* sql<{
 					events: number;
 					sent: number;
-				}>`SELECT count(DISTINCT e.id)::int events,count(d.id) FILTER (WHERE d.status='sent')::int sent FROM carneloot.notification_events e LEFT JOIN carneloot.notification_deliveries d ON d.event_id=e.id WHERE e.bot_id=${botId} AND e.pet_id=${fixture.pet.id}::uuid AND e.food_entry_id=${fixture.entry.id}::uuid`;
+				}>`SELECT count(DISTINCT e.id)::int events,count(d.id) FILTER (WHERE d.status='sent')::int sent FROM carnebot.notification_events e LEFT JOIN carnebot.notification_deliveries d ON d.event_id=e.id WHERE e.bot_id=${botId} AND e.pet_id=${fixture.pet.id}::uuid AND e.food_entry_id=${fixture.entry.id}::uuid`;
 				expect(counts).toEqual({ events: 1, sent: 1 });
 			});
 			await Effect.runPromise(Effect.provide(program, layer));
@@ -443,7 +443,7 @@ else
 				const sql = yield* PgClient.PgClient;
 				const events = yield* sql<{
 					status: string;
-				}>`SELECT status FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${fixture.pet.id}::uuid AND food_entry_id=${fixture.entry.id}::uuid`;
+				}>`SELECT status FROM carnebot.notification_events WHERE bot_id=${botId} AND pet_id=${fixture.pet.id}::uuid AND food_entry_id=${fixture.entry.id}::uuid`;
 				expect(events).toEqual([{ status: 'completed' }]);
 			});
 			await Effect.runPromise(Effect.provide(program, layer));
@@ -458,14 +458,14 @@ else
 				const fixture = yield* scheduleFixture;
 				const caregiver = yield* addCaregiver(fixture.pet.id);
 				const sql = yield* PgClient.PgClient;
-				yield* sql`DELETE FROM carneloot.telegram_identities WHERE user_id=${caregiver.user.id}::uuid`;
+				yield* sql`DELETE FROM carnebot.telegram_identities WHERE user_id=${caregiver.user.id}::uuid`;
 				yield* TestClock.setTime(3_000);
 				yield* runFresh;
 				const deliveries = yield* sql<{
 					recipient_role: string;
 					status: string;
 					recipient_chat_id: bigint | null;
-				}>`SELECT recipient_role,status,recipient_chat_id FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC`;
+				}>`SELECT recipient_role,status,recipient_chat_id FROM carnebot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid ORDER BY recipient_role DESC`;
 				expect(deliveries).toEqual([
 					{
 						recipient_role: 'owner',
@@ -490,13 +490,13 @@ else
 				yield* TestClock.setTime(2_000);
 				const fixture = yield* scheduleFixture;
 				const sql = yield* PgClient.PgClient;
-				yield* sql`DELETE FROM carneloot.telegram_identities WHERE user_id=${fixture.user.user.id}::uuid`;
+				yield* sql`DELETE FROM carnebot.telegram_identities WHERE user_id=${fixture.user.user.id}::uuid`;
 				yield* TestClock.setTime(3_000);
 				yield* runFresh;
 				const [delivery] = yield* sql<{
 					status: string;
 					recipient_chat_id: string | null;
-				}>`SELECT status,recipient_chat_id FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
+				}>`SELECT status,recipient_chat_id FROM carnebot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
 				expect(delivery).toEqual({ status: 'failed', recipient_chat_id: null });
 			});
 			await Effect.runPromise(Effect.provide(program, layer));
@@ -532,7 +532,7 @@ else
 					const [delivery] = yield* sql<{
 						status: string;
 						retry_at: Date | null;
-					}>`SELECT status,retry_at FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
+					}>`SELECT status,retry_at FROM carnebot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
 					if (mode === 'network') {
 						expect(delivery?.status).toBe('unknown');
 						expect(yield* runFresh).toBeUndefined();
@@ -581,7 +581,7 @@ else
 				const sql = yield* PgClient.PgClient;
 				const [sending] = yield* sql<{
 					status: string;
-				}>`SELECT status FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
+				}>`SELECT status FROM carnebot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
 				expect(sending?.status).toBe('sending');
 				yield* TestClock.setTime(33_001);
 				const notifications = yield* NotificationRepository;
@@ -591,7 +591,7 @@ else
 				);
 				const [unknown] = yield* sql<{
 					status: string;
-				}>`SELECT status FROM carneloot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
+				}>`SELECT status FROM carnebot.notification_deliveries WHERE event_id=${fixture.event.id}::uuid`;
 				expect(unknown?.status).toBe('unknown');
 			});
 			await Effect.runPromise(Effect.provide(program, layer));
@@ -623,7 +623,7 @@ else
 				const sql = yield* PgClient.PgClient;
 				const [event] = yield* sql<{
 					status: string;
-				}>`SELECT status FROM carneloot.notification_events WHERE id=${fixture.event.id}::uuid`;
+				}>`SELECT status FROM carnebot.notification_events WHERE id=${fixture.event.id}::uuid`;
 				expect(event?.status).toBe('cancelled');
 			});
 			await Effect.runPromise(Effect.provide(program, layer));

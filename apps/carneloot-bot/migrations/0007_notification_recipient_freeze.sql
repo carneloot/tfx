@@ -1,4 +1,4 @@
-ALTER TABLE carneloot.notification_events
+ALTER TABLE carnebot.notification_events
   ADD COLUMN recipients_materialized_at timestamptz,
   ADD COLUMN food_timestamp_explicit boolean NOT NULL DEFAULT false,
   ADD CONSTRAINT notification_events_food_timestamp_shape CHECK (

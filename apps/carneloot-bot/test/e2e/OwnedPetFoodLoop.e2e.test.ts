@@ -91,7 +91,7 @@ const messageUpdate = (
 });
 const fixture = Effect.gen(function* () {
 	const sql = yield* PgClient.PgClient;
-	yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
+	yield* sql.unsafe('DROP SCHEMA IF EXISTS carnebot CASCADE');
 	yield* sql.unsafe('DROP SCHEMA IF EXISTS tfx_owned_pet_e2e CASCADE');
 	type Sent = {
 		readonly text: string;
@@ -261,22 +261,22 @@ else
 							const [profile] = yield* sql<{
 								username: string;
 								first_name: string;
-							}>`SELECT username,first_name FROM carneloot.telegram_identities`;
+							}>`SELECT username,first_name FROM carnebot.telegram_identities`;
 							expect(profile).toEqual({
 								username: 'new_owner',
 								first_name: 'Nova',
 							});
 							expect(
-								yield* sql`SELECT id FROM carneloot.pets WHERE name='Rex'`,
+								yield* sql`SELECT id FROM carnebot.pets WHERE name='Rex'`,
 							).toHaveLength(1);
 							expect(
-								yield* sql`SELECT pet_id FROM carneloot.pet_food_settings WHERE day_start='00:00' AND timezone='America/Sao_Paulo' AND reminder_delay_ms=28800000`,
+								yield* sql`SELECT pet_id FROM carnebot.pet_food_settings WHERE day_start='00:00' AND timezone='America/Sao_Paulo' AND reminder_delay_ms=28800000`,
 							).toHaveLength(1);
 							expect(
-								yield* sql`SELECT id FROM carneloot.pet_food_entries WHERE amount_mg=50000`,
+								yield* sql`SELECT id FROM carnebot.pet_food_entries WHERE amount_mg=50000`,
 							).toHaveLength(1);
 							expect(
-								yield* sql`SELECT id FROM carneloot.notification_events WHERE status='scheduled'`,
+								yield* sql`SELECT id FROM carnebot.notification_events WHERE status='scheduled'`,
 							).toHaveLength(1);
 							expect(
 								yield* sql`SELECT id FROM tfx_owned_pet_e2e.case_jobs WHERE status='scheduled'`,
@@ -304,7 +304,7 @@ else
 							expect(
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(1);
-							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(0);
+							expect(yield* sql`SELECT id FROM carnebot.pets`).toHaveLength(0);
 							yield* f.dispatch(
 								messageUpdate(105, '/cancelar@carneloot_bot', sender),
 							);
@@ -319,7 +319,7 @@ else
 							expect(
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(0);
-							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(0);
+							expect(yield* sql`SELECT id FROM carnebot.pets`).toHaveLength(0);
 
 							// Invalid selections stay active and emit correction prompts.
 							for (const [id, text] of [
@@ -351,7 +351,7 @@ else
 							);
 							// Food before delay persists without a reminder.
 							expect(
-								yield* sql`SELECT id FROM carneloot.notification_events`,
+								yield* sql`SELECT id FROM carnebot.notification_events`,
 							).toHaveLength(0);
 							for (const [id, text] of [
 								[122, '/configurar_atraso_notificacao'],
@@ -368,13 +368,13 @@ else
 								'Formato inválido. Envie uma duração entre 1 segundo e 30 dias, por exemplo 10 segundos, 30 minutos ou 2 horas.',
 							);
 							expect(
-								yield* sql`SELECT id FROM carneloot.notification_events WHERE status='scheduled'`,
+								yield* sql`SELECT id FROM carnebot.notification_events WHERE status='scheduled'`,
 							).toHaveLength(1);
 							// Duplicate update/source is acknowledged from durable dedup state.
 							yield* f.dispatch(messageUpdate(129, '50g', sender));
 							const entries = yield* sql<{
 								amount_mg: string;
-							}>`SELECT amount_mg::text amount_mg FROM carneloot.pet_food_entries ORDER BY amount_mg`;
+							}>`SELECT amount_mg::text amount_mg FROM carnebot.pet_food_entries ORDER BY amount_mg`;
 							expect(entries.map(({ amount_mg }) => Number(amount_mg))).toEqual(
 								[10_000, 50_000],
 							);
@@ -386,18 +386,18 @@ else
 							expect(
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(1);
-							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(1);
+							expect(yield* sql`SELECT id FROM carnebot.pets`).toHaveLength(1);
 							yield* f.dispatch(messageUpdate(131, '/cancelar', sender));
 							expect(
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
 							).toHaveLength(0);
-							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(1);
+							expect(yield* sql`SELECT id FROM carnebot.pets`).toHaveLength(1);
 							// Force scheduler persistence failure and prove food transaction rollback.
 							yield* sql.unsafe(
-								`CREATE FUNCTION carneloot.fail_e2e_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced scheduler rollback'; END $$`,
+								`CREATE FUNCTION carnebot.fail_e2e_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced scheduler rollback'; END $$`,
 							);
 							yield* sql.unsafe(
-								`CREATE TRIGGER fail_e2e_event BEFORE INSERT ON carneloot.notification_events FOR EACH ROW EXECUTE FUNCTION carneloot.fail_e2e_event()`,
+								`CREATE TRIGGER fail_e2e_event BEFORE INSERT ON carnebot.notification_events FOR EACH ROW EXECUTE FUNCTION carnebot.fail_e2e_event()`,
 							);
 							yield* f.dispatch(messageUpdate(132, '/colocar_racao', sender));
 							yield* f.dispatch(messageUpdate(133, 'Rex', sender));
@@ -405,24 +405,24 @@ else
 								yield* f.dispatch(messageUpdate(134, '60g', sender)),
 							).toMatchObject({ _tag: 'Handled' });
 							expect(
-								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
+								yield* sql`SELECT id FROM carnebot.pet_food_entries`,
 							).toHaveLength(2);
 							yield* sql.unsafe(
-								'DROP TRIGGER fail_e2e_event ON carneloot.notification_events',
+								'DROP TRIGGER fail_e2e_event ON carnebot.notification_events',
 							);
-							yield* sql.unsafe('DROP FUNCTION carneloot.fail_e2e_event()');
+							yield* sql.unsafe('DROP FUNCTION carnebot.fail_e2e_event()');
 							// Retry same active step with a backdated entry; current reminder stays on 50g.
 							yield* f.dispatch(messageUpdate(135, '5g 01:00', sender));
 							expect(
-								yield* sql`SELECT id FROM carneloot.pet_food_entries`,
+								yield* sql`SELECT id FROM carnebot.pet_food_entries`,
 							).toHaveLength(3);
 							expect(
-								yield* sql`SELECT e.id FROM carneloot.notification_events e JOIN carneloot.pet_food_entries f ON f.id=e.food_entry_id WHERE e.status='scheduled' AND f.amount_mg=50000`,
+								yield* sql`SELECT e.id FROM carnebot.notification_events e JOIN carnebot.pet_food_entries f ON f.id=e.food_entry_id WHERE e.status='scheduled' AND f.amount_mg=50000`,
 							).toHaveLength(1);
 
 							// Foreign mention falls through to active conversation input.
 							const petsBeforeForeignMention =
-								yield* sql`SELECT id FROM carneloot.pets`;
+								yield* sql`SELECT id FROM carnebot.pets`;
 							yield* f.dispatch(messageUpdate(1000, '/adicionar_pet', sender));
 							expect(
 								yield* sql`SELECT bot_id FROM tfx_owned_pet_e2e.case_conversations`,
@@ -434,7 +434,7 @@ else
 							expect(f.sentText().slice(outputCount)).not.toContain(
 								'Operação cancelada',
 							);
-							expect(yield* sql`SELECT id FROM carneloot.pets`).toHaveLength(
+							expect(yield* sql`SELECT id FROM carnebot.pets`).toHaveLength(
 								petsBeforeForeignMention.length + 1,
 							);
 						}),

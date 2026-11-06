@@ -92,7 +92,7 @@ describe.skipIf(!enabled)('application layer', () => {
 			captured.logs.find(
 				(log) => log.message === 'carneloot.migrations.started',
 			)?.annotations,
-		).toMatchObject({ schema: 'carneloot', tablePrefix: null });
+		).toMatchObject({ schema: 'carnebot', tablePrefix: null });
 		expect(
 			captured.logs.find(
 				(log) => log.message === 'tfx.postgres.migrations.started',

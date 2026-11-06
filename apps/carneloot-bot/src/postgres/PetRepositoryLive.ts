@@ -90,7 +90,7 @@ export const layer = Layer.effect(
 					Effect.mapError(persistence),
 				),
 				Effect.flatMap(
-					sql`SELECT id FROM carneloot.users WHERE id=${ownerId}::uuid FOR SHARE`,
+					sql`SELECT id FROM carnebot.users WHERE id=${ownerId}::uuid FOR SHARE`,
 					(rows) =>
 						rows.length === 0
 							? Effect.fail(
@@ -102,7 +102,7 @@ export const layer = Layer.effect(
 		const lookup = (petId: PetId, lock: boolean) =>
 			sql
 				.unsafe<ReadonlyArray<Record<string, unknown>>>(
-					`SELECT * FROM carneloot.pets WHERE id=$1::uuid${lock ? ' FOR UPDATE' : ''}`,
+					`SELECT * FROM carnebot.pets WHERE id=$1::uuid${lock ? ' FOR UPDATE' : ''}`,
 					[petId],
 				)
 				.pipe(
@@ -123,7 +123,7 @@ export const layer = Layer.effect(
 			findById: (petId) => lookup(petId, false),
 			lockById: (petId) => lookup(petId, true),
 			deleteOwned: (ownerId, petId) =>
-				sql`DELETE FROM carneloot.pets WHERE id=${petId}::uuid AND owner_id=${ownerId}::uuid RETURNING id`.pipe(
+				sql`DELETE FROM carnebot.pets WHERE id=${petId}::uuid AND owner_id=${ownerId}::uuid RETURNING id`.pipe(
 					Effect.map((rows) => rows.length === 1),
 					Effect.mapError(persistenceOnly),
 				),
@@ -139,7 +139,7 @@ export const layer = Layer.effect(
 							);
 							const rows = yield* sql<
 								Record<string, unknown>
-							>`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${id}::uuid,${ownerId}::uuid,${name},${petNameKey(name)},${timestamp},${timestamp}) RETURNING *`;
+							>`INSERT INTO carnebot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${id}::uuid,${ownerId}::uuid,${name},${petNameKey(name)},${timestamp},${timestamp}) RETURNING *`;
 							return yield* decode(rows[0]);
 						}),
 					)
@@ -160,7 +160,7 @@ export const layer = Layer.effect(
 							yield* assertOwner(ownerId);
 							const rows = yield* sql<
 								Record<string, unknown>
-							>`SELECT * FROM carneloot.pets WHERE owner_id=${ownerId}::uuid ORDER BY name_key,id`;
+							>`SELECT * FROM carnebot.pets WHERE owner_id=${ownerId}::uuid ORDER BY name_key,id`;
 							return yield* Effect.forEach(rows, decode);
 						}),
 					)
@@ -173,10 +173,10 @@ export const layer = Layer.effect(
 							yield* assertOwner(userId);
 							const rows = yield* sql<
 								Record<string, unknown>
-							>`SELECT p.* FROM carneloot.pets p
+							>`SELECT p.* FROM carnebot.pets p
 							WHERE p.owner_id=${userId}::uuid
 								OR EXISTS (
-									SELECT 1 FROM carneloot.pet_caregivers pc
+									SELECT 1 FROM carnebot.pet_caregivers pc
 									WHERE pc.pet_id=p.id
 										AND pc.caregiver_user_id=${userId}::uuid
 										AND pc.status='accepted'

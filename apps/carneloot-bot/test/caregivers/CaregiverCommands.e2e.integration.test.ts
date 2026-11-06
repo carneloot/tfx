@@ -133,7 +133,7 @@ else
 					Effect.scoped(
 						Effect.gen(function* () {
 							const sql = yield* PgClient.PgClient;
-							yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
+							yield* sql.unsafe('DROP SCHEMA IF EXISTS carnebot CASCADE');
 							yield* sql.unsafe(
 								'DROP SCHEMA IF EXISTS tfx_caregiver_e2e CASCADE',
 							);
@@ -162,7 +162,7 @@ else
 							const relation = () =>
 								sql<{
 									status: string;
-								}>`SELECT status FROM carneloot.pet_caregivers`;
+								}>`SELECT status FROM carnebot.pet_caregivers`;
 							yield* send('/adicionar_cuidador');
 							expect(sent.at(-1)?.replyMarkup).toEqual({
 								keyboard: [[{ text: 'Rex' }], [{ text: 'Cancelar' }]],
@@ -279,17 +279,17 @@ else
 							])
 								yield* send(text);
 							expect(
-								yield* sql`SELECT id FROM carneloot.notification_events WHERE status='scheduled'`,
+								yield* sql`SELECT id FROM carnebot.notification_events WHERE status='scheduled'`,
 							).toHaveLength(1);
 							expect(
 								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_jobs WHERE status='scheduled'`,
 							).toHaveLength(1);
-							yield* sql`INSERT INTO carneloot.notification_deliveries
+							yield* sql`INSERT INTO carnebot.notification_deliveries
 							(id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,created_at,updated_at)
 							SELECT ${crypto.randomUUID()}::uuid,e.id,e.owner_user_id,${owner.id},'owner','telegram','pending',now(),now()
-							FROM carneloot.notification_events e`;
+							FROM carnebot.notification_events e`;
 							expect(
-								yield* sql`SELECT id FROM carneloot.notification_deliveries`,
+								yield* sql`SELECT id FROM carnebot.notification_deliveries`,
 							).toHaveLength(1);
 							// Non-owner cannot enter deletion flow; reminder transaction remains untouched.
 							yield* send('/deletar_pet', caregiver);
@@ -298,7 +298,7 @@ else
 								text: 'Você não tem pets',
 							});
 							expect(
-								yield* sql`SELECT id FROM carneloot.notification_events WHERE status='scheduled'`,
+								yield* sql`SELECT id FROM carnebot.notification_events WHERE status='scheduled'`,
 							).toHaveLength(1);
 							expect(
 								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_jobs WHERE status='scheduled'`,
@@ -314,7 +314,7 @@ else
 								'notification_deliveries',
 							])
 								expect(
-									yield* sql.unsafe(`SELECT * FROM carneloot.${table}`),
+									yield* sql.unsafe(`SELECT * FROM carnebot.${table}`),
 								).toHaveLength(0);
 							expect(
 								yield* sql`SELECT id FROM tfx_caregiver_e2e.case_jobs WHERE status='scheduled'`,
@@ -362,7 +362,7 @@ else
 					Effect.scoped(
 						Effect.gen(function* () {
 							const sql = yield* PgClient.PgClient;
-							yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
+							yield* sql.unsafe('DROP SCHEMA IF EXISTS carnebot CASCADE');
 							yield* sql.unsafe(
 								'DROP SCHEMA IF EXISTS tfx_caregiver_e2e CASCADE',
 							);
@@ -394,7 +394,7 @@ else
 								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
 							).toHaveLength(1);
 							const second = yield* Layer.build(makeGraph(sql, sent));
-							yield* sql`DELETE FROM carneloot.pet_caregivers`;
+							yield* sql`DELETE FROM carnebot.pet_caregivers`;
 							const before = sent.length;
 							const final = update(209, 'Sim', caregiver);
 							yield* dispatchWith(second, final);
@@ -410,7 +410,7 @@ else
 								yield* sql`SELECT update_id FROM tfx_caregiver_e2e.case_update_deduplication WHERE update_id=209`,
 							).toHaveLength(1);
 							expect(
-								yield* sql`SELECT * FROM carneloot.pet_caregivers`,
+								yield* sql`SELECT * FROM carnebot.pet_caregivers`,
 							).toHaveLength(0);
 							expect(
 								yield* sql`SELECT conversation_id FROM tfx_caregiver_e2e.case_conversations`,
@@ -428,7 +428,7 @@ else
 					Effect.scoped(
 						Effect.gen(function* () {
 							const sql = yield* PgClient.PgClient;
-							yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
+							yield* sql.unsafe('DROP SCHEMA IF EXISTS carnebot CASCADE');
 							yield* sql.unsafe(
 								'DROP SCHEMA IF EXISTS tfx_caregiver_e2e CASCADE',
 							);
@@ -458,7 +458,7 @@ else
 							});
 							yield* dispatchWith(second, update(105, 'Sim', owner));
 							expect(
-								yield* sql`SELECT id FROM carneloot.pets WHERE name='Rex'`,
+								yield* sql`SELECT id FROM carnebot.pets WHERE name='Rex'`,
 							).toHaveLength(0);
 							expect(sent.at(-1)?.replyMarkup).toEqual({
 								remove_keyboard: true,

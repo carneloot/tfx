@@ -84,6 +84,9 @@ importers:
       '@alchemy.run/cloudflare':
         specifier: 2.0.0-beta.84
         version: 2.0.0-beta.84(@effect/platform-bun@4.0.6(effect@4.0.6))(@effect/platform-node@4.0.6(effect@4.0.6)(redis@6.3.0))(@effect/sql-pg@4.0.6(effect@4.0.6))(@types/node@24.13.3)(alchemy@2.0.0-beta.84(@effect/platform-bun@4.0.6(effect@4.0.6))(@effect/platform-node@4.0.6(effect@4.0.6)(redis@6.3.0))(effect@4.0.6)(vite@8.1.4(@types/node@24.13.3)(esbuild@0.28.2)(yaml@2.9.1))(ws@8.22.0))(effect@4.0.6)(typescript@7.0.2)(vite@8.1.4(@types/node@24.13.3)(esbuild@0.28.2)(yaml@2.9.1))
+      '@alchemy.run/planetscale':
+        specifier: 2.0.0-beta.84
+        version: 2.0.0-beta.84(@effect/sql-pg@4.0.6(effect@4.0.6))(alchemy@2.0.0-beta.84(@effect/platform-bun@4.0.6(effect@4.0.6))(@effect/platform-node@4.0.6(effect@4.0.6)(redis@6.3.0))(effect@4.0.6)(vite@8.1.4(@types/node@24.13.3)(esbuild@0.28.2)(yaml@2.9.1))(ws@8.22.0))(effect@4.0.6)
       '@cloudflare/workers-types':
         specifier: 5.20261012.1
         version: 5.20261012.1
@@ -219,6 +222,19 @@ packages:
 
   '@alchemy.run/node-utils@2.0.0-beta.84':
     resolution: {integrity: sha512-UdvCtwEeLmRNN89gVjkMIQTqzkE+xPQb26dPsQM6JzDdHUyqaTyg64U4RmfUjUul0sWQbbVIeAO475GQYbGELw==}
+
+  '@alchemy.run/planetscale@2.0.0-beta.84':
+    resolution: {integrity: sha512-j0Y4oreytRcH/fickgRPP6+i4KC8vTX/gEz58WVho+hHcajgxGAcxnrSUCoV4YgKFOigR5ONkq+OhbR5a+VPVw==}
+    peerDependencies:
+      alchemy: 2.0.0-beta.84
+      effect: ^4.0.5
+      mysql2: ^3.24.2
+      pg: ^8.22.0
+    peerDependenciesMeta:
+      mysql2:
+        optional: true
+      pg:
+        optional: true
 
   '@alchemy.run/sigil@0.1.0-alpha.1':
     resolution: {integrity: sha512-RtHELG2w+GluVewRsuKm66idtPzC+4STptMr/61X1Vy5uBkDzcCzjzV8G6jUa4iBv6Il0hHV7UL6wvv//9nD/Q==}
@@ -417,6 +433,11 @@ packages:
 
   '@distilled.cloud/iceberg@1.0.0-rc.17':
     resolution: {integrity: sha512-hO9Kqc91dq7SLBCagxlr2RDSTbp7/urqjfxNitSNaaOyKIsUr85llsADT/rS6H85ezOsGf2vSP5y1Qk0kQWLCg==}
+    peerDependencies:
+      effect: ^4.0.5
+
+  '@distilled.cloud/planetscale@1.0.0-rc.17':
+    resolution: {integrity: sha512-njhj8KAcjSUShf5WK1J7GaLQb496QefHgKBQnQ5g+AJr0u9VPYcugdhuslWsd+L634GL13IHjXVnB2Fp36uy9w==}
     peerDependencies:
       effect: ^4.0.5
 
@@ -3223,6 +3244,18 @@ snapshots:
       chokidar: 5.0.0
       rolldown: 1.2.13
 
+  '@alchemy.run/planetscale@2.0.0-beta.84(@effect/sql-pg@4.0.6(effect@4.0.6))(alchemy@2.0.0-beta.84(@effect/platform-bun@4.0.6(effect@4.0.6))(@effect/platform-node@4.0.6(effect@4.0.6)(redis@6.3.0))(effect@4.0.6)(vite@8.1.4(@types/node@24.13.3)(esbuild@0.28.2)(yaml@2.9.1))(ws@8.22.0))(effect@4.0.6)':
+    dependencies:
+      '@alchemy.run/sql': 2.0.0-beta.84(@effect/sql-pg@4.0.6(effect@4.0.6))(alchemy@2.0.0-beta.84(@effect/platform-bun@4.0.6(effect@4.0.6))(@effect/platform-node@4.0.6(effect@4.0.6)(redis@6.3.0))(effect@4.0.6)(vite@8.1.4(@types/node@24.13.3)(esbuild@0.28.2)(yaml@2.9.1))(ws@8.22.0))(effect@4.0.6)
+      '@distilled.cloud/core': 1.0.0-rc.17(effect@4.0.6)
+      '@distilled.cloud/planetscale': 1.0.0-rc.17(effect@4.0.6)
+      alchemy: 2.0.0-beta.84(@effect/platform-bun@4.0.6(effect@4.0.6))(@effect/platform-node@4.0.6(effect@4.0.6)(redis@6.3.0))(effect@4.0.6)(vite@8.1.4(@types/node@24.13.3)(esbuild@0.28.2)(yaml@2.9.1))(ws@8.22.0)
+      effect: 4.0.6
+    transitivePeerDependencies:
+      - '@effect/sql-libsql'
+      - '@effect/sql-mysql2'
+      - '@effect/sql-pg'
+
   '@alchemy.run/sigil@0.1.0-alpha.1': {}
 
   '@alchemy.run/sql@2.0.0-beta.84(@effect/sql-pg@4.0.6(effect@4.0.6))(alchemy@2.0.0-beta.84(@effect/platform-bun@4.0.6(effect@4.0.6))(@effect/platform-node@4.0.6(effect@4.0.6)(redis@6.3.0))(effect@4.0.6)(vite@8.1.4(@types/node@24.13.3)(esbuild@0.28.2)(yaml@2.9.1))(ws@8.22.0))(effect@4.0.6)':
@@ -3443,6 +3476,11 @@ snapshots:
       effect: 4.0.6
 
   '@distilled.cloud/iceberg@1.0.0-rc.17(effect@4.0.6)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.17(effect@4.0.6)
+      effect: 4.0.6
+
+  '@distilled.cloud/planetscale@1.0.0-rc.17(effect@4.0.6)':
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.17(effect@4.0.6)
       effect: 4.0.6

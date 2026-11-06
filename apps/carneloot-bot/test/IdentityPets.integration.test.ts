@@ -54,11 +54,11 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 			const counts = yield* sql<{
 				users: number;
 				identities: number;
-			}>`SELECT (SELECT count(*)::int FROM carneloot.users WHERE id=${a.user.id}::uuid) users,(SELECT count(*)::int FROM carneloot.telegram_identities WHERE bot_id=${profile.botId} AND telegram_user_id=${profile.telegramUserId}) identities`;
+			}>`SELECT (SELECT count(*)::int FROM carnebot.users WHERE id=${a.user.id}::uuid) users,(SELECT count(*)::int FROM carnebot.telegram_identities WHERE bot_id=${profile.botId} AND telegram_user_id=${profile.telegramUserId}) identities`;
 			const ledger = yield* sql<{
 				count: number;
 				checksum: string;
-			}>`SELECT count(*)::int count,max(checksum) checksum FROM carneloot.app_migrations WHERE version=1 GROUP BY version`;
+			}>`SELECT count(*)::int count,max(checksum) checksum FROM carnebot.app_migrations WHERE version=1 GROUP BY version`;
 			return { a, b, counts: counts[0], ledger: ledger[0] };
 		});
 		const result = await Effect.runPromise(Effect.provide(program, adapters));
@@ -126,9 +126,9 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 		const program = Effect.gen(function* () {
 			yield* migrate;
 			const sql = yield* PgClient.PgClient;
-			yield* sql`UPDATE carneloot.app_migrations SET checksum='drift' WHERE version=1`;
+			yield* sql`UPDATE carnebot.app_migrations SET checksum='drift' WHERE version=1`;
 			const result = yield* Effect.result(migrate);
-			yield* sql`UPDATE carneloot.app_migrations SET checksum=${migration0001Checksum} WHERE version=1`;
+			yield* sql`UPDATE carnebot.app_migrations SET checksum=${migration0001Checksum} WHERE version=1`;
 			return result;
 		});
 		const result = await Effect.runPromise(
@@ -154,12 +154,12 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 				const isolated = PgClient.layer({ url: Redacted.make(url.toString()) });
 				const program = Effect.gen(function* () {
 					const sql = yield* PgClient.PgClient;
-					yield* sql`CREATE SCHEMA carneloot`;
-					yield* sql`CREATE TABLE carneloot.users (wrong text)`;
+					yield* sql`CREATE SCHEMA carnebot`;
+					yield* sql`CREATE TABLE carnebot.users (wrong text)`;
 					const result = yield* Effect.result(migrate);
 					const ledger = yield* sql<{
 						ledger: string | null;
-					}>`SELECT to_regclass('carneloot.app_migrations')::text ledger`;
+					}>`SELECT to_regclass('carnebot.app_migrations')::text ledger`;
 					return { result, ledger: ledger[0]?.ledger };
 				});
 				const result = await Effect.runPromise(
@@ -222,19 +222,19 @@ describe.skipIf(!enabled)('identity and pets PostgreSQL', () => {
 			const sql = yield* PgClient.PgClient;
 			const now = new Date();
 			const accepted = '🐶'.repeat(20);
-			yield* sql`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${owner.user.id}::uuid,${accepted},${accepted},${now},${now})`;
+			yield* sql`INSERT INTO carnebot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${owner.user.id}::uuid,${accepted},${accepted},${now},${now})`;
 			const tooLong = '🐱'.repeat(21);
 			const rejected = yield* Effect.result(
-				sql`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${owner.user.id}::uuid,${tooLong},${tooLong},${now},${now})`,
+				sql`INSERT INTO carnebot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${owner.user.id}::uuid,${tooLong},${tooLong},${now},${now})`,
 			);
 			const restricted = yield* Effect.result(
-				sql`DELETE FROM carneloot.users WHERE id=${owner.user.id}::uuid`,
+				sql`DELETE FROM carnebot.users WHERE id=${owner.user.id}::uuid`,
 			);
-			yield* sql`DELETE FROM carneloot.pets WHERE owner_id=${owner.user.id}::uuid`;
-			yield* sql`DELETE FROM carneloot.users WHERE id=${owner.user.id}::uuid`;
+			yield* sql`DELETE FROM carnebot.pets WHERE owner_id=${owner.user.id}::uuid`;
+			yield* sql`DELETE FROM carnebot.users WHERE id=${owner.user.id}::uuid`;
 			const identities = yield* sql<{
 				count: number;
-			}>`SELECT count(*)::int count FROM carneloot.telegram_identities WHERE user_id=${owner.user.id}::uuid`;
+			}>`SELECT count(*)::int count FROM carnebot.telegram_identities WHERE user_id=${owner.user.id}::uuid`;
 			return { rejected, restricted, identities: identities[0]?.count };
 		});
 		const result = await Effect.runPromise(Effect.provide(program, adapters));
