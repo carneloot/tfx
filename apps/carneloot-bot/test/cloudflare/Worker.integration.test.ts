@@ -118,9 +118,7 @@ describe.skipIf(!enabled)(
 				`CREATE ROLE ${runtimeRole} LOGIN PASSWORD 'local-runtime-test-only' NOSUPERUSER NOCREATEDB NOCREATEROLE`,
 			);
 			roleCreated = true;
-			await query(
-				`GRANT USAGE ON SCHEMA carnebot TO ${runtimeRole}`,
-			);
+			await query(`GRANT USAGE ON SCHEMA carnebot TO ${runtimeRole}`);
 			await query(
 				`GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA carnebot TO ${runtimeRole}`,
 			);
