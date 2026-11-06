@@ -1,12 +1,12 @@
-CREATE TABLE carneloot.users (
+CREATE TABLE carnebot.users (
   id uuid PRIMARY KEY,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
 );
-CREATE TABLE carneloot.telegram_identities (
+CREATE TABLE carnebot.telegram_identities (
   bot_id text NOT NULL,
   telegram_user_id bigint NOT NULL,
-  user_id uuid NOT NULL REFERENCES carneloot.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES carnebot.users(id) ON DELETE CASCADE,
   username text,
   first_name text NOT NULL,
   last_name text,
@@ -16,9 +16,9 @@ CREATE TABLE carneloot.telegram_identities (
   CONSTRAINT telegram_identities_pk PRIMARY KEY (bot_id, telegram_user_id),
   CONSTRAINT telegram_identities_bot_user_key UNIQUE (bot_id, user_id)
 );
-CREATE TABLE carneloot.pets (
+CREATE TABLE carnebot.pets (
   id uuid PRIMARY KEY,
-  owner_id uuid NOT NULL REFERENCES carneloot.users(id) ON DELETE RESTRICT,
+  owner_id uuid NOT NULL REFERENCES carnebot.users(id) ON DELETE RESTRICT,
   name text NOT NULL,
   name_key text NOT NULL,
   created_at timestamptz NOT NULL,

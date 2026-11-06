@@ -133,7 +133,7 @@ else
 					Effect.scoped(
 						Effect.gen(function* () {
 							const sql = yield* PgClient.PgClient;
-							yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
+							yield* sql.unsafe('DROP SCHEMA IF EXISTS carnebot CASCADE');
 							yield* sql.unsafe(
 								'DROP SCHEMA IF EXISTS tfx_food_mutation_e2e CASCADE',
 							);
@@ -190,12 +190,12 @@ else
 								amount_mg: string;
 								fed_at: Date;
 							}>`
-								SELECT id,amount_mg,fed_at FROM carneloot.pet_food_entries ORDER BY fed_at`;
+								SELECT id,amount_mg,fed_at FROM carnebot.pet_food_entries ORDER BY fed_at`;
 							const active = () => sql<{
 								food_entry_id: string;
 								scheduled_for: Date;
 							}>`
-								SELECT food_entry_id,scheduled_for FROM carneloot.notification_events WHERE status='scheduled' AND kind='feeding-reminder'`;
+								SELECT food_entry_id,scheduled_for FROM carnebot.notification_events WHERE status='scheduled' AND kind='feeding-reminder'`;
 							const jobs = () => sql<{ run_at: Date }>`
 								SELECT run_at FROM tfx_food_mutation_e2e.case_jobs WHERE status='scheduled' AND conflict_key LIKE 'feeding-reminder:%'`;
 							const assertReminder = (target: string, iso: string) =>

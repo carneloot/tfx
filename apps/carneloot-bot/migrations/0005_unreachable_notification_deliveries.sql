@@ -1,4 +1,4 @@
-ALTER TABLE carneloot.notification_deliveries
+ALTER TABLE carnebot.notification_deliveries
   DROP CONSTRAINT notification_deliveries_chat_safe,
   DROP CONSTRAINT notification_deliveries_state_shape,
   ALTER COLUMN recipient_chat_id DROP NOT NULL,

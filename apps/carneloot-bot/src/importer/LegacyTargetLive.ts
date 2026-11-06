@@ -85,27 +85,27 @@ export const layer = Layer.effect(
 			const values = rows as any;
 			switch (targetTable) {
 				case 'users':
-					return sql`INSERT INTO carneloot.users ${sql.insert(values)}`;
+					return sql`INSERT INTO carnebot.users ${sql.insert(values)}`;
 				case 'telegram_identities':
-					return sql`INSERT INTO carneloot.telegram_identities ${sql.insert(values)}`;
+					return sql`INSERT INTO carnebot.telegram_identities ${sql.insert(values)}`;
 				case 'pets':
-					return sql`INSERT INTO carneloot.pets ${sql.insert(values)}`;
+					return sql`INSERT INTO carnebot.pets ${sql.insert(values)}`;
 				case 'pet_caregivers':
-					return sql`INSERT INTO carneloot.pet_caregivers ${sql.insert(values)}`;
+					return sql`INSERT INTO carnebot.pet_caregivers ${sql.insert(values)}`;
 				case 'pet_food_settings':
-					return sql`INSERT INTO carneloot.pet_food_settings ${sql.insert(values)}`;
+					return sql`INSERT INTO carnebot.pet_food_settings ${sql.insert(values)}`;
 				case 'pet_food_entries':
-					return sql`INSERT INTO carneloot.pet_food_entries ${sql.insert(values)}`;
+					return sql`INSERT INTO carnebot.pet_food_entries ${sql.insert(values)}`;
 				case 'api_keys':
-					return sql`INSERT INTO carneloot.api_keys ${sql.insert(values)}`;
+					return sql`INSERT INTO carnebot.api_keys ${sql.insert(values)}`;
 				case 'notification_templates':
-					return sql`INSERT INTO carneloot.notification_templates ${sql.insert(values)}`;
+					return sql`INSERT INTO carnebot.notification_templates ${sql.insert(values)}`;
 				case 'notification_subscriptions':
-					return sql`INSERT INTO carneloot.notification_subscriptions ${sql.insert(values)}`;
+					return sql`INSERT INTO carnebot.notification_subscriptions ${sql.insert(values)}`;
 				case 'notification_events':
-					return sql`INSERT INTO carneloot.notification_events ${sql.insert(values)}`;
+					return sql`INSERT INTO carnebot.notification_events ${sql.insert(values)}`;
 				case 'notification_deliveries':
-					return sql`INSERT INTO carneloot.notification_deliveries ${sql.insert(values)}`;
+					return sql`INSERT INTO carnebot.notification_deliveries ${sql.insert(values)}`;
 			}
 		};
 
@@ -137,7 +137,7 @@ export const layer = Layer.effect(
 		> => {
 			switch (targetTable) {
 				case 'users':
-					return sql`SELECT to_jsonb(t) row FROM carneloot.users t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carnebot.users t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'telegram_identities': {
 					const values = sql.csv(
 						rows.map((row) => {
@@ -145,10 +145,10 @@ export const layer = Layer.effect(
 							return sql`(${value.bot_id}::text, ${value.telegram_user_id}::bigint)`;
 						}),
 					);
-					return sql`SELECT to_jsonb(t) row FROM carneloot.telegram_identities t WHERE (t.bot_id,t.telegram_user_id) IN (VALUES ${values}) FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carnebot.telegram_identities t WHERE (t.bot_id,t.telegram_user_id) IN (VALUES ${values}) FOR UPDATE`;
 				}
 				case 'pets':
-					return sql`SELECT to_jsonb(t) row FROM carneloot.pets t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carnebot.pets t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'pet_caregivers': {
 					const values = sql.csv(
 						rows.map((row) => {
@@ -156,16 +156,16 @@ export const layer = Layer.effect(
 							return sql`(${value.pet_id}::uuid, ${value.caregiver_user_id}::uuid)`;
 						}),
 					);
-					return sql`SELECT to_jsonb(t) row FROM carneloot.pet_caregivers t WHERE (t.pet_id,t.caregiver_user_id) IN (VALUES ${values}) FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carnebot.pet_caregivers t WHERE (t.pet_id,t.caregiver_user_id) IN (VALUES ${values}) FOR UPDATE`;
 				}
 				case 'pet_food_settings':
-					return sql`SELECT to_jsonb(t) row FROM carneloot.pet_food_settings t WHERE pet_id IN ${sql.in(rows.map((row) => (row.value as any).pet_id))} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carnebot.pet_food_settings t WHERE pet_id IN ${sql.in(rows.map((row) => (row.value as any).pet_id))} FOR UPDATE`;
 				case 'pet_food_entries':
-					return sql`SELECT to_jsonb(t) row FROM carneloot.pet_food_entries t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carnebot.pet_food_entries t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'api_keys':
-					return sql`SELECT to_jsonb(t) row FROM carneloot.api_keys t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carnebot.api_keys t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'notification_templates':
-					return sql`SELECT to_jsonb(t) row FROM carneloot.notification_templates t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carnebot.notification_templates t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'notification_subscriptions': {
 					const values = sql.csv(
 						rows.map((row) => {
@@ -173,12 +173,12 @@ export const layer = Layer.effect(
 							return sql`(${value.template_id}::uuid, ${value.user_id}::uuid)`;
 						}),
 					);
-					return sql`SELECT to_jsonb(t) row FROM carneloot.notification_subscriptions t WHERE (t.template_id,t.user_id) IN (VALUES ${values}) FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carnebot.notification_subscriptions t WHERE (t.template_id,t.user_id) IN (VALUES ${values}) FOR UPDATE`;
 				}
 				case 'notification_events':
-					return sql`SELECT to_jsonb(t) row FROM carneloot.notification_events t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carnebot.notification_events t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 				case 'notification_deliveries':
-					return sql`SELECT to_jsonb(t) row FROM carneloot.notification_deliveries t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
+					return sql`SELECT to_jsonb(t) row FROM carnebot.notification_deliveries t WHERE id IN ${sql.in(rows.map((row) => (row.value as any).id))} FOR UPDATE`;
 			}
 		};
 		const targetDigest = (row: MappedRow, target: Record<string, unknown>) =>
@@ -230,7 +230,7 @@ export const layer = Layer.effect(
 													digest: yield* canonicalDigest(row.value),
 												});
 											const ledgers =
-												yield* sql<LedgerRow>`SELECT source_key,row_digest,target_table,target_key FROM carneloot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint} AND source_table=${sourceTable} AND target_table=${targetTable} AND source_key IN ${sql.in(sourceBatch.map((row) => row.sourceKey))} FOR UPDATE`;
+												yield* sql<LedgerRow>`SELECT source_key,row_digest,target_table,target_key FROM carnebot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint} AND source_table=${sourceTable} AND target_table=${targetTable} AND source_key IN ${sql.in(sourceBatch.map((row) => row.sourceKey))} FOR UPDATE`;
 											const ledgerBySourceKey = new Map([
 												...pendingLedgers,
 												...ledgers.map(
@@ -312,7 +312,7 @@ export const layer = Layer.effect(
 											batch.map((item) => item.row.value),
 										);
 									for (const batch of chunks(newLedgers))
-										yield* sql`INSERT INTO carneloot.legacy_import_ledger ${sql.insert(
+										yield* sql`INSERT INTO carnebot.legacy_import_ledger ${sql.insert(
 											batch.map((item) => ({
 												source_fingerprint: mapped.fingerprint,
 												source_table: item.row.sourceTable,

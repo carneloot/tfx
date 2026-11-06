@@ -86,7 +86,7 @@ const select = (
 	sql<
 		Record<string, unknown>
 	>`SELECT u.id,i.bot_id,i.telegram_user_id,i.username,i.first_name,i.last_name,i.private_chat_id,u.created_at,u.updated_at
-	FROM carneloot.telegram_identities i JOIN carneloot.users u ON u.id=i.user_id
+	FROM carnebot.telegram_identities i JOIN carnebot.users u ON u.id=i.user_id
 	WHERE i.bot_id=${botId} AND i.telegram_user_id=${telegramUserId}`;
 
 export const layer = Layer.effect(
@@ -120,11 +120,11 @@ export const layer = Layer.effect(
 								const now = yield* DateTime.now;
 								const timestamp = DateTime.toDateUtc(now);
 								if (existing[0] !== undefined) {
-									yield* sql`UPDATE carneloot.telegram_identities SET username=${profile.username},first_name=${profile.firstName},last_name=${profile.lastName},private_chat_id=${profile.privateChatId},updated_at=${timestamp} WHERE bot_id=${profile.botId} AND telegram_user_id=${profile.telegramUserId}`;
+									yield* sql`UPDATE carnebot.telegram_identities SET username=${profile.username},first_name=${profile.firstName},last_name=${profile.lastName},private_chat_id=${profile.privateChatId},updated_at=${timestamp} WHERE bot_id=${profile.botId} AND telegram_user_id=${profile.telegramUserId}`;
 									const existingUserId = Schema.decodeUnknownSync(UserId)(
 										existing[0].id,
 									);
-									yield* sql`UPDATE carneloot.users SET updated_at=${timestamp} WHERE id=${existingUserId}::uuid`;
+									yield* sql`UPDATE carnebot.users SET updated_at=${timestamp} WHERE id=${existingUserId}::uuid`;
 									const refreshed = yield* select(
 										sql,
 										profile.botId,
@@ -135,8 +135,8 @@ export const layer = Layer.effect(
 								const id = Schema.decodeUnknownSync(UserId)(
 									yield* crypto.randomUUIDv4().pipe(Effect.orDie),
 								);
-								yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${id}::uuid,${timestamp},${timestamp})`;
-								yield* sql`INSERT INTO carneloot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${profile.botId},${profile.telegramUserId},${id}::uuid,${profile.username},${profile.firstName},${profile.lastName},${profile.privateChatId},${timestamp},${timestamp})`;
+								yield* sql`INSERT INTO carnebot.users (id,created_at,updated_at) VALUES (${id}::uuid,${timestamp},${timestamp})`;
+								yield* sql`INSERT INTO carnebot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${profile.botId},${profile.telegramUserId},${id}::uuid,${profile.username},${profile.firstName},${profile.lastName},${profile.privateChatId},${timestamp},${timestamp})`;
 								const created = yield* select(
 									sql,
 									profile.botId,
@@ -157,7 +157,7 @@ export const layer = Layer.effect(
 					const rows = yield* sql<
 						Record<string, unknown>
 					>`SELECT u.id,i.bot_id,i.telegram_user_id,i.username,i.first_name,i.last_name,i.private_chat_id,u.created_at,u.updated_at
-					FROM carneloot.telegram_identities i JOIN carneloot.users u ON u.id=i.user_id
+					FROM carnebot.telegram_identities i JOIN carnebot.users u ON u.id=i.user_id
 					WHERE i.bot_id=${botId} AND lower(i.username)=${normalized}
 					ORDER BY u.id`.pipe(Effect.mapError(persistence));
 					return yield* Effect.forEach(rows, decode);
@@ -171,7 +171,7 @@ export const layer = Layer.effect(
 					const rows = yield* sql<
 						Record<string, unknown>
 					>`SELECT u.id,i.bot_id,i.telegram_user_id,i.username,i.first_name,i.last_name,i.private_chat_id,u.created_at,u.updated_at
-					FROM carneloot.telegram_identities i JOIN carneloot.users u ON u.id=i.user_id
+					FROM carnebot.telegram_identities i JOIN carnebot.users u ON u.id=i.user_id
 					WHERE i.bot_id=${botId} AND u.id=${userId}::uuid`.pipe(
 						Effect.mapError(persistence),
 					);

@@ -1,4 +1,4 @@
-CREATE TABLE carneloot.food_reply_operations (
+CREATE TABLE carnebot.food_reply_operations (
   bot_id text NOT NULL,
   update_id bigint NOT NULL,
   kind text NOT NULL,
@@ -11,5 +11,5 @@ CREATE TABLE carneloot.food_reply_operations (
 );
 
 CREATE INDEX pet_food_entries_source_message_idx
-  ON carneloot.pet_food_entries (source_bot_id, source_message_chat_id, source_message_id)
+  ON carnebot.pet_food_entries (source_bot_id, source_message_chat_id, source_message_id)
   WHERE source_message_chat_id IS NOT NULL AND source_message_id IS NOT NULL;

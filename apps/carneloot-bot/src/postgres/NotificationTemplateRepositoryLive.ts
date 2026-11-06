@@ -35,7 +35,7 @@ export const layer = Layer.effect(
 						sql.withTransaction(
 							Effect.gen(function* () {
 								const templates =
-									yield* sql`SELECT id,message FROM carneloot.notification_templates WHERE owner_user_id=${ownerId}::uuid AND keyword=${keyword} FOR SHARE`;
+									yield* sql`SELECT id,message FROM carnebot.notification_templates WHERE owner_user_id=${ownerId}::uuid AND keyword=${keyword} FOR SHARE`;
 								if (templates[0] === undefined) return undefined;
 								const template = yield* Schema.decodeUnknownEffect(
 									Schema.Struct({ id: Schema.String, message: Schema.String }),
@@ -43,8 +43,8 @@ export const layer = Layer.effect(
 								const rows = yield* sql`
 					SELECT c.user_id,ti.private_chat_id FROM (
 						SELECT ${ownerId}::uuid AS user_id UNION
-						SELECT user_id FROM carneloot.notification_subscriptions WHERE template_id=${template.id}::uuid
-					) c LEFT JOIN carneloot.telegram_identities ti ON ti.user_id=c.user_id AND ti.bot_id=${botId}
+						SELECT user_id FROM carnebot.notification_subscriptions WHERE template_id=${template.id}::uuid
+					) c LEFT JOIN carnebot.telegram_identities ti ON ti.user_id=c.user_id AND ti.bot_id=${botId}
 					ORDER BY c.user_id`;
 								const recipients = yield* Effect.forEach(
 									rows,

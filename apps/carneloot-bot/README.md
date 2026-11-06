@@ -33,7 +33,7 @@ cp apps/carneloot-bot/.env.example apps/carneloot-bot/.env
 | `JOB_LEASE` / `JOB_HEARTBEAT`                       | Effect durations, `30 seconds` / `10 seconds`; heartbeat below lease |
 | `DEDUP_LEASE` / `DEDUP_HEARTBEAT`                   | Effect durations, `30 seconds` / `10 seconds`; heartbeat below lease |
 | `DEDUP_WAIT` / `DEDUP_RETENTION`                    | Effect durations, `5 seconds` / `1 day`                              |
-| `TFX_POSTGRES_SCHEMA` / `TFX_POSTGRES_TABLE_PREFIX` | SQL identifiers, `tfx` / `carneloot_`                                |
+| `TFX_POSTGRES_SCHEMA` / `TFX_POSTGRES_TABLE_PREFIX` | SQL identifiers, `carnebot` / `carneloot_`                           |
 
 Startup applies checksummed tfx and Carneloot migrations under PostgreSQL advisory locks. One externally supplied `PgClient` Layer owns all migrations, repositories, durable deduplication, conversations, and jobs. Production refuses memory/no-op deduplication.
 

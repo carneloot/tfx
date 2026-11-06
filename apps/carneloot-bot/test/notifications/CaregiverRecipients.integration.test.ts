@@ -23,23 +23,23 @@ const userId = () => Schema.decodeUnknownSync(UserId)(crypto.randomUUID());
 const petId = () => Schema.decodeUnknownSync(PetId)(crypto.randomUUID());
 
 const insertUser = (sql: PgClient.PgClient, id: UserId) =>
-	sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${id}::uuid,now(),now())`;
+	sql`INSERT INTO carnebot.users (id,created_at,updated_at) VALUES (${id}::uuid,now(),now())`;
 const insertPet = (sql: PgClient.PgClient, id: PetId, ownerId: UserId) =>
-	sql`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${id}::uuid,${ownerId}::uuid,${id},${id},now(),now())`;
+	sql`INSERT INTO carnebot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${id}::uuid,${ownerId}::uuid,${id},${id},now(),now())`;
 const insertIdentity = (
 	sql: PgClient.PgClient,
 	identityBotId: BotId,
 	id: UserId,
 	telegramId: number,
 ) =>
-	sql`INSERT INTO carneloot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${identityBotId},${telegramId},${id}::uuid,NULL,'Recipient',NULL,${telegramId},now(),now())`;
+	sql`INSERT INTO carnebot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${identityBotId},${telegramId},${id}::uuid,NULL,'Recipient',NULL,${telegramId},now(),now())`;
 const insertCaregiver = (
 	sql: PgClient.PgClient,
 	pet: PetId,
 	caregiverId: UserId,
 	status: 'pending' | 'accepted' | 'rejected',
 ) =>
-	sql`INSERT INTO carneloot.pet_caregivers (pet_id,caregiver_user_id,status,created_at,updated_at) VALUES (${pet}::uuid,${caregiverId}::uuid,${status},now(),now())`;
+	sql`INSERT INTO carnebot.pet_caregivers (pet_id,caregiver_user_id,status,created_at,updated_at) VALUES (${pet}::uuid,${caregiverId}::uuid,${status},now(),now())`;
 
 if (!enabled)
 	describe.skip('caregiver notification recipients PostgreSQL', () => {

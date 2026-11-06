@@ -42,7 +42,7 @@ else
 				});
 				const missingId = Schema.decodeUnknownSync(UserId)(crypto.randomUUID());
 				const sql = yield* PgClient.PgClient;
-				yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${missingId}::uuid,now(),now())`;
+				yield* sql`INSERT INTO carnebot.users (id,created_at,updated_at) VALUES (${missingId}::uuid,now(),now())`;
 				const recipients = yield* NotificationRecipients;
 				return {
 					reachable: yield* recipients.resolveOwner(botId, registered.user.id),

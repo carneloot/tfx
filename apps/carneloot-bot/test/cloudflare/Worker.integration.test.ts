@@ -31,7 +31,7 @@ const enabled =
 	process.env.TEST_DATABASE_URL !== undefined ||
 	process.env.RUN_TESTCONTAINERS === 'true';
 const options = {
-	schema: 'tfx_cloudflare_test',
+	schema: 'carnebot',
 	tablePrefix: 'bot_',
 	botId: 'carneloot',
 };
@@ -108,10 +108,7 @@ describe.skipIf(!enabled)(
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					const sql = yield* PgClient.PgClient;
-					yield* sql.unsafe('DROP SCHEMA IF EXISTS carneloot CASCADE');
-					yield* sql.unsafe(
-						'DROP SCHEMA IF EXISTS tfx_cloudflare_test CASCADE',
-					);
+					yield* sql.unsafe('DROP SCHEMA IF EXISTS carnebot CASCADE');
 					yield* Migrations.migrate(options);
 					yield* AppMigrator.migrate;
 				}).pipe(Effect.provide(postgres)),
@@ -121,14 +118,12 @@ describe.skipIf(!enabled)(
 				`CREATE ROLE ${runtimeRole} LOGIN PASSWORD 'local-runtime-test-only' NOSUPERUSER NOCREATEDB NOCREATEROLE`,
 			);
 			roleCreated = true;
+			await query(`GRANT USAGE ON SCHEMA carnebot TO ${runtimeRole}`);
 			await query(
-				`GRANT USAGE ON SCHEMA carneloot,tfx_cloudflare_test TO ${runtimeRole}`,
+				`GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA carnebot TO ${runtimeRole}`,
 			);
 			await query(
-				`GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA carneloot,tfx_cloudflare_test TO ${runtimeRole}`,
-			);
-			await query(
-				`REVOKE ALL ON carneloot.app_migrations,tfx_cloudflare_test.bot_migrations FROM ${runtimeRole}`,
+				`REVOKE ALL ON carnebot.app_migrations,carnebot.bot_migrations FROM ${runtimeRole}`,
 			);
 			const runtimeUrl = new URL(url);
 			runtimeUrl.username = runtimeRole;
@@ -311,7 +306,7 @@ describe.skipIf(!enabled)(
 			expect(sends).toBe(beforeReplay);
 			expect(
 				await query<{ amount: number; fed_at: Date; update: number }>(
-					`SELECT amount_mg::int AS amount,fed_at,source_update_id::int AS update FROM carneloot.pet_food_entries ORDER BY pet_id`,
+					`SELECT amount_mg::int AS amount,fed_at,source_update_id::int AS update FROM carnebot.pet_food_entries ORDER BY pet_id`,
 				),
 			).toEqual(
 				Array.from({ length: 2 }, () => ({
@@ -339,7 +334,7 @@ describe.skipIf(!enabled)(
 			expect(concurrent.map((response) => response.status)).toEqual([200, 200]);
 			expect(
 				await query(
-					'SELECT count(*)::int AS count,sum(amount_mg)::int AS total FROM carneloot.pet_food_entries',
+					'SELECT count(*)::int AS count,sum(amount_mg)::int AS total FROM carnebot.pet_food_entries',
 				),
 			).toEqual([{ count: 6, total: 216_000 }]);
 			failOutput = true;
@@ -351,7 +346,7 @@ describe.skipIf(!enabled)(
 			failOutput = false;
 			expect(
 				await query(
-					'SELECT count(*)::int AS count FROM carneloot.pet_food_entries',
+					'SELECT count(*)::int AS count FROM carnebot.pet_food_entries',
 				),
 			).toEqual([{ count: 8 }]);
 		});
@@ -388,7 +383,7 @@ describe.skipIf(!enabled)(
 			).toEqual([{ count: 0 }]);
 			expect(
 				await query(
-					"SELECT name FROM carneloot.pets WHERE name='After output timeout'",
+					"SELECT name FROM carnebot.pets WHERE name='After output timeout'",
 				),
 			).toEqual([{ name: 'After output timeout' }]);
 			expect(
@@ -407,10 +402,10 @@ describe.skipIf(!enabled)(
 
 		it('awaits deadline rollback and claim cleanup before a distinct following conversation input', async () => {
 			await query(
-				`CREATE FUNCTION carneloot.slow_pet() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.name='Blocked input' THEN PERFORM pg_sleep(20); END IF; RETURN NEW; END $$`,
+				`CREATE FUNCTION carnebot.slow_pet() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.name='Blocked input' THEN PERFORM pg_sleep(20); END IF; RETURN NEW; END $$`,
 			);
 			await query(
-				'CREATE TRIGGER slow_pet BEFORE INSERT ON carneloot.pets FOR EACH ROW EXECUTE FUNCTION carneloot.slow_pet()',
+				'CREATE TRIGGER slow_pet BEFORE INSERT ON carnebot.pets FOR EACH ROW EXECUTE FUNCTION carnebot.slow_pet()',
 			);
 			try {
 				expect(
@@ -431,7 +426,7 @@ describe.skipIf(!enabled)(
 				expect((await following).status).toBe(200);
 				expect(
 					await query(
-						"SELECT name FROM carneloot.pets WHERE name IN ('Blocked input','After rollback')",
+						"SELECT name FROM carnebot.pets WHERE name IN ('Blocked input','After rollback')",
 					),
 				).toEqual([{ name: 'After rollback' }]);
 				expect(
@@ -444,12 +439,12 @@ describe.skipIf(!enabled)(
 				).toBe(200);
 				expect(
 					await query(
-						"SELECT count(*)::int AS count FROM carneloot.pets WHERE name='Blocked input'",
+						"SELECT count(*)::int AS count FROM carnebot.pets WHERE name='Blocked input'",
 					),
 				).toEqual([{ count: 0 }]);
 			} finally {
-				await query('DROP TRIGGER slow_pet ON carneloot.pets');
-				await query('DROP FUNCTION carneloot.slow_pet()');
+				await query('DROP TRIGGER slow_pet ON carnebot.pets');
+				await query('DROP FUNCTION carnebot.slow_pet()');
 			}
 		});
 
@@ -472,7 +467,7 @@ describe.skipIf(!enabled)(
 				.poll(
 					() =>
 						query(
-							"SELECT d.status FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.kind='feeding-reminder'",
+							"SELECT d.status FROM carnebot.notification_deliveries d JOIN carnebot.notification_events e ON e.id=d.event_id WHERE e.kind='feeding-reminder'",
 						),
 					{ timeout: 5_000 },
 				)
@@ -485,19 +480,19 @@ describe.skipIf(!enabled)(
 		});
 
 		it('recovers ambiguous sending as unknown and a missed post-commit handoff without cron executing jobs', async () => {
-			await query(`INSERT INTO carneloot.notification_events
+			await query(`INSERT INTO carnebot.notification_events
 			(id,bot_id,kind,owner_user_id,pet_id,food_entry_id,status,dedupe_key,created_at,updated_at)
 			SELECT gen_random_uuid(),'carneloot','feeding-reminder',p.owner_id,p.id,f.id,'scheduled','cloudflare-expired-send-test',now(),now()
-			FROM carneloot.pet_food_entries f JOIN carneloot.pets p ON p.id=f.pet_id ORDER BY f.id LIMIT 1`);
-			await query(`INSERT INTO carneloot.notification_deliveries
+			FROM carnebot.pet_food_entries f JOIN carnebot.pets p ON p.id=f.pet_id ORDER BY f.id LIMIT 1`);
+			await query(`INSERT INTO carnebot.notification_deliveries
 			(id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_count,attempt_generation,sending_started_at,sending_lease_expires_at,created_at,updated_at)
 			SELECT gen_random_uuid(),id,owner_user_id,8123,'owner','telegram','sending',1,1,now()-interval '2 minutes',now()-interval '1 minute',now(),now()
-			FROM carneloot.notification_events WHERE dedupe_key='cloudflare-expired-send-test'`);
+			FROM carnebot.notification_events WHERE dedupe_key='cloudflare-expired-send-test'`);
 			const before = sends;
 			expect((await cron()).outcome).toBe('ok');
 			expect(
 				await query(
-					"SELECT d.status,d.retryable FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.dedupe_key='cloudflare-expired-send-test'",
+					"SELECT d.status,d.retryable FROM carnebot.notification_deliveries d JOIN carnebot.notification_events e ON e.id=d.event_id WHERE e.dedupe_key='cloudflare-expired-send-test'",
 				),
 			).toEqual([{ status: 'unknown', retryable: false }]);
 			expect(sends).toBe(before);
@@ -555,7 +550,7 @@ describe.skipIf(!enabled)(
 				.poll(
 					() =>
 						query(
-							"SELECT count(*)::int AS count FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.kind='feeding-reminder' AND d.status='sent'",
+							"SELECT count(*)::int AS count FROM carnebot.notification_deliveries d JOIN carnebot.notification_events e ON e.id=d.event_id WHERE e.kind='feeding-reminder' AND d.status='sent'",
 						),
 					{ timeout: 5000 },
 				)

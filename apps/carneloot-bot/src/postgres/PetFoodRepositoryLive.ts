@@ -156,7 +156,7 @@ export const layer = Layer.effect(
 		const settings = (petId: string) =>
 			sql<
 				Record<string, unknown>
-			>`SELECT pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at FROM carneloot.pet_food_settings WHERE pet_id=${petId}::uuid`;
+			>`SELECT pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at FROM carnebot.pet_food_settings WHERE pet_id=${petId}::uuid`;
 		const entries = <E>(
 			fragment: Effect.Effect<ReadonlyArray<Record<string, unknown>>, E>,
 		) =>
@@ -174,7 +174,7 @@ export const layer = Layer.effect(
 					Effect.flatMap(
 						sql<
 							Record<string, unknown>
-						>`SELECT * FROM carneloot.pets WHERE id=${petId}::uuid AND owner_id=${ownerId}::uuid FOR UPDATE`,
+						>`SELECT * FROM carnebot.pets WHERE id=${petId}::uuid AND owner_id=${ownerId}::uuid FOR UPDATE`,
 						(rows) =>
 							rows[0] === undefined
 								? Effect.fail(
@@ -205,7 +205,7 @@ export const layer = Layer.effect(
 					Effect.flatMap(
 						sql<
 							Record<string, unknown>
-						>`INSERT INTO carneloot.pet_food_settings (pet_id,day_start,timezone,created_at,updated_at) VALUES (${petId}::uuid,${dayStart}::time,${timeZone},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (pet_id) DO UPDATE SET day_start=EXCLUDED.day_start,timezone=EXCLUDED.timezone,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
+						>`INSERT INTO carnebot.pet_food_settings (pet_id,day_start,timezone,created_at,updated_at) VALUES (${petId}::uuid,${dayStart}::time,${timeZone},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (pet_id) DO UPDATE SET day_start=EXCLUDED.day_start,timezone=EXCLUDED.timezone,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
 						(rows) =>
 							Effect.try({
 								try: () => decodeOne(rows, decodeSettings),
@@ -219,7 +219,7 @@ export const layer = Layer.effect(
 					Effect.flatMap(
 						sql<
 							Record<string, unknown>
-						>`INSERT INTO carneloot.pet_food_settings (pet_id,reminder_delay_ms,created_at,updated_at) VALUES (${petId}::uuid,${Duration.toMillis(delay)},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (pet_id) DO UPDATE SET reminder_delay_ms=EXCLUDED.reminder_delay_ms,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
+						>`INSERT INTO carnebot.pet_food_settings (pet_id,reminder_delay_ms,created_at,updated_at) VALUES (${petId}::uuid,${Duration.toMillis(delay)},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (pet_id) DO UPDATE SET reminder_delay_ms=EXCLUDED.reminder_delay_ms,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
 						(rows) =>
 							Effect.try({
 								try: () => decodeOne(rows, decodeSettings),
@@ -233,7 +233,7 @@ export const layer = Layer.effect(
 					Effect.flatMap(
 						sql<
 							Record<string, unknown>
-						>`INSERT INTO carneloot.pet_food_settings (pet_id,created_at,updated_at) VALUES (${petId}::uuid,${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (pet_id) DO UPDATE SET reminder_delay_ms=NULL,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
+						>`INSERT INTO carnebot.pet_food_settings (pet_id,created_at,updated_at) VALUES (${petId}::uuid,${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (pet_id) DO UPDATE SET reminder_delay_ms=NULL,updated_at=EXCLUDED.updated_at RETURNING pet_id,to_char(day_start,'HH24:MI') AS day_start,timezone,reminder_delay_ms,created_at,updated_at`,
 						(rows) =>
 							Effect.try({
 								try: () => decodeOne(rows, decodeSettings),
@@ -245,43 +245,43 @@ export const layer = Layer.effect(
 			latestEntry: (petId) =>
 				Effect.map(
 					entries(
-						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
+						sql`SELECT * FROM carnebot.pet_food_entries WHERE pet_id=${petId}::uuid ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
 					),
 					(rows) => rows[0],
 				),
 			listEntries: (petId, start, end) =>
 				entries(
-					sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND fed_at>=${DateTime.toDateUtc(start)} AND fed_at<${DateTime.toDateUtc(end)} ORDER BY fed_at DESC,id DESC`,
+					sql`SELECT * FROM carnebot.pet_food_entries WHERE pet_id=${petId}::uuid AND fed_at>=${DateTime.toDateUtc(start)} AND fed_at<${DateTime.toDateUtc(end)} ORDER BY fed_at DESC,id DESC`,
 				),
 			lockEntry: (petId, entryId) =>
 				Effect.map(
 					entries(
-						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND id=${entryId}::uuid FOR UPDATE`,
+						sql`SELECT * FROM carnebot.pet_food_entries WHERE pet_id=${petId}::uuid AND id=${entryId}::uuid FOR UPDATE`,
 					),
 					(rows) => rows[0],
 				),
 			lockAccessibleBySourceMessage: (actorId, botId, chatId, messageId) =>
 				entries(
-					sql`SELECT e.* FROM carneloot.pet_food_entries e JOIN carneloot.pets p ON p.id=e.pet_id WHERE e.source_bot_id=${botId} AND e.source_message_chat_id=${chatId} AND e.source_message_id=${messageId} AND (p.owner_id=${actorId}::uuid OR EXISTS (SELECT 1 FROM carneloot.pet_caregivers c WHERE c.pet_id=p.id AND c.caregiver_user_id=${actorId}::uuid AND c.status='accepted')) ORDER BY e.pet_id,e.id FOR UPDATE OF e,p`,
+					sql`SELECT e.* FROM carnebot.pet_food_entries e JOIN carnebot.pets p ON p.id=e.pet_id WHERE e.source_bot_id=${botId} AND e.source_message_chat_id=${chatId} AND e.source_message_id=${messageId} AND (p.owner_id=${actorId}::uuid OR EXISTS (SELECT 1 FROM carnebot.pet_caregivers c WHERE c.pet_id=p.id AND c.caregiver_user_id=${actorId}::uuid AND c.status='accepted')) ORDER BY e.pet_id,e.id FOR UPDATE OF e,p`,
 				),
 			findBySource: (petId, botId, updateId) =>
 				Effect.map(
 					entries(
-						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND source_bot_id=${botId} AND source_update_id=${updateId}`,
+						sql`SELECT * FROM carnebot.pet_food_entries WHERE pet_id=${petId}::uuid AND source_bot_id=${botId} AND source_update_id=${updateId}`,
 					),
 					(rows) => rows[0],
 				),
 			findBusinessDuplicate: (petId, fedAt) =>
 				Effect.map(
 					entries(
-						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND abs(extract(epoch FROM (fed_at-${DateTime.toDateUtc(fedAt)}::timestamptz))*1000) < 60000 ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
+						sql`SELECT * FROM carnebot.pet_food_entries WHERE pet_id=${petId}::uuid AND abs(extract(epoch FROM (fed_at-${DateTime.toDateUtc(fedAt)}::timestamptz))*1000) < 60000 ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
 					),
 					(rows) => rows[0],
 				),
 			findBusinessDuplicateExcluding: (petId, fedAt, excludedEntryId) =>
 				Effect.map(
 					entries(
-						sql`SELECT * FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND id<>${excludedEntryId}::uuid AND abs(extract(epoch FROM (fed_at-${DateTime.toDateUtc(fedAt)}::timestamptz))*1000) < 60000 ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
+						sql`SELECT * FROM carnebot.pet_food_entries WHERE pet_id=${petId}::uuid AND id<>${excludedEntryId}::uuid AND abs(extract(epoch FROM (fed_at-${DateTime.toDateUtc(fedAt)}::timestamptz))*1000) < 60000 ORDER BY fed_at DESC,created_at DESC,id DESC LIMIT 1`,
 					),
 					(rows) => rows[0],
 				),
@@ -290,7 +290,7 @@ export const layer = Layer.effect(
 					Effect.flatMap(
 						sql<
 							Record<string, unknown>
-						>`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,source_message_id,created_at,updated_at) VALUES (${entry.id}::uuid,${entry.petId}::uuid,${entry.recordedBy}::uuid,${entry.amountMg},${DateTime.toDateUtc(entry.fedAt)},${entry.source.botId},${entry.source.updateId},${entry.source.messageChatId},${entry.source.messageId},${DateTime.toDateUtc(entry.now)},${DateTime.toDateUtc(entry.now)}) RETURNING *`,
+						>`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,source_message_id,created_at,updated_at) VALUES (${entry.id}::uuid,${entry.petId}::uuid,${entry.recordedBy}::uuid,${entry.amountMg},${DateTime.toDateUtc(entry.fedAt)},${entry.source.botId},${entry.source.updateId},${entry.source.messageChatId},${entry.source.messageId},${DateTime.toDateUtc(entry.now)},${DateTime.toDateUtc(entry.now)}) RETURNING *`,
 						(rows) =>
 							Effect.try({
 								try: () => decodeOne(rows, decodeEntry),
@@ -303,14 +303,14 @@ export const layer = Layer.effect(
 			updateEntry: (entryId, amountMg, fedAt, now) =>
 				Effect.map(
 					entries(
-						sql`UPDATE carneloot.pet_food_entries SET amount_mg=${amountMg},fed_at=${DateTime.toDateUtc(fedAt)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${entryId}::uuid RETURNING *`,
+						sql`UPDATE carnebot.pet_food_entries SET amount_mg=${amountMg},fed_at=${DateTime.toDateUtc(fedAt)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${entryId}::uuid RETURNING *`,
 					),
 					(rows) => rows[0],
 				),
 			deleteEntry: (entryId) =>
 				Effect.map(
 					entries(
-						sql`DELETE FROM carneloot.pet_food_entries WHERE id=${entryId}::uuid RETURNING *`,
+						sql`DELETE FROM carnebot.pet_food_entries WHERE id=${entryId}::uuid RETURNING *`,
 					),
 					(rows) => rows[0],
 				),
@@ -320,7 +320,7 @@ export const layer = Layer.effect(
 						sql<{
 							total_mg: string | number;
 							latest_fed_at: unknown | null;
-						}>`SELECT coalesce(sum(amount_mg),0) AS total_mg,max(fed_at) AS latest_fed_at FROM carneloot.pet_food_entries WHERE pet_id=${petId}::uuid AND fed_at>=${DateTime.toDateUtc(start)} AND fed_at<${DateTime.toDateUtc(end)}`,
+						}>`SELECT coalesce(sum(amount_mg),0) AS total_mg,max(fed_at) AS latest_fed_at FROM carnebot.pet_food_entries WHERE pet_id=${petId}::uuid AND fed_at>=${DateTime.toDateUtc(start)} AND fed_at<${DateTime.toDateUtc(end)}`,
 						(rows) =>
 							Effect.try({
 								try: () => {

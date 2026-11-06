@@ -58,9 +58,9 @@ const seed = Effect.gen(function* () {
 	const subscriber = yield* register(1002);
 	const sql = yield* PgClient.PgClient;
 	const templateId = crypto.randomUUID();
-	yield* sql`INSERT INTO carneloot.api_keys VALUES (${crypto.randomUUID()}::uuid,${owner.user.id}::uuid,${yield* GenerateApiKey.hash('imported-key')},now(),now())`;
-	yield* sql`INSERT INTO carneloot.notification_templates VALUES (${templateId}::uuid,${owner.user.id}::uuid,'alarm','{{pet}} ate {{amount}}. {{pet}}!',now(),now())`;
-	yield* sql`INSERT INTO carneloot.notification_subscriptions VALUES (${templateId}::uuid,${subscriber.user.id}::uuid,now()),(${templateId}::uuid,${owner.user.id}::uuid,now())`;
+	yield* sql`INSERT INTO carnebot.api_keys VALUES (${crypto.randomUUID()}::uuid,${owner.user.id}::uuid,${yield* GenerateApiKey.hash('imported-key')},now(),now())`;
+	yield* sql`INSERT INTO carnebot.notification_templates VALUES (${templateId}::uuid,${owner.user.id}::uuid,'alarm','{{pet}} ate {{amount}}. {{pet}}!',now(),now())`;
+	yield* sql`INSERT INTO carnebot.notification_subscriptions VALUES (${templateId}::uuid,${subscriber.user.id}::uuid,now()),(${templateId}::uuid,${owner.user.id}::uuid,now())`;
 	return { owner, subscriber, templateId };
 });
 const input = {
@@ -219,7 +219,7 @@ describe.skipIf(!enabled)('external notifications with real PostgreSQL', () => {
 						sendMessage: (payload) =>
 							Effect.gen(function* () {
 								const snapshots =
-									yield* sql`SELECT rendered_message,recipients_materialized_at FROM carneloot.notification_event_payloads p JOIN carneloot.notification_events e ON e.id=p.event_id`.pipe(
+									yield* sql`SELECT rendered_message,recipients_materialized_at FROM carnebot.notification_event_payloads p JOIN carnebot.notification_events e ON e.id=p.event_id`.pipe(
 										Effect.orDie,
 									);
 								expect(snapshots).toEqual([
@@ -229,7 +229,7 @@ describe.skipIf(!enabled)('external notifications with real PostgreSQL', () => {
 									},
 								]);
 								expect(
-									yield* sql`SELECT id FROM carneloot.notification_deliveries`.pipe(
+									yield* sql`SELECT id FROM carnebot.notification_deliveries`.pipe(
 										Effect.orDie,
 									),
 								).toHaveLength(2);
@@ -245,14 +245,14 @@ describe.skipIf(!enabled)('external notifications with real PostgreSQL', () => {
 					failures: [],
 				});
 				const external = yield* ExternalNotificationRepository;
-				yield* sql`UPDATE carneloot.notification_templates SET message='changed' WHERE id=${templateId}::uuid`;
-				yield* sql`DELETE FROM carneloot.notification_subscriptions WHERE template_id=${templateId}::uuid`;
+				yield* sql`UPDATE carnebot.notification_templates SET message='changed' WHERE id=${templateId}::uuid`;
+				yield* sql`DELETE FROM carnebot.notification_subscriptions WHERE template_id=${templateId}::uuid`;
 				expect(yield* external.payload(uuid(result.eventId))).toEqual({
 					text: 'Milo ate 20. Milo!',
 					replyToMessageId: null,
 				});
 				const rows =
-					yield* sql`SELECT d.status,d.attempt_count,d.telegram_message_id,e.recipients_materialized_at,e.status AS event_status FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.id=${result.eventId}::uuid`;
+					yield* sql`SELECT d.status,d.attempt_count,d.telegram_message_id,e.recipients_materialized_at,e.status AS event_status FROM carnebot.notification_deliveries d JOIN carnebot.notification_events e ON e.id=d.event_id WHERE e.id=${result.eventId}::uuid`;
 				expect(rows).toHaveLength(2);
 				for (const row of rows)
 					expect(row).toMatchObject({
@@ -336,7 +336,7 @@ describe.skipIf(!enabled)('external notifications with real PostgreSQL', () => {
 					).toBeUndefined();
 					const sql = yield* PgClient.PgClient;
 					const rows =
-						yield* sql`SELECT status,retryable FROM carneloot.notification_deliveries WHERE event_id=${result.eventId}::uuid`;
+						yield* sql`SELECT status,retryable FROM carnebot.notification_deliveries WHERE event_id=${result.eventId}::uuid`;
 					expect(
 						rows.every(
 							(row) => row.status !== 'sending' && row.retryable === false,
@@ -396,7 +396,7 @@ describe.skipIf(!enabled)('external notifications with real PostgreSQL', () => {
 			Effect.gen(function* () {
 				const { subscriber } = yield* seed;
 				const sql = yield* PgClient.PgClient;
-				yield* sql`DELETE FROM carneloot.telegram_identities WHERE user_id=${subscriber.user.id}::uuid`;
+				yield* sql`DELETE FROM carnebot.telegram_identities WHERE user_id=${subscriber.user.id}::uuid`;
 				const result = yield* SendExternalNotification.execute(botId, input);
 				expect(result).toMatchObject({
 					status: 'partial',
@@ -415,18 +415,18 @@ describe.skipIf(!enabled)('external notifications with real PostgreSQL', () => {
 				yield* seed;
 				const sql = yield* PgClient.PgClient;
 				yield* sql.unsafe(
-					`CREATE FUNCTION carneloot.reject_delivery() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test'; END $$`,
+					`CREATE FUNCTION carnebot.reject_delivery() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test'; END $$`,
 				);
 				yield* sql.unsafe(
-					`CREATE TRIGGER reject_delivery BEFORE INSERT ON carneloot.notification_deliveries FOR EACH ROW EXECUTE FUNCTION carneloot.reject_delivery()`,
+					`CREATE TRIGGER reject_delivery BEFORE INSERT ON carnebot.notification_deliveries FOR EACH ROW EXECUTE FUNCTION carnebot.reject_delivery()`,
 				);
 				const response = yield* http(input);
 				expect(response.status).toBe(503);
 				expect(
-					yield* sql`SELECT id FROM carneloot.notification_events`,
+					yield* sql`SELECT id FROM carnebot.notification_events`,
 				).toHaveLength(0);
 				expect(
-					yield* sql`SELECT event_id FROM carneloot.notification_event_payloads`,
+					yield* sql`SELECT event_id FROM carnebot.notification_event_payloads`,
 				).toHaveLength(0);
 				const recorded = yield* RecordedRequests;
 				expect(yield* recorded.count()).toBe(0);
@@ -440,17 +440,17 @@ describe.skipIf(!enabled)('external notifications with real PostgreSQL', () => {
 				yield* seed;
 				const sql = yield* PgClient.PgClient;
 				yield* sql.unsafe(
-					`CREATE FUNCTION carneloot.reject_sent() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='sent' THEN RAISE EXCEPTION 'test'; END IF; RETURN NEW; END $$`,
+					`CREATE FUNCTION carnebot.reject_sent() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='sent' THEN RAISE EXCEPTION 'test'; END IF; RETURN NEW; END $$`,
 				);
 				yield* sql.unsafe(
-					`CREATE TRIGGER reject_sent BEFORE UPDATE ON carneloot.notification_deliveries FOR EACH ROW EXECUTE FUNCTION carneloot.reject_sent()`,
+					`CREATE TRIGGER reject_sent BEFORE UPDATE ON carnebot.notification_deliveries FOR EACH ROW EXECUTE FUNCTION carnebot.reject_sent()`,
 				);
 				const response = yield* http(input);
 				expect(response.status).toBe(202);
 				const result = yield* Effect.promise(() => response.json());
 				expect(result.counts).toEqual({ sent: 0, failed: 0, unknown: 2 });
 				const rows =
-					yield* sql`SELECT status,attempt_count FROM carneloot.notification_deliveries WHERE event_id=${result.eventId}::uuid`;
+					yield* sql`SELECT status,attempt_count FROM carnebot.notification_deliveries WHERE event_id=${result.eventId}::uuid`;
 				expect(rows).toEqual([
 					{ status: 'unknown', attempt_count: 1 },
 					{ status: 'unknown', attempt_count: 1 },
@@ -533,7 +533,7 @@ describe.skipIf(!enabled)('external notifications with real PostgreSQL', () => {
 				).toBe(owner.user.id);
 				const sql = yield* PgClient.PgClient;
 				const rows =
-					yield* sql`SELECT key_hash FROM carneloot.api_keys WHERE user_id=${owner.user.id}::uuid`;
+					yield* sql`SELECT key_hash FROM carnebot.api_keys WHERE user_id=${owner.user.id}::uuid`;
 				expect(rows).toEqual([
 					{ key_hash: yield* GenerateApiKey.hash(replacement.key) },
 				]);
@@ -550,7 +550,7 @@ describe.skipIf(!enabled)('external notifications with real PostgreSQL', () => {
 				yield* SendExternalNotification.execute(botId, input);
 				const sql = yield* PgClient.PgClient;
 				const deliveries =
-					yield* sql`SELECT recipient_chat_id,telegram_message_id FROM carneloot.notification_deliveries WHERE event_id=${first.eventId}::uuid`;
+					yield* sql`SELECT recipient_chat_id,telegram_message_id FROM carnebot.notification_deliveries WHERE event_id=${first.eventId}::uuid`;
 				const subscriber = deliveries.find(
 					(row) => Number(row.recipient_chat_id) === 1002,
 				);
@@ -625,7 +625,7 @@ describe.skipIf(!enabled)('external notifications with real PostgreSQL', () => {
 				const event = yield* SendExternalNotification.execute(botId, input);
 				const sql = yield* PgClient.PgClient;
 				const rows =
-					yield* sql`SELECT telegram_message_id FROM carneloot.notification_deliveries WHERE event_id=${event.eventId}::uuid AND recipient_chat_id=1002`;
+					yield* sql`SELECT telegram_message_id FROM carnebot.notification_deliveries WHERE event_id=${event.eventId}::uuid AND recipient_chat_id=1002`;
 				const reply = {
 					botId,
 					chatId: chat(1002),

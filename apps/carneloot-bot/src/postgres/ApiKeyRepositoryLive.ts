@@ -25,7 +25,7 @@ export const layer = Layer.effect(
 		return ApiKeyRepository.of({
 			findOwner: Effect.fn('ApiKeyRepository.findOwner')(function* (hash) {
 				const rows = yield* protect(
-					sql`SELECT user_id FROM carneloot.api_keys WHERE key_hash=${hash}`,
+					sql`SELECT user_id FROM carnebot.api_keys WHERE key_hash=${hash}`,
 				);
 				if (rows[0] === undefined) return undefined;
 				return yield* protect(
@@ -39,7 +39,7 @@ export const layer = Layer.effect(
 				confirmed,
 			}) {
 				const rows = yield* protect(sql`
-				INSERT INTO carneloot.api_keys (id,user_id,key_hash,created_at,updated_at)
+				INSERT INTO carnebot.api_keys (id,user_id,key_hash,created_at,updated_at)
 				VALUES (${id}::uuid,${userId}::uuid,${hash},now(),now())
 				ON CONFLICT (user_id) DO UPDATE SET key_hash=EXCLUDED.key_hash,updated_at=EXCLUDED.updated_at
 				WHERE ${confirmed} RETURNING id`);

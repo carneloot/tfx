@@ -14,29 +14,30 @@ mise exec -- pnpm exec vitest run packages/tfx/test/RequestDispatch.test.ts
 RUN_TESTCONTAINERS=true mise exec -- pnpm exec vitest run --config vitest.integration.config.ts apps/carneloot-bot/test/cloudflare/Worker.integration.test.ts
 ```
 
-Alternatively, set `TEST_DATABASE_URL` to a **disposable** local PostgreSQL database for the integration command. The suite drops the `carneloot` and `tfx_cloudflare_test` schemas and creates a temporary restricted runtime login. The test administrator needs permission to create roles and grant table access; the Worker role has neither DDL privileges nor migration-ledger access. Never point the suite at production. It uses no Cloudflare account or Telegram token.
+Alternatively, set `TEST_DATABASE_URL` to a **disposable** local PostgreSQL database for the integration command. The suite drops the `carnebot` schema and creates a temporary restricted runtime login. The test administrator needs permission to create roles and grant table access; the Worker role has neither DDL privileges nor migration-ledger access. Never point the suite at production. It uses no Cloudflare account or Telegram token.
 
 Do not use `alchemy dev` as a cloud-free emulator. With this stack's `Cloudflare.state()`, even the first `plan`, `dev`, or dry run can bootstrap remote state resources.
 
 ## Prepare the target
 
 1. Obtain approval for Cloudflare provisioning, deployment, application-secret writes, SQL migrations, and Telegram webhook registration separately from local implementation.
-2. Verify that the Cloudflare account supports Hyperdrive, Durable Objects with alarms, and the configured Worker limits. Keep PostgreSQL reachable from Hyperdrive with verified TLS and sufficient connections. Use a direct database origin, not another session-less pooler.
-3. Back up PostgreSQL and verify restoration. Preserve the current tfx schema and table prefix. Use an origin role with schema usage and table read/write privileges, but no schema-creation or ownership privileges. Keep migration credentials separate.
-4. Copy `apps/carneloot-bot/cloudflare.env.example` to its gitignored `.env.cloudflare`. Fill non-secret values, and supply `BOT_TOKEN`, `WEBHOOK_SECRET`, and `POSTGRES_PASSWORD` through the approved secret manager or protected environment file. Keep `DATABASE_URL` for the migration operator only. Generate a separate webhook secret with at least 32 URL-safe characters.
-5. From the app directory, configure a saved Alchemy credential profile using the [official Cloudflare setup](https://alchemy.run/cloudflare/setup):
+2. Verify that the Cloudflare account supports Hyperdrive, Durable Objects with alarms, and the configured Worker limits. Create or select an existing **PlanetScale Postgres** database and branch. Hyperdrive uses the Alchemy-managed role's direct TLS origin and its own pooling; do not configure PlanetScale's PgBouncer endpoint as the origin.
+3. Back up PostgreSQL and verify restoration. Keep PlanetScale's default `postgres` role only for migrations and import. The migration command creates one `carnebot` schema containing the application tables, TFX tables, and both migration ledgers. Alchemy creates the rotating Worker login role with PlanetScale's `pg_read_all_data` and `pg_write_all_data` permissions; it cannot perform DDL, but PlanetScale's managed role API does not support narrowing access to individual tables or excluding migration ledgers.
+4. Copy `apps/carneloot-bot/cloudflare.env.example` to its gitignored `.env.cloudflare`. Fill non-secret values, including `PLANETSCALE_DATABASE` and optionally `PLANETSCALE_BRANCH`. Supply `BOT_TOKEN` and `WEBHOOK_SECRET` through the approved secret manager or protected environment file. Keep the direct default-role `DATABASE_URL` for the migration operator only. Generate a separate webhook secret with at least 32 URL-safe characters.
+5. From the app directory, configure a saved Alchemy credential profile with both Cloudflare and PlanetScale credentials using the [official Cloudflare setup](https://alchemy.run/cloudflare/setup) and [PlanetScale setup](https://alchemy.run/planetscale/setup):
 
 ```sh
 pnpm exec alchemy profile create carneloot
 pnpm exec alchemy profile edit --profile carneloot
+pnpm exec alchemy profile edit --profile carneloot --add Planetscale
 ```
 
-Alchemy stores deployment credentials in the profile, not Worker bindings. `Config.Redacted` prevents plaintext secret display and creates Worker secret bindings. Protect the local environment file and Alchemy profile directory; neither belongs in Git.
+Alchemy stores deployment credentials in the profile, not Worker bindings. It creates the PlanetScale `carneloot-worker` role and stores its redacted credentials in deployment state; Hyperdrive receives that role's direct origin. Protect the local environment file and Alchemy profile directory; neither belongs in Git.
 
 ## Cut over after approval
 
 1. Stop the existing Bun poller and its continuous job worker. Do not run them alongside the webhook runtime.
-2. Export the approved operator environment, including direct `DATABASE_URL` and the existing `TFX_POSTGRES_SCHEMA` and `TFX_POSTGRES_TABLE_PREFIX`. Apply the checksummed migrations, including tfx migration 5 for the transactional wakeup outbox:
+2. Export the approved operator environment, including the direct PlanetScale default-role `DATABASE_URL` on port 5432, `TFX_POSTGRES_SCHEMA=carnebot`, and `TFX_POSTGRES_TABLE_PREFIX=carneloot_`. Apply the checksummed migrations, including tfx migration 5 for the transactional wakeup outbox:
 
 ```sh
 mise exec -- pnpm --filter carneloot-bot cloudflare:migrate

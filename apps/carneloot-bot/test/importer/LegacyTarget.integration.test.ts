@@ -42,10 +42,10 @@ describe.skipIf(!enabled)('legacy target dry run', () => {
 				const promotion = yield* target.promote(mapped, { dryRun: true });
 				const users = yield* sql<{
 					readonly count: number;
-				}>`SELECT count(*)::int count FROM carneloot.users WHERE id=${id}`;
+				}>`SELECT count(*)::int count FROM carnebot.users WHERE id=${id}`;
 				const ledgers = yield* sql<{
 					readonly count: number;
-				}>`SELECT count(*)::int count FROM carneloot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint}`;
+				}>`SELECT count(*)::int count FROM carnebot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint}`;
 				return {
 					promotion,
 					users: users[0]?.count,
@@ -72,18 +72,18 @@ describe.skipIf(!enabled)('legacy target dry run', () => {
 				const sql = yield* PgClient.PgClient;
 				const target = yield* LegacyTarget;
 				yield* migrate;
-				yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${userId},${timestamp},${timestamp})`;
-				yield* sql`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${petId},${userId},${'Batch'},${'batch'},${timestamp},${timestamp})`;
-				yield* sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,source_message_id,created_at,updated_at) VALUES (${foodIds[0]!},${petId},${userId},${1000},${timestamp},${'legacy-batch'},${1},${null},${null},${timestamp},${timestamp})`;
+				yield* sql`INSERT INTO carnebot.users (id,created_at,updated_at) VALUES (${userId},${timestamp},${timestamp})`;
+				yield* sql`INSERT INTO carnebot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${petId},${userId},${'Batch'},${'batch'},${timestamp},${timestamp})`;
+				yield* sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,source_message_chat_id,source_message_id,created_at,updated_at) VALUES (${foodIds[0]!},${petId},${userId},${1000},${timestamp},${'legacy-batch'},${1},${null},${null},${timestamp},${timestamp})`;
 				const users = yield* sql<{
 					readonly row: Record<string, unknown>;
-				}>`SELECT to_jsonb(t) row FROM carneloot.users t WHERE id=${userId}`;
+				}>`SELECT to_jsonb(t) row FROM carnebot.users t WHERE id=${userId}`;
 				const pets = yield* sql<{
 					readonly row: Record<string, unknown>;
-				}>`SELECT to_jsonb(t) row FROM carneloot.pets t WHERE id=${petId}`;
+				}>`SELECT to_jsonb(t) row FROM carnebot.pets t WHERE id=${petId}`;
 				const existingFood = yield* sql<{
 					readonly row: Record<string, unknown>;
-				}>`SELECT to_jsonb(t) row FROM carneloot.pet_food_entries t WHERE id=${foodIds[0]!}`;
+				}>`SELECT to_jsonb(t) row FROM carnebot.pet_food_entries t WHERE id=${foodIds[0]!}`;
 				const mapped: MappedLegacy = {
 					fingerprint: `batch-${randomUUID()}`,
 					rows: [
@@ -130,10 +130,10 @@ describe.skipIf(!enabled)('legacy target dry run', () => {
 				const promotion = yield* target.promote(mapped, { dryRun: false });
 				const foodCount = yield* sql<{
 					readonly count: number;
-				}>`SELECT count(*)::int count FROM carneloot.pet_food_entries WHERE pet_id=${petId}`;
+				}>`SELECT count(*)::int count FROM carnebot.pet_food_entries WHERE pet_id=${petId}`;
 				const ledgerCount = yield* sql<{
 					readonly count: number;
-				}>`SELECT count(*)::int count FROM carneloot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint}`;
+				}>`SELECT count(*)::int count FROM carnebot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint}`;
 				return {
 					promotion,
 					foodCount: foodCount[0]?.count,
@@ -176,10 +176,10 @@ describe.skipIf(!enabled)('legacy target dry run', () => {
 				const promotion = yield* target.promote(mapped, { dryRun: false });
 				const users = yield* sql<{
 					readonly count: number;
-				}>`SELECT count(*)::int count FROM carneloot.users WHERE id=${id}`;
+				}>`SELECT count(*)::int count FROM carnebot.users WHERE id=${id}`;
 				const ledgers = yield* sql<{
 					readonly count: number;
-				}>`SELECT count(*)::int count FROM carneloot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint}`;
+				}>`SELECT count(*)::int count FROM carnebot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint}`;
 				return {
 					promotion,
 					users: users[0]?.count,
@@ -208,11 +208,11 @@ describe.skipIf(!enabled)('legacy target dry run', () => {
 				const sql = yield* PgClient.PgClient;
 				const target = yield* LegacyTarget;
 				yield* migrate;
-				yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${userId},${timestamp},${timestamp})`;
-				yield* sql`INSERT INTO carneloot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${botId},${42},${userId},${null},${'Composite'},${null},${42},${timestamp},${timestamp})`;
+				yield* sql`INSERT INTO carnebot.users (id,created_at,updated_at) VALUES (${userId},${timestamp},${timestamp})`;
+				yield* sql`INSERT INTO carnebot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${botId},${42},${userId},${null},${'Composite'},${null},${42},${timestamp},${timestamp})`;
 				const identity = yield* sql<{
 					readonly row: Record<string, unknown>;
-				}>`SELECT to_jsonb(t) row FROM carneloot.telegram_identities t WHERE bot_id=${botId} AND telegram_user_id=${42}`;
+				}>`SELECT to_jsonb(t) row FROM carnebot.telegram_identities t WHERE bot_id=${botId} AND telegram_user_id=${42}`;
 				const mapped: MappedLegacy = {
 					fingerprint: `composite-${randomUUID()}`,
 					rows: [
@@ -230,7 +230,7 @@ describe.skipIf(!enabled)('legacy target dry run', () => {
 				const promotion = yield* target.promote(mapped, { dryRun: false });
 				const ledgers = yield* sql<{
 					readonly count: number;
-				}>`SELECT count(*)::int count FROM carneloot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint}`;
+				}>`SELECT count(*)::int count FROM carnebot.legacy_import_ledger WHERE source_fingerprint=${mapped.fingerprint}`;
 				return { promotion, ledgers: ledgers[0]?.count };
 			}).pipe(
 				Effect.provide(

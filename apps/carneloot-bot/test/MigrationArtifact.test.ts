@@ -131,15 +131,15 @@ describe('application migration artifacts', () => {
 			"CHECK (status IN ('pending', 'accepted', 'rejected'))",
 		);
 		expect(migration0006Sql).toMatch(
-			/FOREIGN KEY \(pet_id\)\s+REFERENCES carneloot\.pets\(id\) ON DELETE CASCADE/u,
+			/FOREIGN KEY \(pet_id\)\s+REFERENCES carnebot\.pets\(id\) ON DELETE CASCADE/u,
 		);
 		expect(migration0006Sql).toMatch(
-			/FOREIGN KEY \(caregiver_user_id\)\s+REFERENCES carneloot\.users\(id\) ON DELETE RESTRICT/u,
+			/FOREIGN KEY \(caregiver_user_id\)\s+REFERENCES carnebot\.users\(id\) ON DELETE RESTRICT/u,
 		);
 		expect(migration0006Sql).toContain('created_at timestamptz NOT NULL');
 		expect(migration0006Sql).toContain('updated_at timestamptz NOT NULL');
 		expect(migration0006Sql).toMatch(
-			/CREATE INDEX pet_caregivers_user_status_pet_idx\s+ON carneloot\.pet_caregivers \(caregiver_user_id, status, pet_id\)/u,
+			/CREATE INDEX pet_caregivers_user_status_pet_idx\s+ON carnebot\.pet_caregivers \(caregiver_user_id, status, pet_id\)/u,
 		);
 	});
 });

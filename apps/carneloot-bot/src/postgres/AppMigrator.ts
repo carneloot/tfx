@@ -65,9 +65,9 @@ const migrations: ReadonlyArray<Migration> = Object.freeze([
 ]);
 
 export const migrate = PostgresMigrator.run({
-	schema: 'carneloot',
+	schema: 'carnebot',
 	table: 'app_migrations',
-	lockKey: 'carneloot:app_migrations',
+	lockKey: 'carnebot:app_migrations',
 	logPrefix: 'carneloot',
 	migrations,
 }).pipe(

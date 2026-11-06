@@ -74,13 +74,13 @@ const setup = (options: { readonly ownerIdentity?: boolean } = {}) =>
 		const caregiverId = Schema.decodeUnknownSync(UserId)(crypto.randomUUID());
 		const petId = Schema.decodeUnknownSync(PetId)(crypto.randomUUID());
 		const nameKey = `rex-${suffix}`;
-		yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${ownerId}::uuid,now(),now()),(${caregiverId}::uuid,now(),now())`;
-		yield* sql`INSERT INTO carneloot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${petId}::uuid,${ownerId}::uuid,'Rex',${nameKey},now(),now())`;
-		yield* sql`INSERT INTO carneloot.pet_caregivers (pet_id,caregiver_user_id,status,created_at,updated_at) VALUES (${petId}::uuid,${caregiverId}::uuid,'accepted',now(),now())`;
-		yield* sql`INSERT INTO carneloot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${botId},202,${caregiverId}::uuid,NULL,'Caregiver',NULL,202,now(),now())`;
+		yield* sql`INSERT INTO carnebot.users (id,created_at,updated_at) VALUES (${ownerId}::uuid,now(),now()),(${caregiverId}::uuid,now(),now())`;
+		yield* sql`INSERT INTO carnebot.pets (id,owner_id,name,name_key,created_at,updated_at) VALUES (${petId}::uuid,${ownerId}::uuid,'Rex',${nameKey},now(),now())`;
+		yield* sql`INSERT INTO carnebot.pet_caregivers (pet_id,caregiver_user_id,status,created_at,updated_at) VALUES (${petId}::uuid,${caregiverId}::uuid,'accepted',now(),now())`;
+		yield* sql`INSERT INTO carnebot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${botId},202,${caregiverId}::uuid,NULL,'Caregiver',NULL,202,now(),now())`;
 		if (options.ownerIdentity !== false)
-			yield* sql`INSERT INTO carneloot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${botId},101,${ownerId}::uuid,NULL,'Owner',NULL,101,now(),now())`;
-		yield* sql`INSERT INTO carneloot.pet_food_settings (pet_id,day_start,timezone,reminder_delay_ms,created_at,updated_at) VALUES (${petId}::uuid,'00:00','UTC',NULL,now(),now())`;
+			yield* sql`INSERT INTO carnebot.telegram_identities (bot_id,telegram_user_id,user_id,username,first_name,last_name,private_chat_id,created_at,updated_at) VALUES (${botId},101,${ownerId}::uuid,NULL,'Owner',NULL,101,now(),now())`;
+		yield* sql`INSERT INTO carnebot.pet_food_settings (pet_id,day_start,timezone,reminder_delay_ms,created_at,updated_at) VALUES (${petId}::uuid,'00:00','UTC',NULL,now(),now())`;
 		return {
 			sql,
 			botId,
@@ -156,11 +156,11 @@ else
 					scheduled_for: Date;
 					food_timestamp_explicit: boolean;
 					recipients_materialized_at: Date | null;
-				}>`SELECT id,job_id,scheduled_for,food_timestamp_explicit,recipients_materialized_at FROM carneloot.notification_events WHERE kind='food-added' AND food_entry_id=${first.entry.id}::uuid`;
+				}>`SELECT id,job_id,scheduled_for,food_timestamp_explicit,recipients_materialized_at FROM carnebot.notification_events WHERE kind='food-added' AND food_entry_id=${first.entry.id}::uuid`;
 				const deliveries = yield* fixture.sql<{
 					recipient_user_id: string;
 					status: string;
-				}>`SELECT recipient_user_id,status FROM carneloot.notification_deliveries WHERE event_id=${events[0]?.id}::uuid`;
+				}>`SELECT recipient_user_id,status FROM carnebot.notification_deliveries WHERE event_id=${events[0]?.id}::uuid`;
 				const jobs = yield* fixture.sql<{
 					declaration: string;
 					conflict_key: string | null;
@@ -199,12 +199,12 @@ else
 				const failed = yield* unreachable.sql<{
 					status: string;
 					recipient_chat_id: number | null;
-				}>`SELECT d.status,d.recipient_chat_id FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.food_entry_id=${caregiverFood.entry.id}::uuid`;
+				}>`SELECT d.status,d.recipient_chat_id FROM carnebot.notification_deliveries d JOIN carnebot.notification_events e ON e.id=d.event_id WHERE e.food_entry_id=${caregiverFood.entry.id}::uuid`;
 				const ownerOnly = yield* setup();
-				yield* ownerOnly.sql`DELETE FROM carneloot.pet_caregivers WHERE pet_id=${ownerOnly.petId}::uuid`;
+				yield* ownerOnly.sql`DELETE FROM carnebot.pet_caregivers WHERE pet_id=${ownerOnly.petId}::uuid`;
 				const ownerFood = yield* add(ownerOnly.ownerAccess, 73);
 				const ownerEvents =
-					yield* ownerOnly.sql`SELECT id FROM carneloot.notification_events WHERE food_entry_id=${ownerFood.entry.id}::uuid`;
+					yield* ownerOnly.sql`SELECT id FROM carnebot.notification_events WHERE food_entry_id=${ownerFood.entry.id}::uuid`;
 				return { failed, ownerEvents };
 			});
 			const result = await Effect.runPromise(
@@ -231,7 +231,7 @@ else
 					status: string;
 					telegram_bot_id: string | null;
 					telegram_message_id: bigint | null;
-				}>`SELECT d.status,d.telegram_bot_id,d.telegram_message_id FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.food_entry_id=${result.entry.id}::uuid`;
+				}>`SELECT d.status,d.telegram_bot_id,d.telegram_message_id FROM carnebot.notification_deliveries d JOIN carnebot.notification_events e ON e.id=d.event_id WHERE e.food_entry_id=${result.entry.id}::uuid`;
 				return { fixture, records, deliveries };
 			});
 			const result = await Effect.runPromise(
@@ -283,13 +283,13 @@ else
 				sent.length = 0;
 				const fixture = yield* setup();
 				const added = yield* add(fixture.ownerAccess, 80);
-				yield* fixture.sql`UPDATE carneloot.pet_caregivers SET status='rejected' WHERE pet_id=${fixture.petId}::uuid AND caregiver_user_id=${fixture.caregiverId}::uuid`;
+				yield* fixture.sql`UPDATE carnebot.pet_caregivers SET status='rejected' WHERE pet_id=${fixture.petId}::uuid AND caregiver_user_id=${fixture.caregiverId}::uuid`;
 				const jobs = yield* JobRuntime;
 				yield* jobs.runOne();
 				return yield* fixture.sql<{
 					status: string;
 					error_code: string | null;
-				}>`SELECT d.status,d.safe_error_json->>'code' AS error_code FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.food_entry_id=${added.entry.id}::uuid`;
+				}>`SELECT d.status,d.safe_error_json->>'code' AS error_code FROM carnebot.notification_deliveries d JOIN carnebot.notification_events e ON e.id=d.event_id WHERE e.food_entry_id=${added.entry.id}::uuid`;
 			});
 			const deliveries = await Effect.runPromise(
 				Effect.provide(program, liveLayer),
@@ -307,7 +307,7 @@ else
 				const added = yield* add(fixture.caregiverAccess, 78);
 				const event = yield* fixture.sql<{
 					id: string;
-				}>`SELECT id FROM carneloot.notification_events WHERE food_entry_id=${added.entry.id}::uuid`;
+				}>`SELECT id FROM carnebot.notification_events WHERE food_entry_id=${added.entry.id}::uuid`;
 				const persistedEventId = Schema.decodeUnknownSync(EventId)(
 					event[0]?.id,
 				);
@@ -322,7 +322,7 @@ else
 				const deliveries = yield* fixture.sql<{
 					status: string;
 					attempt_count: number;
-				}>`SELECT status,attempt_count FROM carneloot.notification_deliveries WHERE event_id=${persistedEventId}::uuid`;
+				}>`SELECT status,attempt_count FROM carnebot.notification_deliveries WHERE event_id=${persistedEventId}::uuid`;
 				return { result, deliveries };
 			});
 			const result = await Effect.runPromise(
@@ -344,12 +344,12 @@ else
 				const added = yield* add(fixture.caregiverAccess, 79);
 				const event = yield* fixture.sql<{
 					id: string;
-				}>`SELECT id FROM carneloot.notification_events WHERE food_entry_id=${added.entry.id}::uuid`;
+				}>`SELECT id FROM carnebot.notification_events WHERE food_entry_id=${added.entry.id}::uuid`;
 				const persistedEventId = Schema.decodeUnknownSync(EventId)(
 					event[0]?.id,
 				);
-				yield* fixture.sql`UPDATE carneloot.notification_deliveries SET status='sending',attempt_generation=1,attempt_count=1,sending_started_at=now(),sending_lease_expires_at=now()+interval '5 minutes' WHERE event_id=${persistedEventId}::uuid`;
-				yield* fixture.sql`DELETE FROM carneloot.telegram_identities WHERE bot_id=${fixture.botId} AND user_id=${fixture.caregiverId}::uuid`;
+				yield* fixture.sql`UPDATE carnebot.notification_deliveries SET status='sending',attempt_generation=1,attempt_count=1,sending_started_at=now(),sending_lease_expires_at=now()+interval '5 minutes' WHERE event_id=${persistedEventId}::uuid`;
+				yield* fixture.sql`DELETE FROM carnebot.telegram_identities WHERE bot_id=${fixture.botId} AND user_id=${fixture.caregiverId}::uuid`;
 				const result = yield* Effect.result(
 					DispatchNotificationDelivery.executeFoodAdded({
 						eventId: persistedEventId,
@@ -374,14 +374,14 @@ else
 				sent.length = 0;
 				const fixture = yield* setup();
 				const result = yield* add(fixture.caregiverAccess, 76);
-				yield* fixture.sql`DELETE FROM carneloot.telegram_identities WHERE bot_id=${fixture.botId} AND user_id=${fixture.caregiverId}::uuid`;
+				yield* fixture.sql`DELETE FROM carnebot.telegram_identities WHERE bot_id=${fixture.botId} AND user_id=${fixture.caregiverId}::uuid`;
 				const jobs = yield* JobRuntime;
 				yield* jobs.runOne();
 				return yield* fixture.sql<{
 					status: string;
 					retryable: boolean;
 					error_code: string | null;
-				}>`SELECT d.status,d.retryable,d.safe_error_json->>'code' AS error_code FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.food_entry_id=${result.entry.id}::uuid`;
+				}>`SELECT d.status,d.retryable,d.safe_error_json->>'code' AS error_code FROM carnebot.notification_deliveries d JOIN carnebot.notification_events e ON e.id=d.event_id WHERE e.food_entry_id=${result.entry.id}::uuid`;
 			});
 			const deliveries = await Effect.runPromise(
 				Effect.provide(program, liveLayer),
@@ -399,15 +399,15 @@ else
 		it('rolls back food, event, deliveries, and durable job when attach fails', async () => {
 			const program = Effect.gen(function* () {
 				const fixture = yield* setup();
-				yield* fixture.sql`CREATE FUNCTION carneloot.fail_food_added_job_attach() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='food-added' AND NEW.job_id IS NOT NULL THEN RAISE EXCEPTION 'forced attach failure'; END IF; RETURN NEW; END $$`;
-				yield* fixture.sql`CREATE TRIGGER fail_food_added_job_attach BEFORE UPDATE ON carneloot.notification_events FOR EACH ROW EXECUTE FUNCTION carneloot.fail_food_added_job_attach()`;
+				yield* fixture.sql`CREATE FUNCTION carnebot.fail_food_added_job_attach() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='food-added' AND NEW.job_id IS NOT NULL THEN RAISE EXCEPTION 'forced attach failure'; END IF; RETURN NEW; END $$`;
+				yield* fixture.sql`CREATE TRIGGER fail_food_added_job_attach BEFORE UPDATE ON carnebot.notification_events FOR EACH ROW EXECUTE FUNCTION carnebot.fail_food_added_job_attach()`;
 				const result = yield* Effect.result(add(fixture.caregiverAccess, 74));
 				const food =
-					yield* fixture.sql`SELECT id FROM carneloot.pet_food_entries WHERE pet_id=${fixture.petId}::uuid`;
+					yield* fixture.sql`SELECT id FROM carnebot.pet_food_entries WHERE pet_id=${fixture.petId}::uuid`;
 				const events =
-					yield* fixture.sql`SELECT id FROM carneloot.notification_events WHERE pet_id=${fixture.petId}::uuid AND kind='food-added'`;
+					yield* fixture.sql`SELECT id FROM carnebot.notification_events WHERE pet_id=${fixture.petId}::uuid AND kind='food-added'`;
 				const deliveries =
-					yield* fixture.sql`SELECT d.id FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE e.pet_id=${fixture.petId}::uuid`;
+					yield* fixture.sql`SELECT d.id FROM carnebot.notification_deliveries d JOIN carnebot.notification_events e ON e.id=d.event_id WHERE e.pet_id=${fixture.petId}::uuid`;
 				const jobs =
 					yield* fixture.sql`SELECT id FROM tfx_food_added_test.case_jobs WHERE conflict_key=${`food-added:${fixture.botId}:${fixture.petId}:74`}`;
 				return { result, food, events, deliveries, jobs };

@@ -134,7 +134,7 @@ const dependencies = (
 const setup = Effect.gen(function* () {
 	yield* AppMigrator.migrate;
 	const sql = yield* PgClient.PgClient;
-	yield* sql`CREATE TABLE IF NOT EXISTS carneloot.test_reminder_actions (
+	yield* sql`CREATE TABLE IF NOT EXISTS carnebot.test_reminder_actions (
 		id bigserial PRIMARY KEY, kind text NOT NULL, pet_id uuid NOT NULL,
 		food_entry_id uuid, run_at timestamptz
 	)`;
@@ -173,7 +173,7 @@ const ownerRecordingScheduler: Layer.Layer<
 		(sql) =>
 			({
 				replaceForLatest: (schedule) =>
-					sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id,food_entry_id,run_at,owner_user_id) VALUES ('replace',${schedule.petId}::uuid,${schedule.foodEntryId}::uuid,${DateTime.toDateUtc(schedule.runAt)},${schedule.ownerUserId}::uuid)`.pipe(
+					sql`INSERT INTO carnebot.test_reminder_actions (kind,pet_id,food_entry_id,run_at,owner_user_id) VALUES ('replace',${schedule.petId}::uuid,${schedule.foodEntryId}::uuid,${DateTime.toDateUtc(schedule.runAt)},${schedule.ownerUserId}::uuid)`.pipe(
 						Effect.asVoid,
 						Effect.mapError(
 							(cause) =>
@@ -185,7 +185,7 @@ const ownerRecordingScheduler: Layer.Layer<
 						),
 					),
 				cancelForPet: (petId) =>
-					sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id) VALUES ('cancel',${petId}::uuid)`.pipe(
+					sql`INSERT INTO carnebot.test_reminder_actions (kind,pet_id) VALUES ('cancel',${petId}::uuid)`.pipe(
 						Effect.asVoid,
 						Effect.mapError(
 							(cause) =>
@@ -255,7 +255,7 @@ else
 				expect(backdated.replayed).toBe(false);
 				const actions = yield* sql<{
 					kind: string;
-				}>`SELECT kind FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid ORDER BY id`;
+				}>`SELECT kind FROM carnebot.test_reminder_actions WHERE pet_id=${pet.id}::uuid ORDER BY id`;
 				expect(actions.map((row) => row.kind)).toEqual(['replace', 'replace']);
 				const status = yield* asAccessUser(
 					access,
@@ -319,7 +319,7 @@ else
 					pet,
 					access: ownerAccess,
 				} = yield* setup;
-				yield* sql`ALTER TABLE carneloot.test_reminder_actions ADD COLUMN IF NOT EXISTS owner_user_id uuid`;
+				yield* sql`ALTER TABLE carnebot.test_reminder_actions ADD COLUMN IF NOT EXISTS owner_user_id uuid`;
 				yield* asAccessUser(
 					ownerAccess,
 					ConfigureDayStart.execute(ownerAccess, '00:00', 'UTC'),
@@ -374,11 +374,11 @@ else
 				);
 				const persisted = yield* sql<{
 					recorded_by: string;
-				}>`SELECT recorded_by FROM carneloot.pet_food_entries WHERE id=${added.entry.id}::uuid`;
+				}>`SELECT recorded_by FROM carnebot.pet_food_entries WHERE id=${added.entry.id}::uuid`;
 				expect(persisted[0]?.recorded_by).toBe(accepted.user.id);
 				const scheduled = yield* sql<{
 					owner_user_id: string;
-				}>`SELECT owner_user_id FROM carneloot.test_reminder_actions WHERE food_entry_id=${added.entry.id}::uuid`;
+				}>`SELECT owner_user_id FROM carnebot.test_reminder_actions WHERE food_entry_id=${added.entry.id}::uuid`;
 				expect(scheduled[0]?.owner_user_id).toBe(owner.user.id);
 
 				for (const [caregiver, updateId] of [
@@ -417,8 +417,8 @@ else
 				});
 
 				const reassignedUserId = crypto.randomUUID();
-				yield* sql`INSERT INTO carneloot.users (id,created_at,updated_at) VALUES (${reassignedUserId}::uuid,${new Date()},${new Date()})`;
-				yield* sql`UPDATE carneloot.telegram_identities SET user_id=${reassignedUserId}::uuid WHERE bot_id=${accepted.profile.botId} AND telegram_user_id=${accepted.profile.telegramUserId}`;
+				yield* sql`INSERT INTO carnebot.users (id,created_at,updated_at) VALUES (${reassignedUserId}::uuid,${new Date()},${new Date()})`;
+				yield* sql`UPDATE carnebot.telegram_identities SET user_id=${reassignedUserId}::uuid WHERE bot_id=${accepted.profile.botId} AND telegram_user_id=${accepted.profile.telegramUserId}`;
 				const reassigned = yield* Effect.result(
 					executeAddFood(
 						accessFor(accepted),
@@ -441,11 +441,11 @@ else
 
 				// Access was selected earlier, but mutation must re-authorize current state.
 				const previouslySelectedAccess = accessFor(accepted);
-				yield* sql`UPDATE carneloot.telegram_identities SET user_id=${accepted.user.id}::uuid WHERE bot_id=${accepted.profile.botId} AND telegram_user_id=${accepted.profile.telegramUserId}`;
+				yield* sql`UPDATE carnebot.telegram_identities SET user_id=${accepted.user.id}::uuid WHERE bot_id=${accepted.profile.botId} AND telegram_user_id=${accepted.profile.telegramUserId}`;
 				yield* caregivers.remove(pet.id, accepted.user.id);
 				const before = yield* sql<{
 					count: string;
-				}>`SELECT count(*)::text AS count FROM carneloot.pet_food_entries WHERE pet_id=${pet.id}::uuid`;
+				}>`SELECT count(*)::text AS count FROM carnebot.pet_food_entries WHERE pet_id=${pet.id}::uuid`;
 				const revoked = yield* Effect.result(
 					executeAddFood(
 						previouslySelectedAccess,
@@ -460,10 +460,10 @@ else
 				});
 				const after = yield* sql<{
 					count: string;
-				}>`SELECT count(*)::text AS count FROM carneloot.pet_food_entries WHERE pet_id=${pet.id}::uuid`;
+				}>`SELECT count(*)::text AS count FROM carnebot.pet_food_entries WHERE pet_id=${pet.id}::uuid`;
 				expect(after[0]?.count).toBe(before[0]?.count);
 				expect(
-					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
+					yield* sql`SELECT id FROM carnebot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
 				).toHaveLength(1);
 			});
 			await Effect.runPromise(
@@ -487,7 +487,7 @@ else
 						(sql) =>
 							({
 								replaceForLatest: (schedule) =>
-									sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id,food_entry_id,run_at) VALUES ('replace',${schedule.petId}::uuid,${schedule.foodEntryId}::uuid,${DateTime.toDateUtc(schedule.runAt)})`.pipe(
+									sql`INSERT INTO carnebot.test_reminder_actions (kind,pet_id,food_entry_id,run_at) VALUES ('replace',${schedule.petId}::uuid,${schedule.foodEntryId}::uuid,${DateTime.toDateUtc(schedule.runAt)})`.pipe(
 										Effect.mapError(
 											(cause) =>
 												new ReminderSchedulerError({
@@ -499,7 +499,7 @@ else
 										Effect.andThen(Effect.fail(failure)),
 									),
 								cancelForPet: (petId) =>
-									sql`INSERT INTO carneloot.test_reminder_actions (kind,pet_id) VALUES ('cancel',${petId}::uuid)`.pipe(
+									sql`INSERT INTO carnebot.test_reminder_actions (kind,pet_id) VALUES ('cancel',${petId}::uuid)`.pipe(
 										Effect.mapError(
 											(cause) =>
 												new ReminderSchedulerError({
@@ -524,7 +524,7 @@ else
 					access,
 					ConfigureReminderDelay.set(access, Duration.millis(60_000)),
 				);
-				yield* sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${pet.id}::uuid,${access.actorId}::uuid,1000,${new Date('2024-01-02T09:00:00Z')},${access.botId},9,${new Date('2024-01-02T09:00:00Z')},${new Date('2024-01-02T09:00:00Z')})`;
+				yield* sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${pet.id}::uuid,${access.actorId}::uuid,1000,${new Date('2024-01-02T09:00:00Z')},${access.botId},9,${new Date('2024-01-02T09:00:00Z')},${new Date('2024-01-02T09:00:00Z')})`;
 				const setDelay = yield* Effect.result(
 					asAccessUser(
 						access,
@@ -536,17 +536,17 @@ else
 					failure: { _tag: 'ReminderSchedulerError' },
 				});
 				expect(
-					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
+					yield* sql`SELECT id FROM carnebot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
 				).toHaveLength(0);
 				const result = yield* Effect.result(
 					executeAddFood(access, '50g', '10:00', source(access.botId, 10)),
 				);
 				expect(result._tag).toBe('Failure');
 				const rows =
-					yield* sql`SELECT id FROM carneloot.pet_food_entries WHERE pet_id=${pet.id}::uuid`;
+					yield* sql`SELECT id FROM carnebot.pet_food_entries WHERE pet_id=${pet.id}::uuid`;
 				expect(rows).toHaveLength(1);
 				expect(
-					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
+					yield* sql`SELECT id FROM carnebot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
 				).toHaveLength(0);
 				const remove = yield* Effect.result(
 					asAccessUser(access, ConfigureReminderDelay.remove(access)),
@@ -554,10 +554,10 @@ else
 				expect(remove._tag).toBe('Failure');
 				const settings = yield* sql<{
 					reminder_delay_ms: string | null;
-				}>`SELECT reminder_delay_ms FROM carneloot.pet_food_settings WHERE pet_id=${pet.id}::uuid`;
+				}>`SELECT reminder_delay_ms FROM carnebot.pet_food_settings WHERE pet_id=${pet.id}::uuid`;
 				expect(Number(settings[0]?.reminder_delay_ms)).toBe(60_000);
 				expect(
-					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
+					yield* sql`SELECT id FROM carnebot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
 				).toHaveLength(0);
 			});
 			const { logs } = await Effect.runPromise(
@@ -627,7 +627,7 @@ else
 					[windowEnd - 1, 3_000, 103],
 					[windowEnd, 4_000, 104],
 				] as const)
-					yield* first.sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${first.pet.id}::uuid,${first.access.actorId}::uuid,${amount},${new Date(fedAt)},${first.access.botId},${update},${new Date(fedAt)},${new Date(fedAt)})`;
+					yield* first.sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${first.pet.id}::uuid,${first.access.actorId}::uuid,${amount},${new Date(fedAt)},${first.access.botId},${update},${new Date(fedAt)},${new Date(fedAt)})`;
 				const status = yield* asAccessUser(
 					first.access,
 					GetFoodStatus.execute({
@@ -674,7 +674,7 @@ else
 				);
 				expect(noDelay.replayed).toBe(false);
 				expect(
-					yield* sql`SELECT id FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
+					yield* sql`SELECT id FROM carnebot.test_reminder_actions WHERE pet_id=${pet.id}::uuid`,
 				).toHaveLength(0);
 				yield* asAccessUser(
 					access,
@@ -733,7 +733,7 @@ else
 				const actions = yield* sql<{
 					food_entry_id: string;
 					run_at: Date;
-				}>`SELECT food_entry_id,run_at FROM carneloot.test_reminder_actions WHERE pet_id=${pet.id}::uuid ORDER BY id`;
+				}>`SELECT food_entry_id,run_at FROM carnebot.test_reminder_actions WHERE pet_id=${pet.id}::uuid ORDER BY id`;
 				// Delay setting reschedules 08:00, then one action per winning 10:00/11:00 insertion.
 				expect(actions).toHaveLength(3);
 				expect(actions[1]?.food_entry_id).toBe(sameSource[0]?.entry.id);
@@ -761,7 +761,7 @@ else
 					ConfigureDayStart.execute(access, '00:00', 'UTC'),
 				);
 				const seed = (fedAt: number, updateId: number) =>
-					sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${pet.id}::uuid,${access.actorId}::uuid,1000,${new Date(fedAt)},${access.botId},${updateId},${new Date(fedAt)},${new Date(fedAt)})`;
+					sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${pet.id}::uuid,${access.actorId}::uuid,1000,${new Date(fedAt)},${access.botId},${updateId},${new Date(fedAt)},${new Date(fedAt)})`;
 				yield* seed(new Date('2024-01-02T10:00:00.001Z').getTime(), 300);
 				const below = yield* Effect.result(
 					executeAddFood(access, '1g', '10:01', source(access.botId, 301)),
@@ -775,7 +775,7 @@ else
 					exactFixture.access,
 					ConfigureDayStart.execute(exactFixture.access, '00:00', 'UTC'),
 				);
-				yield* exactFixture.sql`INSERT INTO carneloot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${exactFixture.pet.id}::uuid,${exactFixture.access.actorId}::uuid,1000,${new Date('2024-01-02T10:00:00Z')},${exactFixture.access.botId},302,${new Date('2024-01-02T10:00:00Z')},${new Date('2024-01-02T10:00:00Z')})`;
+				yield* exactFixture.sql`INSERT INTO carnebot.pet_food_entries (id,pet_id,recorded_by,amount_mg,fed_at,source_bot_id,source_update_id,created_at,updated_at) VALUES (${crypto.randomUUID()}::uuid,${exactFixture.pet.id}::uuid,${exactFixture.access.actorId}::uuid,1000,${new Date('2024-01-02T10:00:00Z')},${exactFixture.access.botId},302,${new Date('2024-01-02T10:00:00Z')},${new Date('2024-01-02T10:00:00Z')})`;
 				const exact = yield* executeAddFood(
 					exactFixture.access,
 					'1g',

@@ -199,11 +199,11 @@ export const layer = Layer.effect(
 							Effect.gen(function* () {
 								const inserted = yield* sql<
 									Record<string, unknown>
-								>`INSERT INTO carneloot.notification_events (id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,recipients_materialized_at,food_timestamp_explicit,created_at,updated_at,completed_at,cancelled_at) VALUES (${input.id}::uuid,${input.botId},${input.kind},${input.ownerUserId}::uuid,${input.petId}::uuid,${input.foodEntryId}::uuid,${input.scheduledFor === null ? null : DateTime.toDateUtc(input.scheduledFor)},'scheduled',${input.dedupeKey},NULL,NULL,${input.foodTimestampExplicit},${DateTime.toDateUtc(input.now)},${DateTime.toDateUtc(input.now)},NULL,NULL) ON CONFLICT (dedupe_key) DO NOTHING RETURNING *`;
+								>`INSERT INTO carnebot.notification_events (id,bot_id,kind,owner_user_id,pet_id,food_entry_id,scheduled_for,status,dedupe_key,job_id,recipients_materialized_at,food_timestamp_explicit,created_at,updated_at,completed_at,cancelled_at) VALUES (${input.id}::uuid,${input.botId},${input.kind},${input.ownerUserId}::uuid,${input.petId}::uuid,${input.foodEntryId}::uuid,${input.scheduledFor === null ? null : DateTime.toDateUtc(input.scheduledFor)},'scheduled',${input.dedupeKey},NULL,NULL,${input.foodTimestampExplicit},${DateTime.toDateUtc(input.now)},${DateTime.toDateUtc(input.now)},NULL,NULL) ON CONFLICT (dedupe_key) DO NOTHING RETURNING *`;
 								if (inserted[0] !== undefined) return yield* oneEvent(inserted);
 								const existingRows = yield* sql<
 									Record<string, unknown>
-								>`SELECT * FROM carneloot.notification_events WHERE dedupe_key=${input.dedupeKey} FOR UPDATE`;
+								>`SELECT * FROM carnebot.notification_events WHERE dedupe_key=${input.dedupeKey} FOR UPDATE`;
 								const existing = yield* oneEvent(existingRows);
 								if (
 									existing.botId !== input.botId ||
@@ -237,9 +237,9 @@ export const layer = Layer.effect(
 								const rows = yield* sql<{
 									id: string;
 									job_id: string | null;
-								}>`SELECT id,job_id FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${petId}::uuid AND kind='feeding-reminder' AND status IN ('scheduled','dispatching') FOR UPDATE`;
+								}>`SELECT id,job_id FROM carnebot.notification_events WHERE bot_id=${botId} AND pet_id=${petId}::uuid AND kind='feeding-reminder' AND status IN ('scheduled','dispatching') FOR UPDATE`;
 								if (rows.length > 0)
-									yield* sql`UPDATE carneloot.notification_events SET status='cancelled',cancelled_at=${DateTime.toDateUtc(now)},completed_at=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND pet_id=${petId}::uuid AND kind='feeding-reminder' AND status IN ('scheduled','dispatching')`;
+									yield* sql`UPDATE carnebot.notification_events SET status='cancelled',cancelled_at=${DateTime.toDateUtc(now)},completed_at=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE bot_id=${botId} AND pet_id=${petId}::uuid AND kind='feeding-reminder' AND status IN ('scheduled','dispatching')`;
 								return rows.map((row) => ({
 									eventId: Schema.decodeUnknownSync(EventId)(row.id),
 									jobId: row.job_id,
@@ -251,21 +251,21 @@ export const layer = Layer.effect(
 			reviveCancelledEvent: (id, now) =>
 				protect(
 					Effect.map(
-						sql`UPDATE carneloot.notification_events e SET status='scheduled',cancelled_at=NULL,completed_at=NULL,job_id=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE e.id=${id}::uuid AND e.status='cancelled' AND NOT EXISTS (SELECT 1 FROM carneloot.notification_deliveries d WHERE d.event_id=e.id) RETURNING e.id`,
+						sql`UPDATE carnebot.notification_events e SET status='scheduled',cancelled_at=NULL,completed_at=NULL,job_id=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE e.id=${id}::uuid AND e.status='cancelled' AND NOT EXISTS (SELECT 1 FROM carnebot.notification_deliveries d WHERE d.event_id=e.id) RETURNING e.id`,
 						(rows) => rows.length > 0,
 					),
 				),
 			cancelEvent: (id, now) =>
 				protect(
 					Effect.map(
-						sql`UPDATE carneloot.notification_events SET status='cancelled',cancelled_at=${DateTime.toDateUtc(now)},completed_at=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE id=${id}::uuid AND status IN ('scheduled','dispatching') RETURNING id`,
+						sql`UPDATE carnebot.notification_events SET status='cancelled',cancelled_at=${DateTime.toDateUtc(now)},completed_at=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE id=${id}::uuid AND status IN ('scheduled','dispatching') RETURNING id`,
 						(rows) => rows.length > 0,
 					),
 				),
 			attachJob: (id, jobId, now) =>
 				protect(
 					Effect.map(
-						sql`UPDATE carneloot.notification_events SET job_id=${jobId}::uuid,updated_at=${DateTime.toDateUtc(now)} WHERE id=${id}::uuid AND status='scheduled' AND job_id IS NULL RETURNING id`,
+						sql`UPDATE carnebot.notification_events SET job_id=${jobId}::uuid,updated_at=${DateTime.toDateUtc(now)} WHERE id=${id}::uuid AND status='scheduled' AND job_id IS NULL RETURNING id`,
 						(rows) => rows.length > 0,
 					),
 				),
@@ -274,7 +274,7 @@ export const layer = Layer.effect(
 					Effect.flatMap(
 						sql<
 							Record<string, unknown>
-						>`SELECT * FROM carneloot.notification_events WHERE id=${id}::uuid`,
+						>`SELECT * FROM carnebot.notification_events WHERE id=${id}::uuid`,
 						(rows) =>
 							rows[0] === undefined
 								? Effect.succeed(undefined)
@@ -286,7 +286,7 @@ export const layer = Layer.effect(
 					Effect.flatMap(
 						sql<
 							Record<string, unknown>
-						>`SELECT * FROM carneloot.notification_events WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`,
+						>`SELECT * FROM carnebot.notification_events WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`,
 						(rows) =>
 							rows[0] === undefined
 								? Effect.succeed(undefined)
@@ -296,7 +296,7 @@ export const layer = Layer.effect(
 			markRecipientsMaterialized: (eventId, now) =>
 				protect(
 					Effect.map(
-						sql`UPDATE carneloot.notification_events SET recipients_materialized_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching') AND recipients_materialized_at IS NULL RETURNING id`,
+						sql`UPDATE carnebot.notification_events SET recipients_materialized_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching') AND recipients_materialized_at IS NULL RETURNING id`,
 						(rows) => rows.length > 0,
 					),
 				),
@@ -304,7 +304,7 @@ export const layer = Layer.effect(
 				protect(
 					Effect.gen(function* () {
 						const active =
-							yield* sql`SELECT id FROM carneloot.notification_events WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching')`;
+							yield* sql`SELECT id FROM carnebot.notification_events WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching')`;
 						if (active.length === 0)
 							return yield* Effect.fail(
 								error('Conflict', 'Notification event is not active'),
@@ -314,10 +314,10 @@ export const layer = Layer.effect(
 								recipient._tag === 'Reachable'
 									? sql<
 											Record<string, unknown>
-										>`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,${recipient.recipientChatId},${recipient.recipientRole},${recipient.channel},'pending',0,0,false,${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`
+										>`INSERT INTO carnebot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,${recipient.recipientChatId},${recipient.recipientRole},${recipient.channel},'pending',0,0,false,${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`
 									: sql<
 											Record<string, unknown>
-										>`INSERT INTO carneloot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,safe_error_json,failed_at,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,NULL,${recipient.recipientRole},${recipient.channel},'failed',0,0,false,${sql.json(recipient.error)},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`,
+										>`INSERT INTO carnebot.notification_deliveries (id,event_id,recipient_user_id,recipient_chat_id,recipient_role,channel,status,attempt_generation,attempt_count,retryable,safe_error_json,failed_at,created_at,updated_at) VALUES (${recipient.id}::uuid,${eventId}::uuid,${recipient.recipientUserId}::uuid,NULL,${recipient.recipientRole},${recipient.channel},'failed',0,0,false,${sql.json(recipient.error)},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)},${DateTime.toDateUtc(now)}) ON CONFLICT (event_id,recipient_user_id,channel) DO UPDATE SET event_id=EXCLUDED.event_id RETURNING *`,
 								oneDelivery,
 							),
 						);
@@ -326,14 +326,14 @@ export const layer = Layer.effect(
 			recoverExpired: (eventId, now) =>
 				protect(
 					Effect.map(
-						sql`UPDATE carneloot.notification_deliveries SET status='unknown',sending_lease_expires_at=NULL,retryable=false,retry_at=NULL,safe_error_json=${sql.json({ code: 'SendingLeaseExpired', message: 'Sending lease expired' })},unknown_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE event_id=${eventId}::uuid AND status='sending' AND sending_lease_expires_at<=${DateTime.toDateUtc(now)} RETURNING id`,
+						sql`UPDATE carnebot.notification_deliveries SET status='unknown',sending_lease_expires_at=NULL,retryable=false,retry_at=NULL,safe_error_json=${sql.json({ code: 'SendingLeaseExpired', message: 'Sending lease expired' })},unknown_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE event_id=${eventId}::uuid AND status='sending' AND sending_lease_expires_at<=${DateTime.toDateUtc(now)} RETURNING id`,
 						(rows) => rows.length,
 					),
 				),
 			recoverAllExpired: (now) =>
 				protect(
 					Effect.map(
-						sql`UPDATE carneloot.notification_deliveries SET status='unknown',sending_lease_expires_at=NULL,retryable=false,retry_at=NULL,safe_error_json=${sql.json({ code: 'SendingLeaseExpired', message: 'Sending lease expired' })},unknown_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE status='sending' AND sending_lease_expires_at<=${DateTime.toDateUtc(now)} RETURNING id`,
+						sql`UPDATE carnebot.notification_deliveries SET status='unknown',sending_lease_expires_at=NULL,retryable=false,retry_at=NULL,safe_error_json=${sql.json({ code: 'SendingLeaseExpired', message: 'Sending lease expired' })},unknown_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE status='sending' AND sending_lease_expires_at<=${DateTime.toDateUtc(now)} RETURNING id`,
 						(rows) => rows.length,
 					),
 				),
@@ -343,14 +343,14 @@ export const layer = Layer.effect(
 						.withTransaction(
 							Effect.gen(function* () {
 								const active =
-									yield* sql`SELECT id FROM carneloot.notification_events WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`;
+									yield* sql`SELECT id FROM carnebot.notification_events WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching') FOR UPDATE`;
 								if (active.length === 0) return undefined;
 								const leaseExpiresAt = DateTime.addDuration(now, leaseDuration);
 								const rows = yield* sql<
 									Record<string, unknown>
-								>`WITH candidate AS (SELECT d.id FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE d.event_id=${eventId}::uuid AND e.status IN ('scheduled','dispatching') AND (d.status='pending' OR (d.status='failed' AND d.retryable=true AND d.retry_at<=${DateTime.toDateUtc(now)})) ORDER BY CASE d.recipient_role WHEN 'owner' THEN 0 ELSE 1 END,d.retry_at NULLS FIRST,d.created_at,d.id FOR UPDATE OF d SKIP LOCKED LIMIT 1) UPDATE carneloot.notification_deliveries d SET status='sending',attempt_generation=d.attempt_generation+1,attempt_count=d.attempt_count+1,sending_started_at=${DateTime.toDateUtc(now)},sending_lease_expires_at=${DateTime.toDateUtc(leaseExpiresAt)},retry_at=NULL,retryable=false,safe_error_json=NULL,failed_at=NULL,updated_at=${DateTime.toDateUtc(now)} FROM candidate WHERE d.id=candidate.id RETURNING d.*`;
+								>`WITH candidate AS (SELECT d.id FROM carnebot.notification_deliveries d JOIN carnebot.notification_events e ON e.id=d.event_id WHERE d.event_id=${eventId}::uuid AND e.status IN ('scheduled','dispatching') AND (d.status='pending' OR (d.status='failed' AND d.retryable=true AND d.retry_at<=${DateTime.toDateUtc(now)})) ORDER BY CASE d.recipient_role WHEN 'owner' THEN 0 ELSE 1 END,d.retry_at NULLS FIRST,d.created_at,d.id FOR UPDATE OF d SKIP LOCKED LIMIT 1) UPDATE carnebot.notification_deliveries d SET status='sending',attempt_generation=d.attempt_generation+1,attempt_count=d.attempt_count+1,sending_started_at=${DateTime.toDateUtc(now)},sending_lease_expires_at=${DateTime.toDateUtc(leaseExpiresAt)},retry_at=NULL,retryable=false,safe_error_json=NULL,failed_at=NULL,updated_at=${DateTime.toDateUtc(now)} FROM candidate WHERE d.id=candidate.id RETURNING d.*`;
 								if (rows[0] === undefined) return undefined;
-								yield* sql`UPDATE carneloot.notification_events SET status='dispatching',updated_at=${DateTime.toDateUtc(now)} WHERE id=${eventId}::uuid AND status='scheduled'`;
+								yield* sql`UPDATE carnebot.notification_events SET status='dispatching',updated_at=${DateTime.toDateUtc(now)} WHERE id=${eventId}::uuid AND status='scheduled'`;
 								const delivery = yield* decodeDelivery(rows[0]);
 								return {
 									delivery,
@@ -366,7 +366,7 @@ export const layer = Layer.effect(
 			finalizeSent: (token, botId, messageId, now) =>
 				protect(
 					Effect.map(
-						sql`UPDATE carneloot.notification_deliveries SET status='sent',sending_lease_expires_at=NULL,telegram_bot_id=${botId},telegram_message_id=${messageId},sent_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${token.id}::uuid AND attempt_generation=${token.generation} AND status='sending' RETURNING id`,
+						sql`UPDATE carnebot.notification_deliveries SET status='sent',sending_lease_expires_at=NULL,telegram_bot_id=${botId},telegram_message_id=${messageId},sent_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${token.id}::uuid AND attempt_generation=${token.generation} AND status='sending' RETURNING id`,
 						(rows) => rows.length > 0,
 					),
 				),
@@ -380,21 +380,21 @@ export const layer = Layer.effect(
 						)
 					: protect(
 							Effect.map(
-								sql`UPDATE carneloot.notification_deliveries SET status='failed',sending_lease_expires_at=NULL,retryable=${retryable},retry_at=${retryAt === null ? null : DateTime.toDateUtc(retryAt)},safe_error_json=${sql.json(safeError)},failed_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${token.id}::uuid AND attempt_generation=${token.generation} AND status='sending' RETURNING id`,
+								sql`UPDATE carnebot.notification_deliveries SET status='failed',sending_lease_expires_at=NULL,retryable=${retryable},retry_at=${retryAt === null ? null : DateTime.toDateUtc(retryAt)},safe_error_json=${sql.json(safeError)},failed_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${token.id}::uuid AND attempt_generation=${token.generation} AND status='sending' RETURNING id`,
 								(rows) => rows.length > 0,
 							),
 						),
 			finalizeUnknown: (token, safeError, now) =>
 				protect(
 					Effect.map(
-						sql`UPDATE carneloot.notification_deliveries SET status='unknown',sending_lease_expires_at=NULL,retryable=false,retry_at=NULL,safe_error_json=${sql.json(safeError)},unknown_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${token.id}::uuid AND attempt_generation=${token.generation} AND status='sending' RETURNING id`,
+						sql`UPDATE carnebot.notification_deliveries SET status='unknown',sending_lease_expires_at=NULL,retryable=false,retry_at=NULL,safe_error_json=${sql.json(safeError)},unknown_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${token.id}::uuid AND attempt_generation=${token.generation} AND status='sending' RETURNING id`,
 						(rows) => rows.length > 0,
 					),
 				),
 			reconcileUnknownAsSent: (token, botId, messageId, now) =>
 				protect(
 					Effect.map(
-						sql`UPDATE carneloot.notification_deliveries SET status='sent',telegram_bot_id=${botId},telegram_message_id=${messageId},safe_error_json=NULL,unknown_at=NULL,sent_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${token.id}::uuid AND attempt_generation=${token.generation} AND status='unknown' RETURNING id`,
+						sql`UPDATE carnebot.notification_deliveries SET status='sent',telegram_bot_id=${botId},telegram_message_id=${messageId},safe_error_json=NULL,unknown_at=NULL,sent_at=${DateTime.toDateUtc(now)},updated_at=${DateTime.toDateUtc(now)} WHERE id=${token.id}::uuid AND attempt_generation=${token.generation} AND status='unknown' RETURNING id`,
 						(rows) => rows.length > 0,
 					),
 				),
@@ -409,7 +409,7 @@ export const layer = Layer.effect(
 								const rows = yield* sql<{
 									delivery: unknown;
 									event: unknown;
-								}>`SELECT to_jsonb(d) delivery,to_jsonb(e) event FROM carneloot.notification_deliveries d JOIN carneloot.notification_events e ON e.id=d.event_id WHERE d.status='sent' AND d.telegram_bot_id=${botId} AND d.recipient_chat_id=${chatId} AND d.telegram_message_id=${messageId}`;
+								}>`SELECT to_jsonb(d) delivery,to_jsonb(e) event FROM carnebot.notification_deliveries d JOIN carnebot.notification_events e ON e.id=d.event_id WHERE d.status='sent' AND d.telegram_bot_id=${botId} AND d.recipient_chat_id=${chatId} AND d.telegram_message_id=${messageId}`;
 								const row = rows[0];
 								if (row === undefined) return undefined;
 								return {
@@ -429,7 +429,7 @@ export const layer = Layer.effect(
 										| 'dispatching'
 										| 'completed'
 										| 'cancelled';
-								}>`SELECT status FROM carneloot.notification_events WHERE id=${eventId}::uuid FOR UPDATE`;
+								}>`SELECT status FROM carnebot.notification_events WHERE id=${eventId}::uuid FOR UPDATE`;
 								const event = events[0];
 								if (event === undefined)
 									return yield* Effect.fail(
@@ -442,7 +442,7 @@ export const layer = Layer.effect(
 									terminal: number;
 									earliest_retry_at: Date | null;
 									earliest_sending_lease_expiry: Date | null;
-								}>`SELECT count(*) FILTER (WHERE status='pending')::int pending,count(*) FILTER (WHERE status='sending')::int sending,count(*) FILTER (WHERE status='failed' AND retryable=true)::int retryable_failed,count(*) FILTER (WHERE status='sent' OR status='unknown' OR (status='failed' AND retryable=false))::int terminal,min(retry_at) FILTER (WHERE status='failed' AND retryable=true) earliest_retry_at,min(sending_lease_expires_at) FILTER (WHERE status='sending') earliest_sending_lease_expiry FROM carneloot.notification_deliveries WHERE event_id=${eventId}::uuid`;
+								}>`SELECT count(*) FILTER (WHERE status='pending')::int pending,count(*) FILTER (WHERE status='sending')::int sending,count(*) FILTER (WHERE status='failed' AND retryable=true)::int retryable_failed,count(*) FILTER (WHERE status='sent' OR status='unknown' OR (status='failed' AND retryable=false))::int terminal,min(retry_at) FILTER (WHERE status='failed' AND retryable=true) earliest_retry_at,min(sending_lease_expires_at) FILTER (WHERE status='sending') earliest_sending_lease_expiry FROM carnebot.notification_deliveries WHERE event_id=${eventId}::uuid`;
 								const row = rows[0];
 								if (row === undefined)
 									return yield* Effect.fail(
@@ -458,7 +458,7 @@ export const layer = Layer.effect(
 									row.sending === 0 &&
 									row.retryable_failed === 0;
 								if (canComplete)
-									yield* sql`UPDATE carneloot.notification_events SET status='completed',completed_at=${DateTime.toDateUtc(now)},cancelled_at=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching')`;
+									yield* sql`UPDATE carnebot.notification_events SET status='completed',completed_at=${DateTime.toDateUtc(now)},cancelled_at=NULL,updated_at=${DateTime.toDateUtc(now)} WHERE id=${eventId}::uuid AND status IN ('scheduled','dispatching')`;
 								return {
 									pending: row.pending,
 									sending: row.sending,

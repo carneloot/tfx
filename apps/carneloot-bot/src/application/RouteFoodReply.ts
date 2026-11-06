@@ -175,7 +175,7 @@ export const execute = Effect.fn('RouteFoodReply.execute')(
 					yield* sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
 					const rows = yield* sql<{
 						result_json: unknown;
-					}>`SELECT result_json FROM carneloot.food_reply_operations WHERE bot_id=${input.botId} AND update_id=${input.updateId}`;
+					}>`SELECT result_json FROM carnebot.food_reply_operations WHERE bot_id=${input.botId} AND update_id=${input.updateId}`;
 					if (rows[0] !== undefined)
 						return yield* decodeStored(rows[0].result_json);
 
@@ -184,7 +184,7 @@ export const execute = Effect.fn('RouteFoodReply.execute')(
 						result,
 					).pipe(Effect.orDie);
 					const now = yield* DateTime.now;
-					yield* sql`INSERT INTO carneloot.food_reply_operations (bot_id,update_id,kind,result_json,created_at) VALUES (${input.botId},${input.updateId},${result._tag},${sql.json(encoded)},${DateTime.toDateUtc(now)})`;
+					yield* sql`INSERT INTO carnebot.food_reply_operations (bot_id,update_id,kind,result_json,created_at) VALUES (${input.botId},${input.updateId},${result._tag},${sql.json(encoded)},${DateTime.toDateUtc(now)})`;
 					return result;
 				}),
 			);

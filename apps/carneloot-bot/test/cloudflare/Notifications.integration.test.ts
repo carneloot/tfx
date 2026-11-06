@@ -43,9 +43,9 @@ describe.skipIf(!enabled)(
 						username: null,
 					});
 					const templateId = crypto.randomUUID();
-					yield* sql`INSERT INTO carneloot.api_keys VALUES (${crypto.randomUUID()}::uuid,${owner.user.id}::uuid,${yield* GenerateApiKey.hash('workerd-key')},now(),now())`;
-					yield* sql`INSERT INTO carneloot.notification_templates VALUES (${templateId}::uuid,${owner.user.id}::uuid,'alarm','Hello {{pet}}, {{pet}}!',now(),now())`;
-					yield* sql`INSERT INTO carneloot.notification_subscriptions VALUES (${templateId}::uuid,${subscriber.user.id}::uuid,now())`;
+					yield* sql`INSERT INTO carnebot.api_keys VALUES (${crypto.randomUUID()}::uuid,${owner.user.id}::uuid,${yield* GenerateApiKey.hash('workerd-key')},now(),now())`;
+					yield* sql`INSERT INTO carnebot.notification_templates VALUES (${templateId}::uuid,${owner.user.id}::uuid,'alarm','Hello {{pet}}, {{pet}}!',now(),now())`;
+					yield* sql`INSERT INTO carnebot.notification_subscriptions VALUES (${templateId}::uuid,${subscriber.user.id}::uuid,now())`;
 					const result = yield* Effect.promise(() =>
 						build({
 							entryPoints: ['apps/carneloot-bot/src/cloudflare/Worker.ts'],

@@ -1,15 +1,15 @@
-CREATE TABLE carneloot.api_keys (
+CREATE TABLE carnebot.api_keys (
   id uuid PRIMARY KEY,
-  user_id uuid NOT NULL UNIQUE REFERENCES carneloot.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL UNIQUE REFERENCES carnebot.users(id) ON DELETE CASCADE,
   key_hash text NOT NULL UNIQUE,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
   CONSTRAINT api_keys_sha256_check CHECK (key_hash ~ '^[0-9a-f]{64}$')
 );
 
-CREATE TABLE carneloot.notification_templates (
+CREATE TABLE carnebot.notification_templates (
   id uuid PRIMARY KEY,
-  owner_user_id uuid NOT NULL REFERENCES carneloot.users(id) ON DELETE CASCADE,
+  owner_user_id uuid NOT NULL REFERENCES carnebot.users(id) ON DELETE CASCADE,
   keyword text NOT NULL,
   message text NOT NULL,
   created_at timestamptz NOT NULL,
@@ -19,14 +19,14 @@ CREATE TABLE carneloot.notification_templates (
   CONSTRAINT notification_templates_owner_keyword_key UNIQUE (owner_user_id, keyword)
 );
 
-CREATE TABLE carneloot.notification_subscriptions (
-  template_id uuid NOT NULL REFERENCES carneloot.notification_templates(id) ON DELETE CASCADE,
-  user_id uuid NOT NULL REFERENCES carneloot.users(id) ON DELETE CASCADE,
+CREATE TABLE carnebot.notification_subscriptions (
+  template_id uuid NOT NULL REFERENCES carnebot.notification_templates(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES carnebot.users(id) ON DELETE CASCADE,
   created_at timestamptz NOT NULL,
   PRIMARY KEY (template_id, user_id)
 );
 
-CREATE TABLE carneloot.legacy_import_ledger (
+CREATE TABLE carnebot.legacy_import_ledger (
   source_fingerprint text NOT NULL,
   source_table text NOT NULL,
   source_key text NOT NULL,

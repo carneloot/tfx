@@ -153,7 +153,7 @@ else
 				const active = yield* sql<{
 					food_entry_id: string;
 					scheduled_for: Date;
-				}>`SELECT food_entry_id,scheduled_for FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${pet.id}::uuid AND status='scheduled'`;
+				}>`SELECT food_entry_id,scheduled_for FROM carnebot.notification_events WHERE bot_id=${botId} AND pet_id=${pet.id}::uuid AND status='scheduled'`;
 				expect(active).toHaveLength(1);
 				expect(active[0]?.food_entry_id).toBe(entry.id);
 				expect(active[0]?.scheduled_for.getTime()).toBe(3_000);
@@ -186,7 +186,7 @@ else
 					job_id: string;
 					food_entry_id: string;
 					scheduled_for: Date;
-				}>`SELECT id,job_id,food_entry_id,scheduled_for FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${pet.id}::uuid AND status='scheduled'`;
+				}>`SELECT id,job_id,food_entry_id,scheduled_for FROM carnebot.notification_events WHERE bot_id=${botId} AND pet_id=${pet.id}::uuid AND status='scheduled'`;
 				const jobs = yield* sql<{
 					id: string;
 					payload_version: number;
@@ -213,13 +213,13 @@ else
 				yield* scheduler.cancelForPet({ botId, petId: pet.id });
 				const cancelled = yield* sql<{
 					status: string;
-				}>`SELECT status FROM carneloot.notification_events WHERE id=${active[0]!.id}::uuid`;
+				}>`SELECT status FROM carnebot.notification_events WHERE id=${active[0]!.id}::uuid`;
 				expect(cancelled[0]?.status).toBe('cancelled');
 				yield* scheduler.replaceForLatest(request);
 				const revived = yield* sql<{
 					id: string;
 					status: string;
-				}>`SELECT id,status FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${pet.id}::uuid AND status='scheduled'`;
+				}>`SELECT id,status FROM carnebot.notification_events WHERE bot_id=${botId} AND pet_id=${pet.id}::uuid AND status='scheduled'`;
 				expect(revived).toEqual([{ id: active[0]!.id, status: 'scheduled' }]);
 
 				yield* TestClock.setTime(3_000);
@@ -264,7 +264,7 @@ else
 				const events = yield* sql<{
 					status: string;
 					scheduled_for: Date;
-				}>`SELECT status,scheduled_for FROM carneloot.notification_events WHERE bot_id=${botId} AND pet_id=${pet.id}::uuid ORDER BY scheduled_for`;
+				}>`SELECT status,scheduled_for FROM carnebot.notification_events WHERE bot_id=${botId} AND pet_id=${pet.id}::uuid ORDER BY scheduled_for`;
 				expect(events).toEqual([
 					{ status: 'cancelled', scheduled_for: new Date(3_000) },
 					{ status: 'scheduled', scheduled_for: new Date(4_000) },
@@ -355,7 +355,7 @@ else
 				expect(result._tag).toBe('Failure');
 				const sql = yield* PgClient.PgClient;
 				expect(
-					yield* sql`SELECT id FROM carneloot.notification_events WHERE pet_id=${pet.id}::uuid`,
+					yield* sql`SELECT id FROM carnebot.notification_events WHERE pet_id=${pet.id}::uuid`,
 				).toHaveLength(0);
 			});
 			await Effect.runPromise(Effect.provide(program, layer));
@@ -391,11 +391,11 @@ else
 				);
 				expect(result._tag).toBe('Failure');
 				const events =
-					yield* sql`SELECT id FROM carneloot.notification_events WHERE pet_id=${pet.id}::uuid`;
+					yield* sql`SELECT id FROM carnebot.notification_events WHERE pet_id=${pet.id}::uuid`;
 				const jobs =
 					yield* sql`SELECT id FROM tfx_feeding_test.case_jobs WHERE conflict_key=${`feeding-reminder:${botId}:${pet.id}`}`;
 				const entries =
-					yield* sql`SELECT id FROM carneloot.pet_food_entries WHERE pet_id=${pet.id}::uuid`;
+					yield* sql`SELECT id FROM carnebot.pet_food_entries WHERE pet_id=${pet.id}::uuid`;
 				expect(events).toHaveLength(0);
 				expect(jobs).toHaveLength(0);
 				expect(entries).toHaveLength(1);

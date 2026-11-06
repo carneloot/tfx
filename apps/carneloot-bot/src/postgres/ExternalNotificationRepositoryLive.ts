@@ -44,7 +44,7 @@ export const layer = Layer.effect(
 							Effect.gen(function* () {
 								const persisted = yield* notifications.createEvent(event);
 								const inserted =
-									yield* sql`INSERT INTO carneloot.notification_event_payloads (event_id,template_id,rendered_message,reply_to_message_id) VALUES (${persisted.id}::uuid,${templateId}::uuid,${text},${replyToMessageId ?? null}) ON CONFLICT (event_id) DO NOTHING RETURNING event_id`;
+									yield* sql`INSERT INTO carnebot.notification_event_payloads (event_id,template_id,rendered_message,reply_to_message_id) VALUES (${persisted.id}::uuid,${templateId}::uuid,${text},${replyToMessageId ?? null}) ON CONFLICT (event_id) DO NOTHING RETURNING event_id`;
 								if (inserted.length > 0) {
 									yield* notifications.materializeRecipients(
 										persisted.id,
@@ -65,7 +65,7 @@ export const layer = Layer.effect(
 			payload: Effect.fn('ExternalNotificationRepository.payload')(
 				function* (eventId) {
 					const rows = yield* protect(
-						sql`SELECT rendered_message,reply_to_message_id FROM carneloot.notification_event_payloads WHERE event_id=${eventId}::uuid`,
+						sql`SELECT rendered_message,reply_to_message_id FROM carnebot.notification_event_payloads WHERE event_id=${eventId}::uuid`,
 					);
 					if (rows[0] === undefined) return undefined;
 					return yield* protect(
@@ -89,7 +89,7 @@ export const layer = Layer.effect(
 			result: Effect.fn('ExternalNotificationRepository.result')(
 				function* (eventId) {
 					const rows = yield* protect(
-						sql`SELECT id,status,safe_error_json FROM carneloot.notification_deliveries WHERE event_id=${eventId}::uuid ORDER BY id`,
+						sql`SELECT id,status,safe_error_json FROM carnebot.notification_deliveries WHERE event_id=${eventId}::uuid ORDER BY id`,
 					);
 					const deliveries = yield* protect(
 						Schema.decodeUnknownEffect(Schema.Array(ResultRow))(rows),
@@ -121,15 +121,15 @@ export const layer = Layer.effect(
 				function* (eventId) {
 					// These rows have never been claimed, so output is known not to have started.
 					yield* protect(
-						sql`UPDATE carneloot.notification_deliveries SET status='failed',sending_started_at=now(),failed_at=now(),updated_at=now(),safe_error_json='{"code":"DispatchNotStarted","message":"Delivery was not attempted"}'::jsonb WHERE event_id=${eventId}::uuid AND status='pending'`,
+						sql`UPDATE carnebot.notification_deliveries SET status='failed',sending_started_at=now(),failed_at=now(),updated_at=now(),safe_error_json='{"code":"DispatchNotStarted","message":"Delivery was not attempted"}'::jsonb WHERE event_id=${eventId}::uuid AND status='pending'`,
 					);
 				},
 			),
 			ownerMessage: Effect.fn('ExternalNotificationRepository.ownerMessage')(
 				function* (eventId, botId) {
 					const rows = yield* protect(sql`
-				SELECT d.recipient_chat_id,d.telegram_message_id FROM carneloot.notification_deliveries d
-				JOIN carneloot.notification_events e ON e.id=d.event_id
+				SELECT d.recipient_chat_id,d.telegram_message_id FROM carnebot.notification_deliveries d
+				JOIN carnebot.notification_events e ON e.id=d.event_id
 				WHERE e.id=${eventId}::uuid AND e.bot_id=${botId} AND e.kind='external'
 				AND d.recipient_user_id=e.owner_user_id AND d.recipient_role='owner'
 				AND d.channel='telegram' AND d.status='sent' AND d.telegram_bot_id=${botId}`);
